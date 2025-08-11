@@ -120,6 +120,10 @@ class HeartFChatting:
         
         self.focus_energy = 1
         self.no_reply_consecutive = 0
+        
+        # 能量值日志时间控制
+        self.last_energy_log_time = 0  # 上次记录能量值日志的时间
+        self.energy_log_interval = 90  # 能量值日志间隔（秒）
 
     async def start(self):
         """检查是否需要启动主循环，如果未激活则启动。"""
@@ -172,11 +176,33 @@ class HeartFChatting:
         self._current_cycle_detail.end_time = time.time()
 
     def _handle_energy_completion(self, task: asyncio.Task):
-        if exception := task.exception():
-            logger.error(f"{self.log_prefix} HeartFChatting: 能量循环异常: {exception}")
-            logger.error(traceback.format_exc())
+        """处理能量循环任务的完成"""
+        if task.cancelled():
+            logger.info(f"{self.log_prefix} 能量循环任务被取消")
+        elif task.exception():
+            logger.error(f"{self.log_prefix} 能量循环任务发生异常: {task.exception()}")
+
+    def _should_log_energy(self) -> bool:
+        """判断是否应该记录能量值日志（基于时间间隔控制）"""
+        current_time = time.time()
+        if current_time - self.last_energy_log_time >= self.energy_log_interval:
+            self.last_energy_log_time = current_time
+            return True
+        return False
+
+    def _log_energy_change(self, action: str, reason: str = ""):
+        """记录能量值变化日志（受时间间隔控制）"""
+        if self._should_log_energy():
+            if reason:
+                logger.info(f"{self.log_prefix} {action}，{reason}，当前能量值：{self.energy_value:.1f}")
+            else:
+                logger.info(f"{self.log_prefix} {action}，当前能量值：{self.energy_value:.1f}")
         else:
-            logger.info(f"{self.log_prefix} HeartFChatting: 能量循环完成")
+            # 仍然以debug级别记录，便于调试
+            if reason:
+                logger.debug(f"{self.log_prefix} {action}，{reason}，当前能量值：{self.energy_value:.1f}")
+            else:
+                logger.debug(f"{self.log_prefix} {action}，当前能量值：{self.energy_value:.1f}")
 
     async def _energy_loop(self):
         while self.running:
@@ -298,7 +324,7 @@ class HeartFChatting:
             if self.last_action == "no_reply":
                 if not await self._execute_no_reply(recent_messages_dict):
                     self.energy_value -= 0.3 / global_config.chat.focus_value
-                    logger.info(f"{self.log_prefix} 能量值减少，当前能量值：{self.energy_value:.1f}")
+                    self._log_energy_change("能量值减少")
                     await asyncio.sleep(0.5)
                     return True
             
@@ -306,7 +332,7 @@ class HeartFChatting:
             
             if await self._observe():
                 self.energy_value += 1 / global_config.chat.focus_value
-                logger.info(f"{self.log_prefix} 能量值增加，当前能量值：{self.energy_value:.1f}")
+                self._log_energy_change("能量值增加")
 
             if self.energy_value <= 1:
                 self.energy_value = 1
@@ -335,11 +361,12 @@ class HeartFChatting:
                 if if_think:
                     factor = max(global_config.chat.focus_value, 0.1)
                     self.energy_value *= 1.1 * factor
-                    logger.info(f"{self.log_prefix} 进行了思考，能量值按倍数增加，当前能量值：{self.energy_value:.1f}")
+                    self._log_energy_change("进行了思考，能量值按倍数增加")
                 else:
                     self.energy_value += 0.1 * global_config.chat.focus_value
-                    logger.debug(f"{self.log_prefix} 没有进行思考，能量值线性增加，当前能量值：{self.energy_value:.1f}")
+                    self._log_energy_change("没有进行思考，能量值线性增加")
 
+                # 这个可以保持debug级别，因为它是总结性信息
                 logger.debug(f"{self.log_prefix} 当前能量值：{self.energy_value:.1f}")
                 return True
 
