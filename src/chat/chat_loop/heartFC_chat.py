@@ -299,9 +299,9 @@ class HeartFChatting:
                 )
                 return True
 
-        # 每10秒输出一次等待状态
+        # 每10秒输出一次等待状态，仅在debug模式下启用
         if int(time.time() - self.last_read_time) > 0 and int(time.time() - self.last_read_time) % 10 == 0:
-            logger.info(
+            logger.debug(
                 f"{self.log_prefix} 已等待{time.time() - self.last_read_time:.0f}秒，累计{new_message_count}条消息，继续等待..."
             )
 
