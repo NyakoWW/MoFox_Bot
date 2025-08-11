@@ -1650,9 +1650,8 @@ class HippocampusManager:
         """整合记忆的公共接口"""
         if not self._initialized:
             raise RuntimeError("HippocampusManager 尚未初始化，请先调用 initialize 方法")
-        # 注意：目前 operation_consolidate_memory 内部直接读取配置，percentage 参数暂时无效
-        # 如果需要外部控制比例，需要修改 operation_consolidate_memory
-        return await self._hippocampus.parahippocampal_gyrus.operation_consolidate_memory()
+        # 使用 operation_build_memory 方法来整合记忆
+        return await self._hippocampus.parahippocampal_gyrus.operation_build_memory()
 
     async def get_memory_from_text(
         self,
