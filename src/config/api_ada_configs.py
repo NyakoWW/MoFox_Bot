@@ -138,6 +138,9 @@ class ModelTaskConfig(ConfigBase):
     lpmm_qa: TaskConfig
     """LPMM问答模型配置"""
 
+    schedule_generator: TaskConfig
+    """日程生成模型配置"""
+
     def get_task(self, task_name: str) -> TaskConfig:
         """获取指定任务的配置"""
         if hasattr(self, task_name):

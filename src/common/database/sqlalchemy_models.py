@@ -439,6 +439,21 @@ class GraphEdges(Base):
     )
 
 
+class Schedule(Base):
+    """日程模型"""
+    __tablename__ = 'schedule'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(get_string_field(10), nullable=False, unique=True, index=True)  # YYYY-MM-DD格式
+    schedule_data = Column(Text, nullable=False)  # JSON格式的日程数据
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.now)
+    updated_at = Column(DateTime, nullable=False, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    __table_args__ = (
+        Index('idx_schedule_date', 'date'),
+    )
+
+
 # 数据库引擎和会话管理
 _engine = None
 _SessionLocal = None

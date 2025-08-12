@@ -17,6 +17,7 @@ from src.individuality.individuality import get_individuality, Individuality
 from src.common.server import get_global_server, Server
 from src.mood.mood_manager import mood_manager
 from rich.traceback import install
+from src.common.schedule_manager import schedule_manager
 # from src.api.main import start_api_server
 
 # 导入新的插件管理器和热重载管理器
@@ -146,6 +147,11 @@ class MainSystem:
 
         # 初始化个体特征
         await self.individuality.initialize()
+        # 初始化日程管理器
+        if global_config.schedule.enable:
+            logger.info("日程表功能已启用，正在初始化管理器...")
+            await schedule_manager.load_or_generate_today_schedule()
+            logger.info("日程表管理器初始化成功。")
 
         try:
             init_time = int(1000 * (time.time() - init_start_time))

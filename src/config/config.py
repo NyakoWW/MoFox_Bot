@@ -36,6 +36,7 @@ from src.config.official_configs import (
     VoiceConfig,
     DebugConfig,
     CustomPromptConfig,
+    ScheduleConfig,
 )
 
 from .api_ada_configs import (
@@ -350,6 +351,7 @@ class Config(ConfigBase):
     debug: DebugConfig
     custom_prompt: CustomPromptConfig
     voice: VoiceConfig
+    schedule: ScheduleConfig
 
 
 @dataclass

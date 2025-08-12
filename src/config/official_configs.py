@@ -417,7 +417,7 @@ class ExpressionConfig(ConfigBase):
         except (ValueError, IndexError):
             return None
 
-    def get_expression_config_for_chat(self, chat_stream_id: Optional[str] = None) -> tuple[bool, bool, int]:
+    def get_expression_config_for_chat(self, chat_stream_id: Optional[str] = None) -> tuple[bool, bool, float]:
         """
         根据聊天流ID获取表达配置
 
@@ -812,3 +812,13 @@ class LPMMKnowledgeConfig(ConfigBase):
     embedding_dimension: int = 1024
     """嵌入向量维度，应该与模型的输出维度一致"""
 
+
+@dataclass
+class ScheduleConfig(ConfigBase):
+    """日程配置类"""
+
+    enable: bool = True
+    """是否启用日程管理功能"""
+
+    guidelines: Optional[str] = field(default=None)
+    """日程生成指导原则，如果为None则使用默认指导原则"""
