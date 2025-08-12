@@ -37,6 +37,7 @@ from src.config.official_configs import (
     DebugConfig,
     CustomPromptConfig,
     ScheduleConfig,
+    VideoAnalysisConfig,
 )
 
 from .api_ada_configs import (
@@ -352,6 +353,7 @@ class Config(ConfigBase):
     custom_prompt: CustomPromptConfig
     voice: VoiceConfig
     schedule: ScheduleConfig
+    video_analysis: VideoAnalysisConfig = field(default_factory=lambda: VideoAnalysisConfig())
 
 
 @dataclass
