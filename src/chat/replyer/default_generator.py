@@ -656,7 +656,7 @@ class DefaultReplyer:
             background_dialogue_prompt_str = build_readable_messages(
                 latest_25_msgs,
                 replace_bot_name=True,
-                timestamp_mode="normal_no_YMD",
+                timestamp_mode="normal",
                 truncate=True,
             )
             background_dialogue_prompt = f"这是其他用户的发言：\n{background_dialogue_prompt_str}"
@@ -670,7 +670,7 @@ class DefaultReplyer:
                 core_dialogue_list,
                 replace_bot_name=True,
                 merge_messages=False,
-                timestamp_mode="normal_no_YMD",
+                timestamp_mode="normal",
                 read_mark=0.0,
                 truncate=True,
                 show_actions=True,
@@ -953,7 +953,7 @@ class DefaultReplyer:
                 unified_message_list,
                 replace_bot_name=True,
                 merge_messages=False,
-                timestamp_mode="normal_no_YMD",
+                timestamp_mode="normal",
                 read_mark=0.0,
                 truncate=True,
                 show_actions=True,
