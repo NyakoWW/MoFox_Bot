@@ -291,6 +291,9 @@ class HeartFChatting:
             total_interest = 0.0
             for msg_dict in new_message:
                 interest_value = msg_dict.get("interest_value", 0.0)
+                # 确保 interest_value 不为 None
+                if interest_value is None:
+                    interest_value = 0.0
                 if msg_dict.get("processed_plain_text", ""):
                     total_interest += interest_value
             
@@ -308,6 +311,9 @@ class HeartFChatting:
             for msg_dict in new_message:
                 text = msg_dict.get("processed_plain_text", "")
                 interest_value = msg_dict.get("interest_value", 0.0)
+                # 确保 interest_value 不为 None
+                if interest_value is None:
+                    interest_value = 0.0
                 if text:
                     accumulated_interest += interest_value
             
