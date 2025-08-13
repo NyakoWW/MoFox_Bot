@@ -61,6 +61,25 @@ def _convert_messages(
     :param messages: 消息列表
     :return: 转换后的消息列表(和可能存在的system消息)
     """
+    
+    def _get_correct_mime_type(image_format: str) -> str:
+        """
+        获取正确的MIME类型，修复jpg到jpeg的映射问题
+        :param image_format: 图片格式
+        :return: 正确的MIME类型
+        """
+        # 标准化格式名称，解决jpg/jpeg兼容性问题
+        format_mapping = {
+            "jpg": "jpeg",
+            "jpeg": "jpeg", 
+            "png": "png",
+            "webp": "webp",
+            "heic": "heic",
+            "heif": "heif",
+            "gif": "gif"
+        }
+        normalized_format = format_mapping.get(image_format.lower(), image_format.lower())
+        return f"image/{normalized_format}"
 
     def _convert_message_item(message: Message) -> Content:
         """
@@ -83,7 +102,7 @@ def _convert_messages(
             for item in message.content:
                 if isinstance(item, tuple):
                     content.append(
-                        Part.from_bytes(data=base64.b64decode(item[1]), mime_type=f"image/{item[0].lower()}")
+                        Part.from_bytes(data=base64.b64decode(item[1]), mime_type=_get_correct_mime_type(item[0]))
                     )
                 elif isinstance(item, str):
                     content.append(Part.from_text(text=item))
