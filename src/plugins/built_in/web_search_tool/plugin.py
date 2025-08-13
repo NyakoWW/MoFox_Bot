@@ -600,7 +600,8 @@ class WEBSEARCHPLUGIN(BasePlugin):
             optional=True  # 如果没有API密钥，这个是可选的
         ),
         PythonDependency(
-            package_name="tavily-python",
+            package_name="tavily",
+            install_name="tavily-python",  # 安装时使用这个名称
             description="Tavily搜索API客户端库",
             optional=True  # 如果没有API密钥，这个是可选的
         ),
@@ -644,8 +645,8 @@ class WEBSEARCHPLUGIN(BasePlugin):
     def get_plugin_components(self) -> List[Tuple[ComponentInfo, Type]]:
         enable_tool =[]
         # 从主配置文件读取组件启用配置
-        if config_api.get_global_config.web_search.enable_web_search_tool:
+        if config_api.get_global_config("web_search.enable_web_search_tool", True):
             enable_tool.append((WebSurfingTool.get_tool_info(), WebSurfingTool))
-        if config_api.get_global_config.web_search.enable_url_tool:
+        if config_api.get_global_config("web_search.enable_url_tool", True):
             enable_tool.append((URLParserTool.get_tool_info(), URLParserTool))
         return enable_tool

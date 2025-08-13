@@ -35,7 +35,6 @@ def init_prompt():
 {mood_block}
 {time_block}
 {identity_block}
-你的核心任务是积极地在对话中寻找参与机会，像一个真正的群成员一样，自然地融入并活跃气氛。你的目标是让对话更有趣、更顺畅。
 
 {custom_prompt_block}
 {chat_context_description}，以下是具体的聊天内容
@@ -273,7 +272,7 @@ class ActionPlanner:
 
             chat_content_block, message_id_list = build_readable_messages_with_id(
                 messages=message_list_before_now,
-                timestamp_mode="normal_no_YMD",
+                timestamp_mode="normal",
                 read_mark=self.last_obs_time_mark,
                 truncate=True,
                 show_actions=True,
@@ -389,7 +388,7 @@ class ActionPlanner:
             
             # 处理自定义提示词
             custom_prompt_block = ""
-            if global_config.chat.planner_custom_prompt_enable and global_config.chat.planner_custom_prompt_content:
+            if global_config.custom_prompt.planner_custom_prompt_enable and global_config.custom_prompt.planner_custom_prompt_content:
                 custom_prompt_block = global_config.chat.planner_custom_prompt_content
 
             planner_prompt_template = await global_prompt_manager.get_prompt_async("planner_prompt")

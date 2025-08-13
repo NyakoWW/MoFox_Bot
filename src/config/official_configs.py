@@ -185,11 +185,28 @@ class ChatConfig(ConfigBase):
     group_chat_mode: Literal["auto", "normal", "focus"] = "auto"
     """群聊聊天模式设置：auto-自动切换，normal-强制普通模式，focus-强制专注模式"""
     
-    planner_custom_prompt_enable: bool = False
-    """是否启用决策器自定义提示词"""
-    
-    planner_custom_prompt_content: str = ""
-    """决策器自定义提示词内容，仅在planner_custom_prompt_enable为True时生效"""
+    timestamp_display_mode: Literal["normal", "normal_no_YMD", "relative"] = "normal_no_YMD"
+    """
+    消息时间戳显示模式：
+    - normal: 完整日期时间格式 (YYYY-MM-DD HH:MM:SS)
+    - normal_no_YMD: 仅显示时间 (HH:MM:SS)
+    - relative: 相对时间格式 (几分钟前/几小时前等)
+    """
+
+    # 主动思考功能配置
+    enable_proactive_thinking: bool = False
+    """是否启用主动思考功能（仅在focus模式下生效）"""
+
+    proactive_thinking_interval: int = 1500
+    """主动思考触发间隔时间（秒），默认1500秒（25分钟）"""
+
+    proactive_thinking_prompt_template: str = """现在群里面已经隔了{time}没有人发送消息了，请你结合上下文以及群聊里面之前聊过的话题和你的人设来决定要不要主动发送消息，你可以选择：
+
+1. 继续保持沉默（当{time}以前已经结束了一个话题并且你不想挑起新话题时）
+2. 选择回复（当{time}以前你发送了一条消息且没有人回复你时、你想主动挑起一个话题时）
+
+请根据当前情况做出选择。如果选择回复，请直接发送你想说的内容；如果选择保持沉默，请只回复"沉默"（注意：这个词不会被发送到群聊中）。"""
+    """主动思考时使用的prompt模板，{time}会被替换为实际的沉默时间"""
 
     def get_current_talk_frequency(self, chat_stream_id: Optional[str] = None) -> float:
         """
@@ -567,6 +584,9 @@ class EmojiConfig(ConfigBase):
     filtration_prompt: str = "符合公序良俗"
     """表情包过滤要求"""
 
+    enable_emotion_analysis: bool = True
+    """是否启用表情包感情关键词二次识别，启用后表情包在第一次识别完毕后将送入第二次大模型识别来总结感情关键词，并构建进回复和决策器的上下文消息中"""
+
 
 @dataclass
 class MemoryConfig(ConfigBase):
@@ -684,6 +704,12 @@ class CustomPromptConfig(ConfigBase):
 
     image_prompt: str = ""
     """图片提示词"""
+
+    planner_custom_prompt_enable: bool = False
+    """是否启用决策器自定义提示词"""
+    
+    planner_custom_prompt_content: str = ""
+    """决策器自定义提示词内容，仅在planner_custom_prompt_enable为True时生效"""
 
 
 @dataclass
@@ -916,6 +942,42 @@ class ExaConfig(ConfigBase):
     
     api_key: str = "None"
     """EXA API密钥，用于联网搜索功能。请填入有效的EXA API密钥"""
+
+
+@dataclass
+class VideoAnalysisConfig(ConfigBase):
+    """视频分析配置类"""
+    
+    enable: bool = True
+    """是否启用视频分析功能"""
+    
+    analysis_mode: str = "batch_frames"
+    """分析模式：frame_by_frame（逐帧分析，慢但详细）、batch_frames（批量分析，快但可能略简单）或 auto（自动选择）"""
+    
+    max_frames: int = 8
+    """最大分析帧数"""
+    
+    frame_quality: int = 85
+    """帧图像JPEG质量 (1-100)"""
+    
+    max_image_size: int = 800
+    """单帧最大图像尺寸(像素)"""
+    
+    enable_frame_timing: bool = True
+    """是否在分析中包含帧的时间信息"""
+    
+    batch_analysis_prompt: str = """请分析这个视频的内容。这些图片是从视频中按时间顺序提取的关键帧。
+
+请提供详细的分析，包括：
+1. 视频的整体内容和主题
+2. 主要人物、对象和场景描述
+3. 动作、情节和时间线发展
+4. 视觉风格和艺术特点
+5. 整体氛围和情感表达
+6. 任何特殊的视觉效果或文字内容
+
+请用中文回答，分析要详细准确。"""
+    """批量分析时使用的提示词"""
 
 
 @dataclass 

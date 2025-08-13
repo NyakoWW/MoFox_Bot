@@ -1,5 +1,5 @@
 [inner]
-version = "6.3.0"
+version = "6.3.5"
 
 #----以下是给开发人员阅读的，如果你只是部署了麦麦，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -99,9 +99,6 @@ force_focus_private = false # 是否强制私聊进入专注模式，开启后�
 # 群聊聊天模式设置
 group_chat_mode = "auto" # 群聊聊天模式：auto-自动切换，normal-强制普通模式，focus-强制专注模式
 
-# 决策器自定义提示词设置
-planner_custom_prompt_enable = false # 是否启用决策器自定义提示词(就是可以在决策器的默认提示词后面加入你的提示词,如果看不懂最好还是关了吧)
-planner_custom_prompt_content = "" # 决策器自定义提示词内容，仅在planner_custom_prompt_enable为True时生效
 
 max_context_size = 25 # 上下文长度
 thinking_timeout = 40 # 麦麦一次回复最长思考规划时间，超过这个时间的思考会放弃（往往是api反应太慢）
@@ -120,6 +117,17 @@ talk_frequency_adjust = [
 
 # 全局配置示例：
 # [["", "8:00,1", "12:00,2", "18:00,1.5", "00:00,0.5"]]
+
+# 主动思考功能配置（仅在focus模式下生效）
+enable_proactive_thinking = false # 是否启用主动思考功能
+proactive_thinking_interval = 1500 # 主动思考触发间隔时间（秒），默认1500秒（25分钟）
+# 主动思考prompt模板，{time}会被替换为实际的沉默时间（如"2小时30分15秒"）
+proactive_thinking_prompt_template = """现在群里面已经隔了{time}没有人发送消息了，请你结合上下文以及群聊里面之前聊过的话题和你的人设来决定要不要主动发送消息，你可以选择：
+
+1. 继续保持沉默（当{time}以前已经结束了一个话题并且你不想挑起新话题时）
+2. 选择回复（当{time}以前你发送了一条消息且没有人回复你时、你想主动挑起一个话题时）
+
+请根据当前情况做出选择。如果选择回复，请直接发送你想说的内容；如果选择保持沉默，请只回复"沉默"（注意：这个词不会被发送到群聊中）。"""
 
 # 特定聊天流配置示例：
 # [
@@ -172,6 +180,7 @@ check_interval = 10 # 检查表情包（注册，破损，删除）的时间间�
 steal_emoji = true # 是否偷取表情包，让麦麦可以将一些表情包据为己有
 content_filtration = false  # 是否启用表情包过滤，只有符合该要求的表情包才会被保存
 filtration_prompt = "符合公序良俗" # 表情包过滤要求，只有符合该要求的表情包才会被保存
+enable_emotion_analysis = false # 是否启用表情包感情关键词二次识别，启用后表情包在第一次识别完毕后将送入第二次大模型识别来总结感情关键词，并构建进回复和决策器的上下文消息中
 
 [memory]
 enable_memory = true # 是否启用记忆系统
@@ -231,6 +240,8 @@ regex_rules = [
 # 可以自定义部分提示词
 [custom_prompt]
 image_prompt = "请用中文描述这张图片的内容。如果有文字，请把文字描述概括出来，请留意其主题，直观感受，输出为一段平文本，最多30字，请注意不要分点，就输出一段文本"
+planner_custom_prompt_enable = false # 是否启用决策器自定义提示词(就是可以在决策器的默认提示词后面加入你的提示词,如果看不懂最好还是关了吧)
+planner_custom_prompt_content = "" # 决策器自定义提示词内容，仅在planner_custom_prompt_enable为True时生效
 
 [response_post_process]
 enable_response_post_process = true # 是否启用回复后处理，包括错别字生成器，回复分割器
@@ -262,19 +273,14 @@ library_log_levels = { "aiohttp" = "WARNING"} # 设置特定库的日志级别
 
 [dependency_management] # 插件Python依赖管理配置
 # 是否启用自动安装Python依赖包（主开关）
-auto_install = true
-
+auto_install = false #暂时关闭一下因为还用不了
 # 安装超时时间（秒）
 auto_install_timeout = 300
-
 # 是否使用PyPI镜像源（推荐，可加速下载）
 use_mirror = true
 mirror_url = "https://pypi.tuna.tsinghua.edu.cn/simple" # PyPI镜像源URL，如: "https://pypi.tuna.tsinghua.edu.cn/simple" 
-
-
 # 安装前是否提示用户（暂未实现）
 prompt_before_install = false
-
 # 依赖安装日志级别
 install_log_level = "INFO"
 
@@ -309,7 +315,7 @@ guidelines = """
 [experimental] #实验性功能
 enable_friend_chat = false # 是否启用好友聊天
 
-[utils_video] # 视频分析配置
+[video_analysis] # 视频分析配置
 enable = true # 是否启用视频分析功能
 analysis_mode = "batch_frames" # 分析模式："frame_by_frame"（逐帧分析，慢但详细）、"batch_frames"（批量分析，快但可能略简单）或 "auto"（自动选择）
 max_frames = 8 # 最大分析帧数
