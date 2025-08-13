@@ -6,7 +6,6 @@ import toml
 import json
 import shutil
 import datetime
-from typing import Union
 
 from src.common.logger import get_logger
 from src.plugin_system.base.component_types import (

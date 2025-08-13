@@ -2,10 +2,9 @@ import subprocess
 import sys
 import importlib
 import importlib.util
-from typing import List, Dict, Tuple, Optional, Union, Any
+from typing import List, Tuple, Optional, Any
 from packaging import version
 from packaging.requirements import Requirement
-import re
 
 from src.common.logger import get_logger
 from src.plugin_system.base.component_types import PythonDependency

@@ -947,11 +947,11 @@ class DefaultReplyer:
             # 为normal模式构建简化的chat_info（不包含时间，因为time_block单独传递）
             chat_info = f"""群里的聊天内容：
 {unified_chat_history}"""
-            logger.debug(f"[Prompt模式调试] normal模式使用统一聊天历史，不分离对话")
+            logger.debug("[Prompt模式调试] normal模式使用统一聊天历史，不分离对话")
             
-            logger.debug(f"[Prompt模式调试] normal模式参数准备完成，开始调用format_prompt")
+            logger.debug("[Prompt模式调试] normal模式参数准备完成，开始调用format_prompt")
             logger.debug(f"[Prompt模式调试] normal模式传递的参数: template_name={template_name}")
-            logger.debug(f"[Prompt模式调试] 检查global_prompt_manager是否有该模板...")
+            logger.debug("[Prompt模式调试] 检查global_prompt_manager是否有该模板...")
             
             # 检查模板是否存在
             try:
@@ -985,7 +985,7 @@ class DefaultReplyer:
             template_name = "s4u_style_prompt"
             logger.debug(f"[Prompt模式调试] 选择使用s4u模式模板: {template_name} (prompt_mode={current_prompt_mode})")
             
-            logger.debug(f"[Prompt模式调试] s4u模式参数准备完成，开始调用format_prompt")
+            logger.debug("[Prompt模式调试] s4u模式参数准备完成，开始调用format_prompt")
             
             # 检查s4u模板是否存在
             try:
