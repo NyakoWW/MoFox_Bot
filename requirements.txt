@@ -61,3 +61,4 @@ asyncddgs
 opencv-python
 Pillow
 asyncio
+tavily-python

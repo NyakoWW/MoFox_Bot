@@ -57,6 +57,7 @@ dependencies = [
     "sqlalchemy>=2.0.42",
     "strawberry-graphql[fastapi]>=0.275.5",
     "structlog>=25.4.0",
+    "tavily-python>=0.7.10",
     "toml>=0.10.2",
     "tomli>=2.2.1",
     "tomli-w>=1.2.0",
