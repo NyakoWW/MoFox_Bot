@@ -94,6 +94,9 @@ focus_value = 1
 
 talk_frequency = 1 # 麦麦活跃度，越高，麦麦回复越频繁
 
+# 强制私聊专注模式
+force_focus_private = false # 是否强制私聊进入专注模式，开启后私聊将始终保持专注状态
+
 max_context_size = 25 # 上下文长度
 thinking_timeout = 40 # 麦麦一次回复最长思考规划时间，超过这个时间的思考会放弃（往往是api反应太慢）
 replyer_random_probability = 0.5 # 首要replyer模型被选择的概率
