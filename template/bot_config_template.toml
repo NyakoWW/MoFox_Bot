@@ -334,3 +334,15 @@ batch_analysis_prompt = """请分析这个视频的内容。这些图片是从�
 6. 任何特殊的视觉效果或文字内容
 
 请用中文回答，分析要详细准确。"""
+
+# EXA搜索引擎配置
+[exa]
+# EXA API密钥，用于联网搜索功能
+api_key = "None" # 请填入有效的EXA API密钥
+
+# 联网搜索组件配置
+[web_search]
+# 是否启用联网搜索工具
+enable_web_search_tool = true
+# 是否启用URL解析工具
+enable_url_tool = true
