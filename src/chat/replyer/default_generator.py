@@ -127,7 +127,7 @@ If you need to use the search tool, please directly call the function "lpmm_sear
     )
 
     # normal 版 prompt 模板（0.9之前的简化模式）
-    logger.info("[Prompt模式调试] 正在注册normal_style_prompt模板")
+    logger.debug("[Prompt模式调试] 正在注册normal_style_prompt模板")
     Prompt(
         """
 【NORMAL模式已启用 - 这是0.9之前的简化提示词】
@@ -168,7 +168,7 @@ If you need to use the search tool, please directly call the function "lpmm_sear
 """,
         "normal_style_prompt",
     )
-    logger.info("[Prompt模式调试] normal_style_prompt模板注册完成")
+    logger.debug("[Prompt模式调试] normal_style_prompt模板注册完成")
 
 
 class DefaultReplyer:
@@ -920,11 +920,11 @@ class DefaultReplyer:
 
         # 根据配置选择模板
         current_prompt_mode = global_config.personality.prompt_mode
-        logger.info(f"[Prompt模式调试] 当前配置的prompt_mode: {current_prompt_mode}")
+        logger.debug(f"[Prompt模式调试] 当前配置的prompt_mode: {current_prompt_mode}")
         
         if current_prompt_mode == "normal":
             template_name = "normal_style_prompt"
-            logger.info(f"[Prompt模式调试] 选择使用normal模式模板: {template_name}")
+            logger.debug(f"[Prompt模式调试] 选择使用normal模式模板: {template_name}")
             # normal模式使用统一的聊天历史，不分离核心对话和背景对话
             config_expression_style = global_config.personality.reply_style
             
@@ -947,16 +947,16 @@ class DefaultReplyer:
             # 为normal模式构建简化的chat_info（不包含时间，因为time_block单独传递）
             chat_info = f"""群里的聊天内容：
 {unified_chat_history}"""
-            logger.info(f"[Prompt模式调试] normal模式使用统一聊天历史，不分离对话")
+            logger.debug(f"[Prompt模式调试] normal模式使用统一聊天历史，不分离对话")
             
-            logger.info(f"[Prompt模式调试] normal模式参数准备完成，开始调用format_prompt")
-            logger.info(f"[Prompt模式调试] normal模式传递的参数: template_name={template_name}")
-            logger.info(f"[Prompt模式调试] 检查global_prompt_manager是否有该模板...")
+            logger.debug(f"[Prompt模式调试] normal模式参数准备完成，开始调用format_prompt")
+            logger.debug(f"[Prompt模式调试] normal模式传递的参数: template_name={template_name}")
+            logger.debug(f"[Prompt模式调试] 检查global_prompt_manager是否有该模板...")
             
             # 检查模板是否存在
             try:
                 test_prompt = await global_prompt_manager.get_prompt_async(template_name)
-                logger.info(f"[Prompt模式调试] 找到模板 {template_name}, 内容预览: {test_prompt[:100]}...")
+                logger.debug(f"[Prompt模式调试] 找到模板 {template_name}, 内容预览: {test_prompt[:100]}...")
             except Exception as e:
                 logger.error(f"[Prompt模式调试] 模板 {template_name} 不存在或获取失败: {e}")
             
@@ -983,15 +983,16 @@ class DefaultReplyer:
         else:
             # 使用 s4u 风格的模板
             template_name = "s4u_style_prompt"
-            logger.info(f"[Prompt模式调试] 选择使用s4u模式模板: {template_name} (prompt_mode={current_prompt_mode})")
+            logger.debug(f"[Prompt模式调试] 选择使用s4u模式模板: {template_name} (prompt_mode={current_prompt_mode})")
             
-            logger.info(f"[Prompt模式调试] s4u模式参数准备完成，开始调用format_prompt")
+            logger.debug(f"[Prompt模式调试] s4u模式参数准备完成，开始调用format_prompt")
             
             # 检查s4u模板是否存在
             try:
                 test_prompt = await global_prompt_manager.get_prompt_async(template_name)
-                logger.info(f"[Prompt模式调试] 找到s4u模板 {template_name}, 内容预览: {test_prompt[:100]}...")
+                logger.debug(f"[Prompt模式调试] 找到s4u模板 {template_name}, 内容预览: {test_prompt[:100]}...")
             except Exception as e:
+                #理论上我觉得这玩意没多大可能炸就是了
                 logger.error(f"[Prompt模式调试] s4u模板 {template_name} 不存在或获取失败: {e}")
             
             result = await global_prompt_manager.format_prompt(
@@ -1016,7 +1017,7 @@ class DefaultReplyer:
                 keywords_reaction_prompt=keywords_reaction_prompt,
                 moderation_prompt=moderation_prompt_block,
             )
-            logger.info(f"[Prompt模式调试] s4u format_prompt调用完成，结果预览: {result[:200]}...")
+            logger.debug(f"[Prompt模式调试] s4u format_prompt调用完成，结果预览: {result[:200]}...")
             return result
 
     async def build_prompt_rewrite_context(
