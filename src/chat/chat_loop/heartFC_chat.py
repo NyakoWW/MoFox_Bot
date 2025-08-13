@@ -317,18 +317,6 @@ class HeartFChatting:
                 time=formatted_time
             )
             
-            # 获取当前上下文
-            context_messages = message_api.get_recent_messages(
-                chat_id=self.stream_id,
-                limit=global_config.chat.max_context_size
-            )
-            
-            # 构建完整的prompt（结合人设和上下文）
-            full_context = global_prompt_manager.build_context_prompt(
-                context_messages, 
-                self.stream_id
-            )
-            
             # 创建一个虚拟的消息数据用于主动思考
             """
             因为主动思考是在没有用户消息的情况下触发的
@@ -340,55 +328,17 @@ class HeartFChatting:
                 "user_id": "system_proactive_thinking",
                 "user_platform": "system",
                 "timestamp": time.time(),
-                "message_type": "proactive_thinking"
+                "message_type": "proactive_thinking",
+                "user_nickname": "系统主动思考",
+                "chat_info_platform": "system",
+                "message_id": f"proactive_{int(time.time())}"
             }
             
-            # 执行思考规划
-            cycle_timers, thinking_id = self.start_cycle()
-            
-            timer = Timer()
-            plan_result = await self.action_planner.plan(
-                new_message_data=[thinking_message],
-                context_prompt=full_context,
-                thinking_id=thinking_id,
-                timeout=global_config.chat.thinking_timeout
-            )
-            cycle_timers["规划"] = timer.elapsed()
-            
-            if not plan_result:
-                logger.info(f"{self.log_prefix} 主动思考规划失败")
-                self.end_cycle(ERROR_LOOP_INFO, cycle_timers)
-                return
-            
-            # 执行动作
-            timer.restart()
-            action_info = await self.action_modifier.execute_action(
-                plan_result["action_result"],
-                context=full_context,
-                thinking_id=thinking_id
-            )
-            cycle_timers["执行"] = timer.elapsed()
-            
-            # 构建循环信息
-            loop_info = {
-                "loop_plan_info": plan_result,
-                "loop_action_info": action_info,
-            }
-            
-            self.end_cycle(loop_info, cycle_timers)
-            self.print_cycle_info(cycle_timers)
-            
-            # 如果有回复内容且不是"沉默"，则发送
-            reply_text = action_info.get("reply_text", "").strip()
-            if reply_text and reply_text != "沉默":
-                logger.info(f"{self.log_prefix} 主动思考决定发言: {reply_text}")
-                await send_api.text_to_stream(
-                    text=reply_text,
-                    stream_id=self.stream_id,
-                    typing=True  # 主动发言时显示输入状态
-                )
-            else:
-                logger.info(f"{self.log_prefix} 主动思考决定保持沉默")
+            # 使用现有的_observe方法来处理主动思考
+            # 这样可以复用现有的完整思考流程
+            logger.info(f"{self.log_prefix} 开始主动思考...")
+            await self._observe(message_data=thinking_message)
+            logger.info(f"{self.log_prefix} 主动思考完成")
                 
         except Exception as e:
             logger.error(f"{self.log_prefix} 主动思考执行异常: {e}")
@@ -1155,9 +1105,20 @@ class HeartFChatting:
             logger.info(f"{self.log_prefix} 从思考到回复，共有{new_message_count}条新消息，不使用引用回复")
 
         reply_text = ""
+        
+        # 检查是否为主动思考且决定沉默
+        is_proactive_thinking = message_data.get("message_type") == "proactive_thinking"
+        
         first_replied = False
         for reply_seg in reply_set:
             data = reply_seg[1]
+            reply_text += data
+            
+            # 如果是主动思考且回复内容是"沉默"，则不发送消息
+            if is_proactive_thinking and data.strip() == "沉默":
+                logger.info(f"{self.log_prefix} 主动思考决定保持沉默，不发送消息")
+                continue
+            
             if not first_replied:
                 if need_reply:
                     await send_api.text_to_stream(
@@ -1182,6 +1143,5 @@ class HeartFChatting:
                     reply_to_platform_id=reply_to_platform_id,
                     typing=True,
                 )
-            reply_text += data
 
         return reply_text
