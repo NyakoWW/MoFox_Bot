@@ -420,16 +420,21 @@ async def adapter_command_to_stream(
        雅诺狐的耳朵特别软
 
     Args:
-        action: 适配器命令动作，如"get_group_list"、"get_friend_list"等
-        params: 命令参数字典
-        stream_id: 聊天流ID，可选，如果不提供则自动生成一个
-        timeout: 超时时间（秒）
-        storage_message: 是否存储消息到数据库
-        show_log: 是否显示日志
+        action (str): 适配器命令动作，如"get_group_list"、"get_friend_list"等
+        params (dict): 命令参数字典，包含命令所需的参数
+        platform (Optional[str]): 目标平台标识，可选，用于多平台支持
+        stream_id (Optional[str]): 聊天流ID，可选，如果不提供则自动生成临时ID
+        timeout (float): 超时时间（秒），默认30.0秒
+        storage_message (bool): 是否存储消息到数据库，默认False
 
     Returns:
-        dict: 适配器返回的响应，格式为 {"status": "ok/failed", "data": {...}, "message": "..."}
-               如果发送失败则返回 {"status": "error", "message": "错误信息"}
+        dict: 适配器返回的响应，包含以下可能的状态：
+            - 成功: {"status": "ok", "data": {...}, "message": "..."}
+            - 失败: {"status": "failed", "message": "错误信息"}
+            - 错误: {"status": "error", "message": "错误信息"}
+            
+    Raises:
+        ValueError: 当stream_id和platform都未提供时抛出
     """
     if not stream_id and not platform:
         raise ValueError("必须提供stream_id或platform参数")
