@@ -31,7 +31,7 @@ from src.person_info.relationship_fetcher import relationship_fetcher_manager
 from src.person_info.person_info import get_person_info_manager
 from src.plugin_system.base.component_types import ActionInfo, EventType
 from src.plugin_system.apis import llm_api
-from src.common.schedule_manager import schedule_manager
+from src.manager.schedule_manager import schedule_manager
 
 logger = get_logger("replyer")
 
