@@ -86,7 +86,7 @@ class ScheduleManager:
                     logger.debug("当前时间没有日程活动")
                 
                 # 每5分钟检查一次，避免频繁检查
-                await asyncio.sleep(60)
+                await asyncio.sleep(300)
                 
             except asyncio.CancelledError:
                 logger.info("定时任务循环被取消")
