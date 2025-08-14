@@ -15,7 +15,7 @@ from src.common.logger import get_logger
 from src.common.database.sqlalchemy_models import (
     Base, get_db_session, Messages, ActionRecords, PersonInfo, ChatStreams,
     LLMUsage, Emoji, Images, ImageDescriptions, OnlineTime, Memory,
-    Expression, ThinkingLog, GraphNodes, GraphEdges,get_session
+    Expression, ThinkingLog, GraphNodes, GraphEdges, Schedule, MaiZoneScheduleStatus, get_session
 )
 
 logger = get_logger("sqlalchemy_database_api")
@@ -36,6 +36,8 @@ MODEL_MAPPING = {
     'ThinkingLog': ThinkingLog,
     'GraphNodes': GraphNodes,
     'GraphEdges': GraphEdges,
+    'Schedule': Schedule,
+    'MaiZoneScheduleStatus': MaiZoneScheduleStatus,
 }
 
 

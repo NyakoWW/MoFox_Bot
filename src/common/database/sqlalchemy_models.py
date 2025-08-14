@@ -454,6 +454,26 @@ class Schedule(Base):
     )
 
 
+class  MaiZoneScheduleStatus(Base):
+    """麦麦空间日程处理状态模型"""
+    __tablename__ = 'maizone_schedule_status'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    datetime_hour = Column(get_string_field(13), nullable=False, unique=True, index=True)  # YYYY-MM-DD HH格式，精确到小时
+    activity = Column(Text, nullable=False)  # 该小时的活动内容
+    is_processed = Column(Boolean, nullable=False, default=False)  # 是否已处理
+    processed_at = Column(DateTime, nullable=True)  # 处理时间
+    story_content = Column(Text, nullable=True)  # 生成的说说内容
+    send_success = Column(Boolean, nullable=False, default=False)  # 是否发送成功
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.now)
+    updated_at = Column(DateTime, nullable=False, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+    __table_args__ = (
+        Index('idx_maizone_datetime_hour', 'datetime_hour'),
+        Index('idx_maizone_is_processed', 'is_processed'),
+    )
+
+
 # 数据库引擎和会话管理
 _engine = None
 _SessionLocal = None
