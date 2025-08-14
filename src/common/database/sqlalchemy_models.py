@@ -489,11 +489,22 @@ def get_database_url():
         encoded_user = quote_plus(config.mysql_user)
         encoded_password = quote_plus(config.mysql_password)
         
-        return (
-            f"mysql+pymysql://{encoded_user}:{encoded_password}"
-            f"@{config.mysql_host}:{config.mysql_port}/{config.mysql_database}"
-            f"?charset={config.mysql_charset}"
-        )
+        # 检查是否配置了Unix socket连接
+        if config.mysql_unix_socket:
+            # 使用Unix socket连接
+            encoded_socket = quote_plus(config.mysql_unix_socket)
+            return (
+                f"mysql+pymysql://{encoded_user}:{encoded_password}"
+                f"@/{config.mysql_database}"
+                f"?unix_socket={encoded_socket}&charset={config.mysql_charset}"
+            )
+        else:
+            # 使用标准TCP连接
+            return (
+                f"mysql+pymysql://{encoded_user}:{encoded_password}"
+                f"@{config.mysql_host}:{config.mysql_port}/{config.mysql_database}"
+                f"?charset={config.mysql_charset}"
+            )
     else:  # SQLite
         # 如果是相对路径，则相对于项目根目录
         if not os.path.isabs(config.sqlite_path):
