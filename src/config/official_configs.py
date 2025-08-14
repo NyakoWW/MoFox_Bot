@@ -940,8 +940,16 @@ class DependencyManagementConfig(ConfigBase):
 class ExaConfig(ConfigBase):
     """EXA搜索引擎配置类"""
     
-    api_key: str = "None"
-    """EXA API密钥，用于联网搜索功能。请填入有效的EXA API密钥"""
+    api_keys: list[str] = field(default_factory=lambda: [])
+    """EXA API密钥列表，支持轮询机制"""
+
+
+@dataclass
+class TavilyConfig(ConfigBase):
+    """Tavily搜索引擎配置类"""
+
+    api_keys: list[str] = field(default_factory=lambda: [])
+    """Tavily API密钥列表，支持轮询机制"""
 
 
 @dataclass
@@ -986,6 +994,12 @@ class WebSearchConfig(ConfigBase):
     
     enable_web_search_tool: bool = True
     """是否启用联网搜索工具"""
-    
+
     enable_url_tool: bool = True
     """是否启用URL解析工具"""
+
+    enabled_engines: list[str] = field(default_factory=lambda: ["ddg"])
+    """启用的搜索引擎列表，可选: 'exa', 'tavily', 'ddg'"""
+
+    search_strategy: str = "single"
+    """搜索策略: 'single'(使用第一个可用引擎), 'parallel'(并行使用所有启用的引擎), 'fallback'(按顺序尝试，失败则尝试下一个)"""

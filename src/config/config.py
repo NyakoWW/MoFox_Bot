@@ -41,6 +41,7 @@ from src.config.official_configs import (
     DependencyManagementConfig,
     ExaConfig,
     WebSearchConfig,
+    TavilyConfig,
 )
 
 from .api_ada_configs import (
@@ -360,6 +361,7 @@ class Config(ConfigBase):
     dependency_management: DependencyManagementConfig = field(default_factory=lambda: DependencyManagementConfig())
     exa: ExaConfig = field(default_factory=lambda: ExaConfig())
     web_search: WebSearchConfig = field(default_factory=lambda: WebSearchConfig())
+    tavily: TavilyConfig = field(default_factory=lambda: TavilyConfig())
 
 
 @dataclass
