@@ -411,7 +411,7 @@ async def custom_to_stream(
 async def adapter_command_to_stream(
     action: str,
     params: dict,
-    platform: Optional[str] = None,
+    platform: Optional[str] = "qq",
     stream_id: Optional[str] = None,
     timeout: float = 30.0,
     storage_message: bool = False
