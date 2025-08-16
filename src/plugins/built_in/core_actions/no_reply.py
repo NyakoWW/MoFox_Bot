@@ -12,16 +12,7 @@ logger = get_logger("no_reply_action")
 
 
 class NoReplyAction(BaseAction):
-    """不回复动作，支持waiting和breaking两种形式.
-
-    waiting形式:
-    - 只要有新消息就结束动作
-    - 记录新消息的兴趣度到列表（最多保留最近三项）
-    - 如果最近三次动作都是no_reply，且最近新消息列表兴趣度之和小于阈值，就进入breaking形式
-
-    breaking形式:
-    - 和原有逻辑一致，需要消息满足一定数量或累计一定兴趣值才结束动作
-    """
+    """不回复动作，支持waiting和breaking两种形式."""
 
     focus_activation_type = ActionActivationType.NEVER
     normal_activation_type = ActionActivationType.NEVER
