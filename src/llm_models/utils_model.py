@@ -115,6 +115,7 @@ class LLMRequest:
         normalized_format = _normalize_image_format(image_format)
         
         # 模型选择
+        start_time = time.time()
         model_info, api_provider, client = self._select_model()
 
         # 请求体构建
@@ -147,6 +148,7 @@ class LLMRequest:
                 model_info=model_info,
                 model_usage=usage,
                 user_id="system",
+                time_cost=time.time() - start_time,
                 request_type=self.request_type,
                 endpoint="/chat/completions",
             )
@@ -240,6 +242,7 @@ class LLMRequest:
     ) -> Tuple[str, Tuple[str, str, Optional[List[ToolCall]]]]:
         """执行单次请求"""
         # 模型选择和请求准备
+        start_time = time.time()
         model_info, api_provider, client = self._select_model()
         processed_prompt = self._apply_content_obfuscation(prompt, api_provider)
         
@@ -293,6 +296,7 @@ class LLMRequest:
                     llm_usage_recorder.record_usage_to_database(
                         model_info=model_info,
                         model_usage=usage,
+                        time_cost=time.time() - start_time,
                         user_id="system",
                         request_type=self.request_type,
                         endpoint="/chat/completions",
@@ -331,6 +335,7 @@ class LLMRequest:
             (Tuple[List[float], str]): (嵌入向量，使用的模型名称)
         """
         # 无需构建消息体，直接使用输入文本
+        start_time = time.time()
         model_info, api_provider, client = self._select_model()
 
         # 请求并处理返回值
@@ -347,6 +352,7 @@ class LLMRequest:
         if usage := response.usage:
             llm_usage_recorder.record_usage_to_database(
                 model_info=model_info,
+                time_cost=time.time() - start_time,
                 model_usage=usage,
                 user_id="system",
                 request_type=self.request_type,

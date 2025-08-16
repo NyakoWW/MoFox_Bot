@@ -147,7 +147,7 @@ class LLMUsageRecorder:
 
 
     def record_usage_to_database(
-        self, model_info: ModelInfo, model_usage: UsageRecord, user_id: str, request_type: str, endpoint: str
+        self, model_info: ModelInfo, model_usage: UsageRecord, user_id: str, request_type: str, endpoint: str, time_cost: float = 0.0
     ):
         input_cost = (model_usage.prompt_tokens / 1000000) * model_info.price_in
         output_cost = (model_usage.completion_tokens / 1000000) * model_info.price_out
@@ -160,6 +160,8 @@ class LLMUsageRecorder:
             
             usage_record = LLMUsage(
                 model_name=model_info.model_identifier,
+                model_assign_name=model_info.name,
+                model_api_provider=model_info.api_provider,
                 user_id=user_id,
                 request_type=request_type,
                 endpoint=endpoint,
@@ -167,6 +169,7 @@ class LLMUsageRecorder:
                 completion_tokens=model_usage.completion_tokens or 0,
                 total_tokens=model_usage.total_tokens or 0,
                 cost=total_cost or 0.0,
+                time_cost = round(time_cost or 0.0, 3),
                 status="success",
                 timestamp=datetime.now(),  # SQLAlchemy 会处理 DateTime 字段
             )
