@@ -42,7 +42,7 @@ class MaiZoneRefactoredPlugin(BasePlugin):
     config_schema: dict = {
         "plugin": {"enable": ConfigField(type=bool, default=True, description="是否启用插件")},
         "models": {
-            "text_model": ConfigField(type=str, default="replyer_1", description="生成文本的模型名称"),
+            "text_model": ConfigField(type=str, default="maizone", description="生成文本的模型名称"),
             "siliconflow_apikey": ConfigField(type=str, default="", description="硅基流动AI生图API密钥"),
         },
         "send": {
