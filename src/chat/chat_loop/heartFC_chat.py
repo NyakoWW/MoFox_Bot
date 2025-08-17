@@ -615,7 +615,13 @@ class HeartFChatting:
                 )
 
                 action_data["loop_start_time"] = loop_start_time
-
+ 
+             # 在私聊的专注模式下，如果规划动作为no_reply，则强制改为reply
+            is_private_chat = self.chat_stream.group_info is None
+            if self.loop_mode == ChatMode.FOCUS and is_private_chat and action_type == "no_reply":
+                action_type = "reply"
+                logger.info(f"{self.log_prefix} 私聊专注模式下强制回复")
+ 
             if action_type == "reply":
                 logger.info(f"{self.log_prefix}{global_config.bot.nickname} 决定进行回复")
             elif is_parallel:

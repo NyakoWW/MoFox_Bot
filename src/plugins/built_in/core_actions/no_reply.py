@@ -18,7 +18,6 @@ class NoReplyAction(BaseAction):
     focus_activation_type = ActionActivationType.NEVER
     normal_activation_type = ActionActivationType.NEVER
     mode_enable = ChatMode.FOCUS
-    chat_type_allow = ChatType.GROUP
     parallel_action = False
 
     # 动作基本信息
