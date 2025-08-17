@@ -444,7 +444,7 @@ class EmojiManager:
             Optional[Tuple[str, str]]: (表情包完整文件路径, 表情包描述)，如果没有找到则返回None
         """
         try:
-            self._ensure_db()
+            self.()
             _time_start = time.time()
 
             # 获取所有表情包 (从内存缓存中获取)
@@ -661,7 +661,6 @@ class EmojiManager:
         """获取所有表情包并初始化为MaiEmoji类对象，更新 self.emoji_objects"""
         try:
             with get_db_session() as session:
-                self._ensure_db()
                 logger.debug("[数据库] 开始加载所有表情包记录 ...")
 
                 emoji_instances = session.execute(select(Emoji)).scalars().all()
@@ -692,7 +691,7 @@ class EmojiManager:
         """
         try:
             with get_db_session() as session:
-                self._ensure_db()
+                self.()
 
             if emoji_hash:
                 query = session.execute(select(Emoji).where(Emoji.emoji_hash == emoji_hash)).scalars().all()
@@ -745,7 +744,7 @@ class EmojiManager:
                 return emoji.description
 
             # 如果内存中没有，从数据库查找
-            self._ensure_db()
+            self.()
             try:
                 with get_db_session() as session:
                     emoji_record = session.execute(select(Emoji).where(Emoji.emoji_hash == emoji_hash)).scalar_one_or_none()
@@ -772,7 +771,7 @@ class EmojiManager:
             bool: 是否成功删除
         """
         try:
-            self._ensure_db()
+            self.()
 
             # 从emoji_objects中查找表情包对象
             emoji = await self.get_emoji_from_manager(emoji_hash)
@@ -812,7 +811,7 @@ class EmojiManager:
             bool: 是否成功替换表情包
         """
         try:
-            self._ensure_db()
+            self.()
 
             # 获取所有表情包对象
             emoji_objects = self.emoji_objects
