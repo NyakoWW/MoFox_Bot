@@ -3,6 +3,7 @@ from collections import deque
 
 # 导入新插件系统
 from src.plugin_system import BaseAction, ActionActivationType, ChatMode
+from src.plugin_system.base.component_types import ChatType
 
 # 导入依赖的系统组件
 from src.common.logger import get_logger
@@ -17,6 +18,7 @@ class NoReplyAction(BaseAction):
     focus_activation_type = ActionActivationType.NEVER
     normal_activation_type = ActionActivationType.NEVER
     mode_enable = ChatMode.FOCUS
+    chat_type_allow = ChatType.GROUP
     parallel_action = False
 
     # 动作基本信息
