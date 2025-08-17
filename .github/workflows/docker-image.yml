@@ -1,15 +1,15 @@
 name: Docker CI
 
 on:
-  push:
-    branches:
-      - master
-      - develop
-    tags:
-      - "v*.*.*"
-      - "v*"
-      - "*.*.*"
-      - "*.*.*-*"
+  # push:
+  #   branches:
+  #     - master
+  #     - develop
+  #   tags:
+  #     - "v*.*.*"
+  #     - "v*"
+  #     - "*.*.*"
+  #     - "*.*.*-*"
   workflow_dispatch: # 允许手动触发工作流
 
 jobs:
