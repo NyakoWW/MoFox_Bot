@@ -4,7 +4,6 @@ import signal
 import sys
 from maim_message import MessageServer
 
-from src.common.remote import TelemetryHeartBeatTask
 from src.manager.async_task_manager import async_task_manager
 from src.chat.utils.statistic import OnlineTimeRecordTask, StatisticOutputTask
 from src.chat.emoji_system.emoji_manager import get_emoji_manager
@@ -106,9 +105,6 @@ MaiMbot-Pro-Max(第三方改版)
 
         # 添加统计信息输出任务
         await async_task_manager.add_task(StatisticOutputTask())
-
-        # 添加遥测心跳任务
-        await async_task_manager.add_task(TelemetryHeartBeatTask())
 
         # 启动API服务器
         # start_api_server()
