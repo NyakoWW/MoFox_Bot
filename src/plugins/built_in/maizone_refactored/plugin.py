@@ -9,8 +9,6 @@ from src.common.logger import get_logger
 from src.plugin_system import (
     BasePlugin,
     ComponentInfo,
-    BaseAction,
-    BaseCommand,
     register_plugin
 )
 from src.plugin_system.base.config_types import ConfigField
@@ -68,6 +66,8 @@ class MaiZoneRefactoredPlugin(BasePlugin):
         },
         "schedule": {
             "enable_schedule": ConfigField(type=bool, default=False, description="是否启用定时发送"),
+            "random_interval_min_minutes": ConfigField(type=int, default=5, description="随机间隔分钟数下限"),
+            "random_interval_max_minutes": ConfigField(type=int, default=15, description="随机间隔分钟数上限"),
         },
         "cookie": {
             "http_fallback_host": ConfigField(type=str, default="127.0.0.1", description="备用Cookie获取服务的主机地址"),

@@ -60,5 +60,7 @@ exa_py
 asyncddgs
 opencv-python
 Pillow
+chromadb
 asyncio
 tavily-python
+google-generativeai = 0.8.5

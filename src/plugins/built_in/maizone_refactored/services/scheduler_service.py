@@ -5,6 +5,7 @@
 """
 import asyncio
 import datetime
+import random
 import traceback
 from typing import Callable
 
@@ -91,8 +92,12 @@ class SchedulerService:
                             result.get("message", "")
                         )
                 
-                # 6. 等待5分钟后进行下一次检查
-                await asyncio.sleep(300)
+                # 6. 计算并等待一个随机的时间间隔
+                min_minutes = self.get_config("schedule.random_interval_min_minutes", 5)
+                max_minutes = self.get_config("schedule.random_interval_max_minutes", 15)
+                wait_seconds = random.randint(min_minutes * 60, max_minutes * 60)
+                logger.info(f"下一次检查将在 {wait_seconds / 60:.2f} 分钟后进行。")
+                await asyncio.sleep(wait_seconds)
                 
             except asyncio.CancelledError:
                 logger.info("定时任务循环被取消。")
@@ -113,7 +118,7 @@ class SchedulerService:
             with get_db_session() as session:
                 record = session.query(MaiZoneScheduleStatus).filter(
                     MaiZoneScheduleStatus.datetime_hour == hour_str,
-                    MaiZoneScheduleStatus.is_processed == True
+                    MaiZoneScheduleStatus.is_processed == True  # noqa: E712
                 ).first()
                 return record is not None
         except Exception as e:
@@ -138,10 +143,10 @@ class SchedulerService:
                 
                 if record:
                     # 如果存在，则更新状态
-                    record.is_processed = True
-                    record.processed_at = datetime.datetime.now()
-                    record.send_success = success
-                    record.story_content = content
+                    record.is_processed = True # type: ignore
+                    record.processed_at = datetime.datetime.now()# type: ignore
+                    record.send_success = success# type: ignore
+                    record.story_content = content# type: ignore
                 else:
                     # 如果不存在，则创建新记录
                     new_record = MaiZoneScheduleStatus(
