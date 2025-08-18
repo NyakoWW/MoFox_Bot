@@ -988,10 +988,10 @@ class VideoAnalysisConfig(ConfigBase):
     """批量分析时使用的提示词"""
 
 
-@dataclass 
+@dataclass
 class WebSearchConfig(ConfigBase):
     """联网搜索组件配置类"""
-    
+
     enable_web_search_tool: bool = True
     """是否启用联网搜索工具"""
 
@@ -1003,3 +1003,12 @@ class WebSearchConfig(ConfigBase):
 
     search_strategy: str = "single"
     """搜索策略: 'single'(使用第一个可用引擎), 'parallel'(并行使用所有启用的引擎), 'fallback'(按顺序尝试，失败则尝试下一个)"""
+
+
+@dataclass
+class PluginsConfig(ConfigBase):
+    """插件配置"""
+
+    centralized_config: bool = field(
+        default=True, metadata={"description": "是否启用插件配置集中化管理"}
+    )

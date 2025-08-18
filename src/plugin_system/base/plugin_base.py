@@ -8,6 +8,7 @@ import shutil
 import datetime
 
 from src.common.logger import get_logger
+from src.config.config import CONFIG_DIR
 from src.plugin_system.base.component_types import (
     PluginInfo,
     PythonDependency,
@@ -71,6 +72,7 @@ class PluginBase(ABC):
         self.config: Dict[str, Any] = {}  # 插件配置
         self.plugin_dir = plugin_dir  # 插件目录路径
         self.log_prefix = f"[Plugin:{self.plugin_name}]"
+        self._is_enabled = self.enable_plugin  # 从插件定义中获取默认启用状态
 
         # 加载manifest文件
         self._load_manifest()
@@ -100,7 +102,7 @@ class PluginBase(ABC):
             description=self.plugin_description,
             version=self.plugin_version,
             author=self.plugin_author,
-            enabled=self.enable_plugin,
+            enabled=self._is_enabled,
             is_built_in=False,
             config_file=self.config_file_name or "",
             dependencies=self.dependencies.copy(),
@@ -453,86 +455,91 @@ class PluginBase(ABC):
             logger.error(f"{self.log_prefix} 保存配置文件失败: {e}", exc_info=True)
 
     def _load_plugin_config(self):  # sourcery skip: extract-method
-        """加载插件配置文件，支持版本检查和自动迁移"""
+        """
+        加载插件配置文件，实现集中化管理和自动迁移。
+
+        处理逻辑:
+        1. 确定插件模板配置文件路径（位于插件目录内）。
+        2. 如果模板不存在，则在插件目录内生成一份默认配置。
+        3. 确定用户配置文件路径（位于 `config/plugins/` 目录下）。
+        4. 如果用户配置文件不存在，则从插件目录复制模板文件过去。
+        5. 加载用户配置文件，并进行版本检查和自动迁移（如果需要）。
+        6. 最终加载的配置是用户配置文件。
+        """
         if not self.config_file_name:
             logger.debug(f"{self.log_prefix} 未指定配置文件，跳过加载")
             return
 
-        # 优先使用传入的插件目录路径
-        if self.plugin_dir:
-            plugin_dir = self.plugin_dir
-        else:
-            # fallback：尝试从类的模块信息获取路径
+        # 1. 确定插件模板配置文件路径
+        template_config_path = os.path.join(self.plugin_dir, self.config_file_name)
+
+        # 2. 如果模板不存在，则在插件目录内生成
+        if not os.path.exists(template_config_path):
+            logger.info(f"{self.log_prefix} 插件目录缺少配置文件 {template_config_path}，将生成默认配置。")
+            self._generate_and_save_default_config(template_config_path)
+
+        # 3. 确定用户配置文件路径
+        plugin_config_dir = os.path.join(CONFIG_DIR, "plugins", self.plugin_name)
+        user_config_path = os.path.join(plugin_config_dir, self.config_file_name)
+
+        # 确保用户插件配置目录存在
+        os.makedirs(plugin_config_dir, exist_ok=True)
+
+        # 4. 如果用户配置文件不存在，从模板复制
+        if not os.path.exists(user_config_path):
             try:
-                plugin_module_path = inspect.getfile(self.__class__)
-                plugin_dir = os.path.dirname(plugin_module_path)
-            except (TypeError, OSError):
-                # 最后的fallback：从模块的__file__属性获取
-                module = inspect.getmodule(self.__class__)
-                if module and hasattr(module, "__file__") and module.__file__:
-                    plugin_dir = os.path.dirname(module.__file__)
-                else:
-                    logger.warning(f"{self.log_prefix} 无法获取插件目录路径，跳过配置加载")
-                    return
+                shutil.copy2(template_config_path, user_config_path)
+                logger.info(f"{self.log_prefix} 已从模板创建用户配置文件: {user_config_path}")
+            except IOError as e:
+                logger.error(f"{self.log_prefix} 复制配置文件失败: {e}", exc_info=True)
+                # 如果复制失败，后续将无法加载，直接返回
+                return
 
-        config_file_path = os.path.join(plugin_dir, self.config_file_name)
-
-        # 如果配置文件不存在，生成默认配置
-        if not os.path.exists(config_file_path):
-            logger.info(f"{self.log_prefix} 配置文件 {config_file_path} 不存在，将生成默认配置。")
-            self._generate_and_save_default_config(config_file_path)
-
-        if not os.path.exists(config_file_path):
-            logger.warning(f"{self.log_prefix} 配置文件 {config_file_path} 不存在且无法生成。")
+        # 检查最终的用户配置文件是否存在
+        if not os.path.exists(user_config_path):
+            logger.warning(f"{self.log_prefix} 用户配置文件 {user_config_path} 不存在且无法创建。")
             return
 
-        file_ext = os.path.splitext(self.config_file_name)[1].lower()
-
-        if file_ext == ".toml":
-            # 加载现有配置
-            with open(config_file_path, "r", encoding="utf-8") as f:
-                existing_config = toml.load(f) or {}
-
-            # 检查配置版本
-            current_version = self._get_current_config_version(existing_config)
-
-            # 如果配置文件没有版本信息，跳过版本检查
-            if current_version == "0.0.0":
-                logger.debug(f"{self.log_prefix} 配置文件无版本信息，跳过版本检查")
-                self.config = existing_config
-            else:
-                expected_version = self._get_expected_config_version()
-
-                if current_version != expected_version:
-                    logger.info(
-                        f"{self.log_prefix} 检测到配置版本需要更新: 当前=v{current_version}, 期望=v{expected_version}"
-                    )
-
-                    # 生成新的默认配置结构
-                    new_config_structure = self._generate_config_from_schema()
-
-                    # 迁移旧配置值到新结构
-                    migrated_config = self._migrate_config_values(existing_config, new_config_structure)
-
-                    # 保存迁移后的配置
-                    self._save_config_to_file(migrated_config, config_file_path)
-
-                    logger.info(f"{self.log_prefix} 配置文件已从 v{current_version} 更新到 v{expected_version}")
-
-                    self.config = migrated_config
-                else:
-                    logger.debug(f"{self.log_prefix} 配置版本匹配 (v{current_version})，直接加载")
-                    self.config = existing_config
-
-            logger.debug(f"{self.log_prefix} 配置已从 {config_file_path} 加载")
-
-            # 从配置中更新 enable_plugin
-            if "plugin" in self.config and "enabled" in self.config["plugin"]:
-                self.enable_plugin = self.config["plugin"]["enabled"]  # type: ignore
-                logger.debug(f"{self.log_prefix} 从配置更新插件启用状态: {self.enable_plugin}")
-        else:
+        # 5. 加载、检查和迁移用户配置文件
+        _, file_ext = os.path.splitext(self.config_file_name)
+        if file_ext.lower() != ".toml":
             logger.warning(f"{self.log_prefix} 不支持的配置文件格式: {file_ext}，仅支持 .toml")
             self.config = {}
+            return
+
+        try:
+            with open(user_config_path, "r", encoding="utf-8") as f:
+                existing_config = toml.load(f) or {}
+        except Exception as e:
+            logger.error(f"{self.log_prefix} 加载用户配置文件 {user_config_path} 失败: {e}", exc_info=True)
+            self.config = {}
+            return
+
+        current_version = self._get_current_config_version(existing_config)
+        expected_version = self._get_expected_config_version()
+
+        if current_version == "0.0.0":
+            logger.debug(f"{self.log_prefix} 用户配置文件无版本信息，跳过版本检查")
+            self.config = existing_config
+        elif current_version != expected_version:
+            logger.info(
+                f"{self.log_prefix} 检测到用户配置版本需要更新: 当前=v{current_version}, 期望=v{expected_version}"
+            )
+            new_config_structure = self._generate_config_from_schema()
+            migrated_config = self._migrate_config_values(existing_config, new_config_structure)
+            self._save_config_to_file(migrated_config, user_config_path)
+            logger.info(f"{self.log_prefix} 用户配置文件已从 v{current_version} 更新到 v{expected_version}")
+            self.config = migrated_config
+        else:
+            logger.debug(f"{self.log_prefix} 用户配置版本匹配 (v{current_version})，直接加载")
+            self.config = existing_config
+
+        logger.debug(f"{self.log_prefix} 配置已从 {user_config_path} 加载")
+
+        # 从配置中更新 enable_plugin 状态
+        if "plugin" in self.config and "enabled" in self.config["plugin"]:
+            self._is_enabled = self.config["plugin"]["enabled"]
+            logger.debug(f"{self.log_prefix} 从配置更新插件启用状态: {self._is_enabled}")
 
     def _check_dependencies(self) -> bool:
         """检查插件依赖"""

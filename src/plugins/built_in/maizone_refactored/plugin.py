@@ -9,8 +9,6 @@ from src.common.logger import get_logger
 from src.plugin_system import (
     BasePlugin,
     ComponentInfo,
-    BaseAction,
-    BaseCommand,
     register_plugin
 )
 from src.plugin_system.base.config_types import ConfigField

@@ -143,10 +143,10 @@ class SchedulerService:
                 
                 if record:
                     # 如果存在，则更新状态
-                    record.is_processed = True
-                    record.processed_at = datetime.datetime.now()
-                    record.send_success = success
-                    record.story_content = content
+                    record.is_processed = True # type: ignore
+                    record.processed_at = datetime.datetime.now()# type: ignore
+                    record.send_success = success# type: ignore
+                    record.story_content = content# type: ignore
                 else:
                     # 如果不存在，则创建新记录
                     new_record = MaiZoneScheduleStatus(
