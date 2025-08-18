@@ -160,6 +160,13 @@ class ModelTaskConfig(ConfigBase):
     ))
     """表情包识别模型配置"""
 
+    anti_injection: TaskConfig = field(default_factory=lambda: TaskConfig(
+        model_list=["qwen2.5-vl-72b"],
+        max_tokens=200,
+        temperature=0.1
+    ))
+    """反注入检测专用模型配置"""
+
     def get_task(self, task_name: str) -> TaskConfig:
         """获取指定任务的配置"""
         if hasattr(self, task_name):

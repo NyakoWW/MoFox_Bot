@@ -41,7 +41,8 @@ from src.config.official_configs import (
     DependencyManagementConfig,
     ExaConfig,
     WebSearchConfig,
-    TavilyConfig
+    TavilyConfig,
+    AntiPromptInjectionConfig
 )
 
 from .api_ada_configs import (
@@ -357,6 +358,8 @@ class Config(ConfigBase):
     custom_prompt: CustomPromptConfig
     voice: VoiceConfig
     schedule: ScheduleConfig
+    # 有默认值的字段放在后面
+    anti_prompt_injection: AntiPromptInjectionConfig = field(default_factory=lambda: AntiPromptInjectionConfig())
     video_analysis: VideoAnalysisConfig = field(default_factory=lambda: VideoAnalysisConfig())
     dependency_management: DependencyManagementConfig = field(default_factory=lambda: DependencyManagementConfig())
     exa: ExaConfig = field(default_factory=lambda: ExaConfig())

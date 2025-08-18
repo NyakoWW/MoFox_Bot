@@ -418,6 +418,7 @@ class BanUser(Base):
     __tablename__ = 'ban_users'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    platform = Column(Text, nullable=False)
     user_id = Column(get_string_field(50), nullable=False, index=True)
     violation_num = Column(Integer, nullable=False, default=0)
     reason = Column(Text, nullable=False)
@@ -426,6 +427,52 @@ class BanUser(Base):
     __table_args__ = (
         Index('idx_violation_num', 'violation_num'),
         Index('idx_banuser_user_id', 'user_id'),
+        Index('idx_banuser_platform', 'platform'),
+        Index('idx_banuser_platform_user_id', 'platform', 'user_id'),
+    )
+
+
+class AntiInjectionStats(Base):
+    """反注入系统统计模型"""
+    __tablename__ = 'anti_injection_stats'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    total_messages = Column(Integer, nullable=False, default=0)
+    """总处理消息数"""
+    
+    detected_injections = Column(Integer, nullable=False, default=0)
+    """检测到的注入攻击数"""
+    
+    blocked_messages = Column(Integer, nullable=False, default=0)
+    """被阻止的消息数"""
+    
+    shielded_messages = Column(Integer, nullable=False, default=0)
+    """被加盾的消息数"""
+    
+    processing_time_total = Column(Float, nullable=False, default=0.0)
+    """总处理时间"""
+    
+    total_process_time = Column(Float, nullable=False, default=0.0)
+    """累计总处理时间"""
+    
+    last_process_time = Column(Float, nullable=False, default=0.0)
+    """最近一次处理时间"""
+    
+    error_count = Column(Integer, nullable=False, default=0)
+    """错误计数"""
+    
+    start_time = Column(DateTime, nullable=False, default=datetime.datetime.now)
+    """统计开始时间"""
+    
+    created_at = Column(DateTime, nullable=False, default=datetime.datetime.now)
+    """记录创建时间"""
+    
+    updated_at = Column(DateTime, nullable=False, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+    """记录更新时间"""
+
+    __table_args__ = (
+        Index('idx_anti_injection_stats_created_at', 'created_at'),
+        Index('idx_anti_injection_stats_updated_at', 'updated_at'),
     )
 
 
