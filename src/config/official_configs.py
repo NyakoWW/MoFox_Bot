@@ -969,6 +969,68 @@ class WebSearchConfig(ConfigBase):
 
 
 @dataclass
+class AntiPromptInjectionConfig(ConfigBase):
+    """LLM反注入系统配置类"""
+    
+    enabled: bool = True
+    """是否启用反注入系统"""
+    
+    enabled_LLM: bool = True
+    """是否启用LLM检测"""
+    
+    enabled_rules: bool = True
+    """是否启用规则检测"""
+    
+    process_mode: str = "lenient"
+    """处理模式：strict(严格模式，直接丢弃), lenient(宽松模式，消息加盾)"""
+    
+    # 白名单配置
+    whitelist: list[list[str]] = field(default_factory=list)
+    """用户白名单，格式：[[platform, user_id], ...]，这些用户的消息将跳过检测"""
+    
+    # LLM检测配置
+    llm_detection_enabled: bool = True
+    """是否启用LLM二次分析"""
+    
+    llm_model_name: str = "anti_injection"
+    """LLM检测使用的模型名称"""
+    
+    llm_detection_threshold: float = 0.7
+    """LLM判定危险的置信度阈值(0-1)"""
+    
+    # 性能配置
+    cache_enabled: bool = True
+    """是否启用检测结果缓存"""
+    
+    cache_ttl: int = 3600
+    """缓存有效期(秒)"""
+    
+    max_message_length: int = 4096
+    """最大检测消息长度，超过将直接判定为危险"""
+
+    
+    stats_enabled: bool = True
+    """是否启用统计功能"""
+    
+    # 自动封禁配置
+    auto_ban_enabled: bool = True
+    """是否启用自动封禁功能"""
+    
+    auto_ban_violation_threshold: int = 3
+    """触发封禁的违规次数阈值"""
+    
+    auto_ban_duration_hours: int = 2
+    """封禁持续时间（小时）"""
+    
+    # 消息加盾配置（宽松模式下使用）
+    shield_prefix: str = "🛡️ "
+    """加盾消息前缀"""
+    
+    shield_suffix: str = " 🛡️"
+    """加盾消息后缀"""
+
+
+@dataclass
 class PluginsConfig(ConfigBase):
     """插件配置"""
 

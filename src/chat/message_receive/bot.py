@@ -16,6 +16,10 @@ from src.chat.utils.prompt_builder import Prompt, global_prompt_manager
 from src.plugin_system.core import component_registry, events_manager, global_announcement_manager
 from src.plugin_system.base import BaseCommand, EventType
 from src.mais4u.mais4u_chat.s4u_msg_processor import S4UMessageProcessor
+from src.plugin_system.apis import send_api
+
+# 导入反注入系统
+from src.chat.antipromptinjector import get_anti_injector, initialize_anti_injector
 
 # 定义日志配置
 
@@ -74,6 +78,20 @@ class ChatBot:
         self.heartflow_message_receiver = HeartFCMessageReceiver()  # 新增
 
         self.s4u_message_processor = S4UMessageProcessor()
+        
+        # 初始化反注入系统
+        self._initialize_anti_injector()
+
+    def _initialize_anti_injector(self):
+        """初始化反注入系统"""
+        try:
+            initialize_anti_injector()
+            
+            logger.info(f"反注入系统已初始化 - 启用: {global_config.anti_prompt_injection.enabled}, "
+                       f"模式: {global_config.anti_prompt_injection.process_mode}, "
+                       f"规则: {global_config.anti_prompt_injection.enabled_rules}, LLM: {global_config.anti_prompt_injection.enabled_LLM}")
+        except Exception as e:
+            logger.error(f"反注入系统初始化失败: {e}")
 
     async def _ensure_started(self):
         """确保所有任务已启动"""
@@ -270,11 +288,30 @@ class ChatBot:
             # 处理消息内容，生成纯文本
             await message.process()
 
-            # if await self.check_ban_content(message):
-            #     logger.warning(f"检测到消息中含有违法，色情，暴力，反动，敏感内容，消息内容：{message.processed_plain_text}，发送者：{message.message_info.user_info.user_nickname}")
-            #     return
-
+            # === 反注入检测 ===
+            anti_injector = get_anti_injector()
+            allowed, modified_content, reason = await anti_injector.process_message(message)
             
+            if not allowed:
+                # 消息被反注入系统阻止
+                logger.warning(f"消息被反注入系统阻止: {reason}")
+                await send_api.text_to_stream(f"消息被反注入系统阻止: {reason}", stream_id=message.chat_stream.stream_id)
+                return
+            
+            # 检查是否需要双重保护（消息加盾 + 系统提示词）
+            safety_prompt = None
+            if "已加盾处理" in (reason or ""):
+                # 获取安全系统提示词
+                shield = anti_injector.shield
+                safety_prompt = shield.get_safety_system_prompt()
+                logger.info(f"消息已被反注入系统加盾处理: {reason}")
+
+            if modified_content:
+                # 消息内容被修改（宽松模式下的加盾处理）
+                message.processed_plain_text = modified_content
+                logger.info(f"消息内容已被反注入系统修改: {reason}")
+                # 注意：即使修改了内容，也要注入安全系统提示词（双重保护）
+                
             # 过滤检查
             if _check_ban_words(message.processed_plain_text, chat, user_info) or _check_ban_regex(  # type: ignore
                 message.raw_message,  # type: ignore
@@ -308,6 +345,11 @@ class ChatBot:
                 template_group_name = None
 
             async def preprocess():
+                # 如果需要安全提示词加盾，先注入安全提示词
+                if safety_prompt:
+                    await Prompt.create_async(safety_prompt, "anti_injection_safety_prompt")
+                    logger.info("已注入反注入安全系统提示词")
+                
                 await self.heartflow_message_receiver.process_message(message)
 
             if template_group_name:
