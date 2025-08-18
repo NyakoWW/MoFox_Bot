@@ -2,10 +2,12 @@ import time
 import json
 import hashlib
 import inspect
+import os
+from pathlib import Path
 import numpy as np
 import faiss
 import chromadb
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 from src.common.logger import get_logger
 from src.llm_models.utils_model import LLMRequest
 from src.config.config import global_config, model_config
@@ -90,26 +92,33 @@ class CacheManager:
             logger.error(f"验证嵌入向量时发生错误: {e}")
             return None
 
-    def _generate_key(self, tool_name: str, function_args: Dict[str, Any], tool_class: Any) -> str:
-        """生成确定性的缓存键，包含代码哈希以实现自动失效。"""
+    def _generate_key(self, tool_name: str, function_args: Dict[str, Any], tool_file_path: Union[str, Path]) -> str:
+        """生成确定性的缓存键，包含文件修改时间以实现自动失效。"""
         try:
-            source_code = inspect.getsource(tool_class)
-            code_hash = hashlib.md5(source_code.encode()).hexdigest()
-        except (TypeError, OSError) as e:
-            code_hash = "unknown"
-            logger.warning(f"无法获取 {tool_class.__name__} 的源代码，代码哈希将为 'unknown'。错误: {e}")
+            tool_file_path = Path(tool_file_path)
+            if tool_file_path.exists():
+                file_name = tool_file_path.name
+                file_mtime = tool_file_path.stat().st_mtime
+                file_hash = hashlib.md5(f"{file_name}:{file_mtime}".encode()).hexdigest()
+            else:
+                file_hash = "unknown"
+                logger.warning(f"工具文件不存在: {tool_file_path}")
+        except (OSError, TypeError) as e:
+            file_hash = "unknown"
+            logger.warning(f"无法获取文件信息: {tool_file_path}，错误: {e}")
+        
         try:
             sorted_args = json.dumps(function_args, sort_keys=True)
         except TypeError:
             sorted_args = repr(sorted(function_args.items()))
-        return f"{tool_name}::{sorted_args}::{code_hash}"
+        return f"{tool_name}::{sorted_args}::{file_hash}"
 
-    async def get(self, tool_name: str, function_args: Dict[str, Any], tool_class: Any, semantic_query: Optional[str] = None) -> Optional[Any]:
+    async def get(self, tool_name: str, function_args: Dict[str, Any], tool_file_path: Union[str, Path], semantic_query: Optional[str] = None) -> Optional[Any]:
         """
         从缓存获取结果，查询顺序: L1-KV -> L1-Vector -> L2-KV -> L2-Vector。
         """
         # 步骤 1: L1 精确缓存查询
-        key = self._generate_key(tool_name, function_args, tool_class)
+        key = self._generate_key(tool_name, function_args, tool_file_path)
         logger.debug(f"生成的缓存键: {key}")
         if semantic_query:
             logger.debug(f"使用的语义查询: '{semantic_query}'")
@@ -220,14 +229,14 @@ class CacheManager:
         logger.debug(f"缓存未命中: {key}")
         return None
 
-    async def set(self, tool_name: str, function_args: Dict[str, Any], tool_class: Any, data: Any, ttl: Optional[int] = None, semantic_query: Optional[str] = None):
+    async def set(self, tool_name: str, function_args: Dict[str, Any], tool_file_path: Union[str, Path], data: Any, ttl: Optional[int] = None, semantic_query: Optional[str] = None):
         """将结果存入所有缓存层。"""
         if ttl is None:
             ttl = self.default_ttl
         if ttl <= 0:
             return
 
-        key = self._generate_key(tool_name, function_args, tool_class)
+        key = self._generate_key(tool_name, function_args, tool_file_path)
         expires_at = time.time() + ttl
         
         # 写入 L1

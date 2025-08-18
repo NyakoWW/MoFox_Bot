@@ -87,9 +87,13 @@ class WebSurfingTool(BaseTool):
         if not query:
             return {"error": "搜索查询不能为空。"}
 
+        # 获取当前文件路径用于缓存键
+        import os
+        current_file_path = os.path.abspath(__file__)
+
         # 检查缓存
         query = function_args.get("query")
-        cached_result = await tool_cache.get(self.name, function_args, tool_class=self.__class__, semantic_query=query)
+        cached_result = await tool_cache.get(self.name, function_args, current_file_path, semantic_query=query)
         if cached_result:
             logger.info(f"缓存命中: {self.name} -> {function_args}")
             return cached_result
@@ -111,7 +115,7 @@ class WebSurfingTool(BaseTool):
         # 保存到缓存
         if "error" not in result:
             query = function_args.get("query")
-            await tool_cache.set(self.name, function_args, self.__class__, result, semantic_query=query)
+            await tool_cache.set(self.name, function_args, current_file_path, result, semantic_query=query)
             
         return result
 
@@ -464,8 +468,12 @@ class URLParserTool(BaseTool):
         """
         执行URL内容提取和总结。优先使用Exa，失败后尝试本地解析。
         """
+        # 获取当前文件路径用于缓存键
+        import os
+        current_file_path = os.path.abspath(__file__)
+
         # 检查缓存
-        cached_result = await tool_cache.get(self.name, function_args, tool_class=self.__class__)
+        cached_result = await tool_cache.get(self.name, function_args, current_file_path)
         if cached_result:
             logger.info(f"缓存命中: {self.name} -> {function_args}")
             return cached_result
