@@ -238,17 +238,87 @@ class QZoneService:
             hash_val += (hash_val << 5) + ord(char)
         return str(hash_val & 2147483647)
 
+    async def _renew_and_load_cookies(self, qq_account: str, stream_id: Optional[str]) -> Optional[Dict[str, str]]:
+        cookie_dir = Path(__file__).resolve().parent.parent / "cookies"
+        cookie_dir.mkdir(exist_ok=True)
+        cookie_file_path = cookie_dir / f"cookies-{qq_account}.json"
+
+        try:
+            # 使用HTTP服务器方式获取Cookie
+            host = self.get_config("cookie.http_fallback_host", "127.0.0.1")
+            port = self.get_config("cookie.http_fallback_port", "8080")
+            napcat_token = self.get_config("plugin.napcat_token", "")
+            
+            cookie_data = await self._fetch_cookies_http(host, port, napcat_token)
+            if cookie_data and "cookies" in cookie_data:
+                cookie_str = cookie_data["cookies"]
+                parsed_cookies = {k.strip(): v.strip() for k, v in (p.split('=', 1) for p in cookie_str.split('; ') if '=' in p)}
+                with open(cookie_file_path, "w", encoding="utf-8") as f:
+                    json.dump(parsed_cookies, f)
+                logger.info(f"Cookie已更新并保存至: {cookie_file_path}")
+                return parsed_cookies
+
+            # 如果HTTP获取失败，尝试读取本地文件
+            if cookie_file_path.exists():
+                with open(cookie_file_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            return None
+        except Exception as e:
+            logger.error(f"更新或加载Cookie时发生异常: {e}")
+            return None
+
+    async def _fetch_cookies_http(self, host: str, port: str, napcat_token: str) -> Optional[Dict]:
+        """通过HTTP服务器获取Cookie"""
+        url = f"http://{host}:{port}/get_cookies"
+        max_retries = 5
+        retry_delay = 1
+
+        for attempt in range(max_retries):
+            try:
+                headers = {"Content-Type": "application/json"}
+                if napcat_token:
+                    headers["Authorization"] = f"Bearer {napcat_token}"
+
+                payload = {"domain": "user.qzone.qq.com"}
+
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30.0)) as session:
+                    async with session.post(url, json=payload, headers=headers) as resp:
+                        resp.raise_for_status()
+                        
+                        if resp.status != 200:
+                            error_msg = f"Napcat服务返回错误状态码: {resp.status}"
+                            if resp.status == 403:
+                                error_msg += " (Token验证失败)"
+                            raise RuntimeError(error_msg)
+
+                        data = await resp.json()
+                        if data.get("status") != "ok" or "cookies" not in data.get("data", {}):
+                            raise RuntimeError(f"获取 cookie 失败: {data}")
+                        return data["data"]
+
+            except aiohttp.ClientError as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"无法连接到Napcat服务(尝试 {attempt + 1}/{max_retries}): {url}，错误: {str(e)}")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                logger.error(f"无法连接到Napcat服务(最终尝试): {url}，错误: {str(e)}")
+                raise RuntimeError(f"无法连接到Napcat服务: {url}")
+            except Exception as e:
+                logger.error(f"获取cookie异常: {str(e)}")
+                raise
+
+        raise RuntimeError(f"无法连接到Napcat服务: 超过最大重试次数({max_retries})")
+
     async def _get_api_client(self, qq_account: str, stream_id: Optional[str]) -> Optional[Dict]:
-        cookies = await self.cookie_service.get_cookies(qq_account, stream_id)
-        if not cookies:
-            return None
-
-        p_skey = cookies.get("p_skey") or cookies.get("p_skey".upper())
-        if not p_skey:
-            return None
-
+        cookies = await self._renew_and_load_cookies(qq_account, stream_id)
+        if not cookies: return None
+        
+        p_skey = cookies.get('p_skey') or cookies.get('p_skey'.upper())
+        if not p_skey: return None
+        
         gtk = self._generate_gtk(p_skey)
-        uin = cookies.get("uin", "").lstrip("o")
+        uin = cookies.get('uin', '').lstrip('o')
 
         async def _request(method, url, params=None, data=None, headers=None):
             final_headers = {"referer": f"https://user.qzone.qq.com/{uin}", "origin": "https://user.qzone.qq.com"}
@@ -421,64 +491,90 @@ class QZoneService:
             """监控好友动态"""
             try:
                 params = {
-                    "uin": uin,
-                    "scope": 0,
-                    "view": 1,
-                    "filter": "all",
-                    "flag": 1,
-                    "applist": "all",
-                    "pagenum": 1,
-                    "count": num,
-                    "format": "json",
-                    "g_tk": gtk,
-                    "useutf8": 1,
-                    "outputhtmlfeed": 1,
+                    "uin": uin, "scope": 0, "view": 1, "filter": "all", "flag": 1,
+                    "applist": "all", "pagenum": 1, "count": num, "format": "json",
+                    "g_tk": gtk, "useutf8": 1, "outputhtmlfeed": 1
                 }
                 res_text = await _request("GET", self.ZONE_LIST_URL, params=params)
-
-                # 增加对返回内容的校验
-                if res_text.startswith("_Callback("):
-                    # 兼容旧版jsonp格式
-                    json_str = res_text[len("_Callback(") : -2]
+                
+                # 处理不同的响应格式
+                json_str = ""
+                # 使用strip()处理可能存在的前后空白字符
+                stripped_res_text = res_text.strip()
+                if stripped_res_text.startswith('_Callback(') and stripped_res_text.endswith(');'):
+                    # JSONP格式
+                    json_str = stripped_res_text[len('_Callback('):-2]
+                elif stripped_res_text.startswith('{') and stripped_res_text.endswith('}'):
+                    # 直接JSON格式
+                    json_str = stripped_res_text
                 else:
-                    # 兼容新版纯json格式
-                    json_str = res_text
-
+                    logger.warning(f"意外的响应格式: {res_text[:100]}...")
+                    return []
+                
+                # 清理和标准化JSON字符串
+                json_str = json_str.replace('undefined', 'null').strip()
+                
                 try:
-                    # 替换 undefined 为 null
-                    json_data = json5.loads(json_str.replace("undefined", "null"))
-                except Exception:
-                    logger.warning(f"监控好友动态返回格式异常: {res_text}")
+                    json_data = json5.loads(json_str)
+                    
+                    # 检查API返回的错误码
+                    if json_data.get('code') != 0:
+                        error_code = json_data.get('code')
+                        error_msg = json_data.get('message', '未知错误')
+                        logger.warning(f"QQ空间API返回错误: code={error_code}, message={error_msg}")
+                        return []
+                        
+                except Exception as parse_error:
+                    logger.error(f"JSON解析失败: {parse_error}, 原始数据: {json_str[:200]}...")
                     return []
                 feeds_data = []
                 if isinstance(json_data, dict):
-                    data_level1 = json_data.get("data")
+                    data_level1 = json_data.get('data')
                     if isinstance(data_level1, dict):
-                        feeds_data = data_level1.get("data", [])
-
+                        feeds_data = data_level1.get('data', [])
+                
                 feeds_list = []
                 for feed in feeds_data:
-                    if feed is None:
-                        continue
-                    if str(feed.get("appid", "")) != "311" or str(feed.get("uin", "")) == str(uin):
+                    if not feed: continue
+
+                    # 过滤非说说动态
+                    if str(feed.get('appid', '')) != '311':
                         continue
 
-                    html_content = feed.get("html", "")
-                    soup = bs4.BeautifulSoup(html_content, "html.parser")
-                    like_btn = soup.find("a", class_="qz_like_btn_v3")
-                    if isinstance(like_btn, bs4.element.Tag) and like_btn.get("data-islike") == "1":
+                    target_qq = str(feed.get('uin', ''))
+                    tid = feed.get('key', '')
+                    if not target_qq or not tid:
                         continue
 
-                    text_div = soup.find("div", class_="f-info")
+                    # 跳过自己的说说（监控是看好友的）
+                    if target_qq == str(uin):
+                        continue
+
+                    html_content = feed.get('html', '')
+                    if not html_content:
+                        continue
+
+                    soup = bs4.BeautifulSoup(html_content, 'html.parser')
+                    
+                    # 通过点赞状态判断是否已读/处理过
+                    like_btn = soup.find('a', class_='qz_like_btn_v3')
+                    is_liked = False
+                    if like_btn:
+                        is_liked = like_btn.get('data-islike') == '1'
+
+                    if is_liked:
+                        continue # 如果已经点赞过，说明是已处理的说说，跳过
+
+                    # 提取内容
+                    text_div = soup.find('div', class_='f-info')
                     text = text_div.get_text(strip=True) if text_div else ""
-
-                    feeds_list.append(
-                        {
-                            "target_qq": feed.get("uin"),
-                            "tid": feed.get("key"),
-                            "content": text,
-                        }
-                    )
+                    
+                    feeds_list.append({
+                        'target_qq': target_qq,
+                        'tid': tid,
+                        'content': text,
+                    })
+                logger.info(f"监控任务发现 {len(feeds_list)} 条未处理的新说说。")
                 return feeds_list
             except Exception as e:
                 logger.error(f"监控好友动态失败: {e}", exc_info=True)
