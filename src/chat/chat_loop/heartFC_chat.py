@@ -553,6 +553,15 @@ class HeartFChatting:
                 except Exception as e:
                     logger.error(f"{self.log_prefix} 动作修改失败: {e}")
 
+            # 在focus模式下如果你的bot被@/提到了，那么就移除no_reply动作
+            is_mentioned_bot = message_data.get("is_mentioned", False)
+            at_bot_mentioned = (global_config.chat.mentioned_bot_inevitable_reply and is_mentioned_bot) or \
+                             (global_config.chat.at_bot_inevitable_reply and is_mentioned_bot)
+            
+            if self.loop_mode == ChatMode.FOCUS and at_bot_mentioned and "no_reply" in available_actions:
+                logger.info(f"{self.log_prefix} Focus模式下检测到@或提及bot，移除no_reply动作以确保回复")
+                available_actions = {k: v for k, v in available_actions.items() if k != "no_reply"}  # 用一个循环来移除no_reply
+
             # 检查是否在normal模式下没有可用动作（除了reply相关动作）
             skip_planner = False
             if self.loop_mode == ChatMode.NORMAL:
