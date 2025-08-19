@@ -1,7 +1,7 @@
 import asyncio
 import io
 import base64
-from typing import Callable, AsyncIterator, Optional, Coroutine, Any, List, Dict, Union
+from typing import Callable, AsyncIterator, Optional, Coroutine, Any, List, Dict
 
 import google.generativeai as genai
 from google.generativeai.types import (
