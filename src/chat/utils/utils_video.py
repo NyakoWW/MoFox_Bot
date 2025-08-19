@@ -43,7 +43,7 @@ class VideoAnalyzer:
         
         # 从配置文件读取参数，如果配置不存在则使用默认值
         try:
-            config = global_config.utils_video
+            config = global_config.video_analysis
             self.max_frames = config.max_frames
             self.frame_quality = config.frame_quality
             self.max_image_size = config.max_image_size
