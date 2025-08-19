@@ -230,7 +230,7 @@ class DefaultReplyer:
 
         from src.plugin_system.core.tool_use import ToolExecutor  # 延迟导入ToolExecutor，不然会循环依赖
 
-        self.tool_executor = ToolExecutor(chat_id=self.chat_stream.stream_id, enable_cache=True, cache_ttl=3)
+        self.tool_executor = ToolExecutor(chat_id=self.chat_stream.stream_id, enable_cache=False)
 
     def _select_weighted_models_config(self) -> Tuple[TaskConfig, float]:
         """使用加权随机选择来挑选一个模型配置"""
