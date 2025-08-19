@@ -134,7 +134,9 @@ class CacheManager:
         if semantic_query and self.embedding_model:
             embedding_result = await self.embedding_model.get_embedding(semantic_query)
             if embedding_result:
-                validated_embedding = self._validate_embedding(embedding_result)
+                # embedding_result是一个元组(embedding_vector, model_name)，取第一个元素
+                embedding_vector = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
+                validated_embedding = self._validate_embedding(embedding_vector)
                 if validated_embedding is not None:
                     query_embedding = np.array([validated_embedding], dtype='float32')
 
@@ -263,7 +265,9 @@ class CacheManager:
             try:
                 embedding_result = await self.embedding_model.get_embedding(semantic_query)
                 if embedding_result:
-                    validated_embedding = self._validate_embedding(embedding_result)
+                    # embedding_result是一个元组(embedding_vector, model_name)，取第一个元素
+                    embedding_vector = embedding_result[0] if isinstance(embedding_result, tuple) else embedding_result
+                    validated_embedding = self._validate_embedding(embedding_vector)
                     if validated_embedding is not None:
                         embedding = np.array([validated_embedding], dtype='float32')
                         # 写入 L1 Vector
