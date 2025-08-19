@@ -85,14 +85,18 @@ class RelationshipManager:
 
         # 遍历消息，构建映射
         for msg in user_messages:
+            # 获取平台信息，优先使用chat_info_platform，如果为None则使用user_platform
+            platform = msg.get("chat_info_platform") or msg.get("user_platform", "unknown")
+            user_id = msg.get("user_id")
+            
             await person_info_manager.get_or_create_person(
-                platform=msg.get("chat_info_platform"),  # type: ignore
-                user_id=msg.get("user_id"),  # type: ignore
+                platform=platform,  # type: ignore
+                user_id=user_id,  # type: ignore
                 nickname=msg.get("user_nickname"),  # type: ignore
                 user_cardname=msg.get("user_cardname"),  # type: ignore
             )
             replace_user_id: str = msg.get("user_id")  # type: ignore
-            replace_platform: str = msg.get("chat_info_platform")  # type: ignore
+            replace_platform: str = platform  # type: ignore
             replace_person_id = PersonInfoManager.get_person_id(replace_platform, replace_user_id)
             replace_person_name = await person_info_manager.get_value(replace_person_id, "person_name")
 

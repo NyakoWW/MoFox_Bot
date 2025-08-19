@@ -464,10 +464,12 @@ class HeartFChatting:
 
     async def build_reply_to_str(self, message_data: dict):
         person_info_manager = get_person_info_manager()
-        person_id = person_info_manager.get_person_id(
-            message_data.get("chat_info_platform"),  # type: ignore
-            message_data.get("user_id"),  # type: ignore
-        )
+        
+        # 获取平台信息，优先使用chat_info_platform，如果为None则使用user_platform
+        platform = message_data.get("chat_info_platform") or message_data.get("user_platform") or self.chat_stream.platform
+        user_id = message_data.get("user_id")
+        
+        person_id = person_info_manager.get_person_id(platform, user_id)
         person_name = await person_info_manager.get_value(person_id, "person_name")
         return f"{person_name}:{message_data.get('processed_plain_text')}"
 
@@ -486,10 +488,12 @@ class HeartFChatting:
 
             # 存储reply action信息
         person_info_manager = get_person_info_manager()
-        person_id = person_info_manager.get_person_id(
-            action_message.get("chat_info_platform", ""),
-            action_message.get("user_id", ""),
-        )
+        
+        # 获取平台信息，优先使用chat_info_platform，如果为空则使用user_platform
+        platform = action_message.get("chat_info_platform") or action_message.get("user_platform") or self.chat_stream.platform
+        user_id = action_message.get("user_id", "")
+        
+        person_id = person_info_manager.get_person_id(platform, user_id)
         person_name = await person_info_manager.get_value(person_id, "person_name")
         action_prompt_display = f"你对{person_name}进行了回复：{reply_text}"
 
