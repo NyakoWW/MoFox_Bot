@@ -906,7 +906,6 @@ class EmojiManager:
                 with get_db_session() as session:
                 # from src.common.database.database_model_compat import Images
 
-                    stmt = select(Images).where((Images.emoji_hash == image_hash) & (Images.type == "emoji"))
                     existing_image = session.query(Images).filter((Images.emoji_hash == image_hash) & (Images.type == "emoji")).one_or_none()
                     if existing_image and existing_image.description:
                         existing_description = existing_image.description
