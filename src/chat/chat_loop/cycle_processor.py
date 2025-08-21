@@ -114,8 +114,10 @@ class CycleProcessor:
             action_type = "reply"
 
         if action_type == "reply":
+            # 使用 action_planner 获取的 target_message，如果为空则使用原始 message_data
+            actual_message = target_message or message_data
             await self._handle_reply_action(
-                message_data, available_actions, gen_task, loop_start_time, cycle_timers, thinking_id, plan_result
+                actual_message, available_actions, gen_task, loop_start_time, cycle_timers, thinking_id, plan_result
             )
         else:
             await self._handle_other_actions(

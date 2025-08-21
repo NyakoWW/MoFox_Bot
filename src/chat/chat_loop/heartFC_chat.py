@@ -195,7 +195,8 @@ class HeartFChatting:
 
         if self.context.loop_mode == ChatMode.FOCUS:
             if recent_messages:
-                await self.cycle_processor.observe()
+                for message in recent_messages:
+                    await self.cycle_processor.observe(message)
             self._check_focus_exit()
         elif self.context.loop_mode == ChatMode.NORMAL:
             self._check_focus_entry(len(recent_messages))
