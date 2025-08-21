@@ -3,6 +3,7 @@
 MaiZone（麦麦空间）- 重构版
 """
 import asyncio
+from pathlib import Path
 from typing import List, Tuple, Type
 
 from src.common.logger import get_logger
