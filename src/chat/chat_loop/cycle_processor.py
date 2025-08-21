@@ -130,6 +130,34 @@ class CycleProcessor:
         
         return True
 
+    async def execute_plan(self, action_result: Dict[str, Any], target_message: Optional[Dict[str, Any]]):
+        """
+        执行一个已经制定好的计划
+        """
+        action_type = action_result.get("action_type", "error")
+        
+        # 这里我们需要为执行计划创建一个新的循环追踪
+        cycle_timers, thinking_id = self.cycle_tracker.start_cycle(is_proactive=True)
+        loop_start_time = time.time()
+
+        if action_type == "reply":
+            # 主动思考不应该直接触发简单回复，但为了逻辑完整性，我们假设它会调用response_handler
+            # 注意：这里的 available_actions 和 plan_result 是缺失的，需要根据实际情况处理
+            await self._handle_reply_action(target_message, {}, None, loop_start_time, cycle_timers, thinking_id, {"action_result": action_result})
+        else:
+            await self._handle_other_actions(
+                action_type,
+                action_result.get("reasoning", ""),
+                action_result.get("action_data", {}),
+                action_result.get("is_parallel", False),
+                None,
+                target_message,
+                cycle_timers,
+                thinking_id,
+                {"action_result": action_result},
+                loop_start_time
+            )
+
     async def _handle_reply_action(self, message_data, available_actions, gen_task, loop_start_time, cycle_timers, thinking_id, plan_result):
         """
         处理回复类型的动作

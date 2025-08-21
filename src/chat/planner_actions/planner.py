@@ -23,15 +23,16 @@ from src.plugin_system.base.component_types import ActionInfo, ChatMode, Compone
 from src.plugin_system.core.component_registry import component_registry
 from src.manager.schedule_manager import schedule_manager
 from src.mood.mood_manager import mood_manager
+from src.chat.memory_system.Hippocampus import hippocampus_manager
 logger = get_logger("planner")
 
 install(extra_lines=3)
 
 
 def init_prompt():
-    Prompt(        
-"""    
-{schedule_block}   
+    Prompt(
+"""
+{schedule_block}
 {mood_block}
 {time_block}
 {identity_block}
@@ -53,6 +54,32 @@ def init_prompt():
 请根据动作示例，以严格的 JSON 格式输出，且仅包含 JSON 内容：
 """,
         "planner_prompt",
+    )
+
+    Prompt(
+"""
+# 主动思考决策
+
+## 你的内部状态
+{time_block}
+{identity_block}
+{schedule_block}
+{mood_block}
+
+## 长期记忆摘要
+{long_term_memory_block}
+
+## 任务
+基于以上所有信息，分析当前情况，决定是否需要主动做些什么。
+如果你认为不需要，就选择 'do_nothing'。
+
+## 可用动作
+{action_options_text}
+
+你必须从上面列出的可用action中选择一个。
+请以严格的 JSON 格式输出，且仅包含 JSON 内容：
+""",
+        "proactive_planner_prompt",
     )
 
     Prompt(
@@ -83,6 +110,78 @@ class ActionPlanner:
         # 添加重试计数器
         self.plan_retry_count = 0
         self.max_plan_retries = 3
+
+    async def _get_long_term_memory_context(self) -> str:
+        """
+        获取长期记忆上下文
+        """
+        try:
+            # 1. 生成时间相关的关键词
+            now = datetime.now()
+            keywords = ["今天", "日程", "计划"]
+            if 5 <= now.hour < 12:
+                keywords.append("早上")
+            elif 12 <= now.hour < 18:
+                keywords.append("中午")
+            else:
+                keywords.append("晚上")
+
+            # TODO: 添加与聊天对象相关的关键词
+
+            # 2. 调用 hippocampus_manager 检索记忆
+            retrieved_memories = await hippocampus_manager.get_memory_from_topic(
+                valid_keywords=keywords,
+                max_memory_num=5,
+                max_memory_length=1
+            )
+
+            if not retrieved_memories:
+                return "最近没有什么特别的记忆。"
+
+            # 3. 格式化记忆
+            memory_statements = []
+            for topic, memory_item in retrieved_memories:
+                memory_statements.append(f"关于'{topic}', 你记得'{memory_item}'。")
+            
+            return " ".join(memory_statements)
+        except Exception as e:
+            logger.error(f"获取长期记忆时出错: {e}")
+            return "回忆时出现了一些问题。"
+
+    async def _build_action_options(self, current_available_actions: Dict[str, ActionInfo], mode: ChatMode, target_prompt: str = "") -> str:
+        """
+        构建动作选项
+        """
+        action_options_block = ""
+
+        if mode == ChatMode.PROACTIVE:
+            action_options_block += """动作：do_nothing
+动作描述：保持沉默，不主动发起任何动作或对话。
+- 当你分析了所有信息后，觉得当前不是一个发起互动的好时机时
+{{
+    "action": "do_nothing",
+    "reason":"决定保持沉默的具体原因"
+}}
+
+"""
+        for action_name, action_info in current_available_actions.items():
+            # TODO: 增加一个字段来判断action是否支持在PROACTIVE模式下使用
+            
+            param_text = ""
+            if action_info.action_parameters:
+                param_text = "\n" + "\n".join(f'    "{p_name}":"{p_desc}"' for p_name, p_desc in action_info.action_parameters.items())
+            
+            require_text = "\n".join(f"- {req}" for req in action_info.action_require)
+
+            using_action_prompt = await global_prompt_manager.get_prompt_async("action_prompt")
+            action_options_block += using_action_prompt.format(
+                action_name=action_name,
+                action_description=action_info.description,
+                action_parameters=param_text,
+                action_require=require_text,
+                target_prompt=target_prompt,
+            )
+        return action_options_block
 
     def find_message_by_id(self, message_id: str, message_id_list: list) -> Optional[Dict[str, Any]]:
         # sourcery skip: use-next
@@ -118,7 +217,7 @@ class ActionPlanner:
 
     async def plan(
         self, mode: ChatMode = ChatMode.FOCUS
-    ) -> Tuple[Dict[str, Dict[str, Any] | str], Optional[Dict[str, Any]]]:
+    ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
         """
         规划器 (Planner): 使用LLM根据上下文决定做出什么动作。
         """
@@ -267,6 +366,40 @@ class ActionPlanner:
     ) -> tuple[str, list]:  # sourcery skip: use-join
         """构建 Planner LLM 的提示词 (获取模板并填充数据)"""
         try:
+            # --- 通用信息获取 ---
+            time_block = f"当前时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            bot_name = global_config.bot.nickname
+            bot_nickname = f",也有人叫你{','.join(global_config.bot.alias_names)}" if global_config.bot.alias_names else ""
+            bot_core_personality = global_config.personality.personality_core
+            identity_block = f"你的名字是{bot_name}{bot_nickname}，你{bot_core_personality}："
+            
+            schedule_block = ""
+            if global_config.schedule.enable:
+                if current_activity := schedule_manager.get_current_activity():
+                    schedule_block = f"你当前正在：{current_activity}。"
+
+            mood_block = ""
+            if global_config.mood.enable_mood:
+                chat_mood = mood_manager.get_mood_by_chat_id(self.chat_id)
+                mood_block = f"你现在的心情是：{chat_mood.mood_state}"
+
+            # --- 根据模式构建不同的Prompt ---
+            if mode == ChatMode.PROACTIVE:
+                long_term_memory_block = await self._get_long_term_memory_context()
+                action_options_text = await self._build_action_options(current_available_actions, mode)
+                
+                prompt_template = await global_prompt_manager.get_prompt_async("proactive_planner_prompt")
+                prompt = prompt_template.format(
+                    time_block=time_block,
+                    identity_block=identity_block,
+                    schedule_block=schedule_block,
+                    mood_block=mood_block,
+                    long_term_memory_block=long_term_memory_block,
+                    action_options_text=action_options_text,
+                )
+                return prompt, []
+
+            # --- FOCUS 和 NORMAL 模式的逻辑 ---
             message_list_before_now = get_raw_msg_before_timestamp_with_chat(
                 chat_id=self.chat_id,
                 timestamp=time.time(),
@@ -288,15 +421,10 @@ class ActionPlanner:
                 limit=5,
             )
 
-            actions_before_now_block = build_readable_actions(
-                actions=actions_before_now,
-            )
-
+            actions_before_now_block = build_readable_actions(actions=actions_before_now)
             actions_before_now_block = f"你刚刚选择并执行过的action是：\n{actions_before_now_block}"
 
-            # 注意：不在这里更新last_obs_time_mark，应该在plan成功后再更新，避免异常情况下错误更新时间戳
             self.last_obs_time_mark = time.time()
-
 
             if mode == ChatMode.FOCUS:
                 mentioned_bonus = ""
@@ -323,7 +451,7 @@ class ActionPlanner:
 }}
 
 """
-            else:
+            else:  # NORMAL Mode
                 by_what = "聊天内容和用户的最新消息"
                 target_prompt = ""
                 no_action_block = """重要说明：
@@ -331,67 +459,14 @@ class ActionPlanner:
 - 其他action表示在普通回复的基础上，执行相应的额外动作"""
 
             chat_context_description = "你现在正在一个群聊中"
-            chat_target_name = None  # Only relevant for private
             if not is_group_chat and chat_target_info:
-                chat_target_name = (
-                    chat_target_info.get("person_name") or chat_target_info.get("user_nickname") or "对方"
-                )
+                chat_target_name = chat_target_info.get("person_name") or chat_target_info.get("user_nickname") or "对方"
                 chat_context_description = f"你正在和 {chat_target_name} 私聊"
 
-            action_options_block = ""
-
-            # 先定义 schedule_block 和 mood_block，这些在主模板中需要使用
-            schedule_block = ""
-            if global_config.schedule.enable:
-                current_activity = schedule_manager.get_current_activity()
-                if current_activity:
-                    schedule_block = f"你当前正在：{current_activity}。"
-
-            mood_block = ""
-            if global_config.mood.enable_mood:
-                chat_mood = mood_manager.get_mood_by_chat_id(self.chat_id)
-                mood_block = f"你现在的心情是：{chat_mood.mood_state}"
-
-            for using_actions_name, using_actions_info in current_available_actions.items():
-                if using_actions_info.action_parameters:
-                    param_text = "\n"
-                    for param_name, param_description in using_actions_info.action_parameters.items():
-                        param_text += f'    "{param_name}":"{param_description}"\n'
-                    param_text = param_text.rstrip("\n")
-                else:
-                    param_text = ""
-
-                require_text = ""
-                for require_item in using_actions_info.action_require:
-                    require_text += f"- {require_item}\n"
-                require_text = require_text.rstrip("\n")
-
-                using_action_prompt = await global_prompt_manager.get_prompt_async("action_prompt")
-                using_action_prompt = using_action_prompt.format(
-                    schedule_block=schedule_block,
-                    mood_block=mood_block,
-                    action_name=using_actions_name,
-                    action_description=using_actions_info.description,
-                    action_parameters=param_text,
-                    action_require=require_text,
-                    target_prompt=target_prompt,
-                )
-
-                action_options_block += using_action_prompt
+            action_options_block = await self._build_action_options(current_available_actions, mode, target_prompt)
 
             moderation_prompt_block = "请不要输出违法违规内容，不要输出色情，暴力，政治相关内容，如有敏感内容，请规避。"
-
-            time_block = f"当前时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-
-            bot_name = global_config.bot.nickname
-            if global_config.bot.alias_names:
-                bot_nickname = f",也有人叫你{','.join(global_config.bot.alias_names)}"
-            else:
-                bot_nickname = ""
-            bot_core_personality = global_config.personality.personality_core
-            identity_block = f"你的名字是{bot_name}{bot_nickname}，你{bot_core_personality}："
             
-            # 处理自定义提示词
             custom_prompt_block = ""
             if global_config.custom_prompt.planner_custom_prompt_enable and global_config.custom_prompt.planner_custom_prompt_content:
                 custom_prompt_block = global_config.custom_prompt.planner_custom_prompt_content

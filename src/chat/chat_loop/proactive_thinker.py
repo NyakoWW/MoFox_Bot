@@ -245,58 +245,23 @@ class ProactiveThinker:
         
         Args:
             silence_duration: 沉默持续时间（秒）
-            
-        功能说明:
-        - 格式化沉默时间并记录触发日志
-        - 获取适当的思考提示模板
-        - 创建主动思考类型的消息数据
-        - 调用循环处理器执行思考和可能的回复
-        - 处理执行过程中的异常
         """
         formatted_time = self._format_duration(silence_duration)
         logger.info(f"{self.context.log_prefix} 触发主动思考，已沉默{formatted_time}")
 
         try:
-            proactive_prompt = self._get_proactive_prompt(formatted_time)
+            # 直接调用 planner 的 PROACTIVE 模式
+            action_result_tuple, target_message = await self.cycle_processor.action_planner.plan(mode=ChatMode.PROACTIVE)
+            action_result = action_result_tuple.get("action_result")
 
-            thinking_message = {
-                "processed_plain_text": proactive_prompt,
-                "user_id": "system_proactive_thinking",
-                "user_platform": "system",
-                "timestamp": time.time(),
-                "message_type": "proactive_thinking",
-                "user_nickname": "系统主动思考",
-                "chat_info_platform": "system",
-                "message_id": f"proactive_{int(time.time())}",
-            }
-
-            logger.info(f"{self.context.log_prefix} 开始主动思考...")
-            await self.cycle_processor.observe(message_data=thinking_message)
-            logger.info(f"{self.context.log_prefix} 主动思考完成")
+            # 如果决策不是 do_nothing，则执行
+            if action_result and action_result.get("action_type") != "do_nothing":
+                logger.info(f"{self.context.log_prefix} 主动思考决策: {action_result.get('action_type')}, 原因: {action_result.get('reasoning')}")
+                # 将决策结果交给 cycle_processor 的后续流程处理
+                await self.cycle_processor.execute_plan(action_result, target_message)
+            else:
+                logger.info(f"{self.context.log_prefix} 主动思考决策: 保持沉默")
 
         except Exception as e:
             logger.error(f"{self.context.log_prefix} 主动思考执行异常: {e}")
             logger.error(traceback.format_exc())
-
-    def _get_proactive_prompt(self, formatted_time: str) -> str:
-        """
-        获取主动思考的提示模板
-        
-        Args:
-            formatted_time: 格式化后的沉默时间字符串
-            
-        Returns:
-            str: 填充了时间信息的提示模板
-            
-        功能说明:
-        - 优先使用自定义的提示模板（如果配置了）
-        - 根据聊天类型（群聊/私聊）选择默认模板
-        - 将格式化的时间信息填入模板
-        - 返回完整的主动思考提示文本
-        """
-        if hasattr(global_config.chat, 'proactive_thinking_prompt_template') and global_config.chat.proactive_thinking_prompt_template.strip():
-            return global_config.chat.proactive_thinking_prompt_template.format(time=formatted_time)
-        
-        chat_type = "group" if self.context.chat_stream and self.context.chat_stream.group_info else "private"
-        prompt_template = self.proactive_thinking_prompts.get(chat_type, self.proactive_thinking_prompts["group"])
-        return prompt_template.format(time=formatted_time)
