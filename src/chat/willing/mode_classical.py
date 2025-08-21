@@ -44,7 +44,7 @@ class ClassicalWillingManager(BaseWillingManager):
         
         return reply_probability
 
-    async def before_generate_reply_handle(self, message_id):
+    async def before_generate_reply_handle(self, message_id): 
         pass
 
     async def after_generate_reply_handle(self, message_id):

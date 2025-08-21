@@ -70,8 +70,8 @@ class PromptContext:
                     # 如果reset失败，尝试直接设置
                     try:
                         self._current_context = previous_context
-                    except Exception:
-                        pass  # 静默忽略恢复失败
+                    except Exception: ...
+                    # 静默忽略恢复失败
 
     async def get_prompt_async(self, name: str) -> Optional["Prompt"]:
         """异步获取当前作用域中的提示模板"""

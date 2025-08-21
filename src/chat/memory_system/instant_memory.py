@@ -25,14 +25,6 @@ class MemoryItem:
         self.keywords: list[str] = keywords
         self.create_time: float = time.time()
         self.last_view_time: float = time.time()
-
-
-class MemoryManager:
-    def __init__(self):
-        # self.memory_items:list[MemoryItem] = []
-        pass
-
-
 class InstantMemory:
     def __init__(self, chat_id):
         self.chat_id = chat_id
@@ -219,14 +211,12 @@ class InstantMemory:
         try:
             dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
             return dt, dt + timedelta(hours=1)
-        except Exception:
-            pass
+        except Exception: ...
         # 具体日期
         try:
             dt = datetime.strptime(time_str, "%Y-%m-%d")
             return dt, dt + timedelta(days=1)
-        except Exception:
-            pass
+        except Exception: ...
         # 相对时间
         if time_str == "今天":
             start = now.replace(hour=0, minute=0, second=0, microsecond=0)

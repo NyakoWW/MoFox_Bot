@@ -144,8 +144,7 @@ class EmbeddingStore:
             # 确保事件循环被正确关闭
             try:
                 loop.close()
-            except Exception:
-                pass
+            except Exception: ...
 
     def _get_embeddings_batch_threaded(self, strs: List[str], chunk_size: int = 10, max_workers: int = 10, progress_callback=None) -> List[Tuple[str, List[float]]]:
         """使用多线程批量获取嵌入向量

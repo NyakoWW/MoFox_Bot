@@ -381,8 +381,7 @@ class ImageManager:
                     # 确保是RGB格式方便比较
                     frame = gif.convert("RGB")
                     all_frames.append(frame.copy())
-            except EOFError:
-                pass  # 读完啦
+            except EOFError: ... # 读完啦
 
             if not all_frames:
                 logger.warning("GIF中没有找到任何帧")

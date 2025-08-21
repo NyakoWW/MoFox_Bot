@@ -791,9 +791,8 @@ def build_pic_mapping_info(pic_id_mapping: Dict[str, str]) -> str:
                 image = session.execute(select(Images).where(Images.image_id == pic_id)).scalar()
                 if image and image.description:
                     description = image.description
-        except Exception:
+        except Exception: ...
             # 如果查询失败，保持默认描述
-            pass
 
         mapping_lines.append(f"[{display_name}] 的内容：{description}")
 
