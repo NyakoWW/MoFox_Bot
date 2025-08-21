@@ -13,7 +13,6 @@ from src.plugin_system.base.plugin_base import PluginBase
 from src.plugin_system.base.component_types import ComponentType
 from src.plugin_system.utils.manifest_utils import VersionComparator
 from .component_registry import component_registry
-import asyncio
 from src.chat.antipromptinjector.processors.command_skip_list import skip_list_manager
 
 

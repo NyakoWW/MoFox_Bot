@@ -1,7 +1,7 @@
 import asyncio
 import time
 import traceback
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from src.common.logger import get_logger
 from src.config.config import global_config

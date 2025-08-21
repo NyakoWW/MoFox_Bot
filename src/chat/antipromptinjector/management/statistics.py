@@ -6,7 +6,7 @@
 """
 
 import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 from src.common.logger import get_logger
 from src.common.database.sqlalchemy_models import AntiInjectionStats, get_db_session

@@ -1,7 +1,7 @@
 import time
 import random
 import traceback
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, Tuple
 
 from src.common.logger import get_logger
 from src.config.config import global_config

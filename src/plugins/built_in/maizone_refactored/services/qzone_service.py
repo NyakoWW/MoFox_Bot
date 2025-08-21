@@ -246,7 +246,7 @@ class QZoneService:
                 config_image_number = int(config_image_number)
             except (ValueError, TypeError):
                 config_image_number = 1
-                logger.warning(f"配置项 image_number 值无效，使用默认值 1")
+                logger.warning("配置项 image_number 值无效，使用默认值 1")
             
             max_images = min(min(config_image_number, 9), len(all_files))  # 最多9张，最少1张
             selected_count = max(1, max_images)  # 确保至少选择1张

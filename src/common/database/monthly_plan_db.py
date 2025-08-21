@@ -1,6 +1,5 @@
 # mmc/src/common/database/monthly_plan_db.py
 
-import datetime
 from typing import List
 from src.common.database.sqlalchemy_models import MonthlyPlan, get_db_session
 from src.common.logger import get_logger

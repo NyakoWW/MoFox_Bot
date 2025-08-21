@@ -5,7 +5,6 @@
 负责根据检测结果和配置决定如何处理消息
 """
 
-from typing import Dict, List
 
 from src.common.logger import get_logger
 from ..types import DetectionResult

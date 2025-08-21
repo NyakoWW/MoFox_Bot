@@ -5,12 +5,9 @@ from typing import Optional, Dict, Any
 
 from src.common.logger import get_logger
 from src.config.config import global_config
-from src.chat.utils.timer_calculator import Timer
 from src.chat.planner_actions.planner import ActionPlanner
 from src.chat.planner_actions.action_modifier import ActionModifier
-from src.plugin_system.core import events_manager
-from src.plugin_system.base.component_types import EventType, ChatMode
-from src.mais4u.mai_think import mai_thinking_manager
+from src.plugin_system.base.component_types import ChatMode
 from src.mais4u.constant_s4u import ENABLE_S4U
 from src.chat.chat_loop.hfc_utils import send_typing, stop_typing
 from .hfc_context import HfcContext

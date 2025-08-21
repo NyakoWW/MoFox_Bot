@@ -1,13 +1,11 @@
 import asyncio
 import hashlib
 import os
-import random
 import sys
 import time
 import platform
 import traceback
 from pathlib import Path
-from typing import List, Optional, Sequence
 from dotenv import load_dotenv
 from rich.traceback import install
 from colorama import init, Fore
