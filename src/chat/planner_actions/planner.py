@@ -291,8 +291,8 @@ class ActionPlanner:
                             if isinstance(target_message_id, int):
                                 target_message_id = str(target_message_id)
                             
-                            if isinstance(target_message_id, str) and not target_message_id.startswith('M'):
-                                target_message_id = f"M{target_message_id}"
+                            if isinstance(target_message_id, str) and not target_message_id.startswith('m'):
+                                target_message_id = f"m{target_message_id}"
                             # 根据target_message_id查找原始消息
                             target_message = self.find_message_by_id(target_message_id, message_id_list)
                             # target_message = None
