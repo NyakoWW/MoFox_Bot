@@ -13,9 +13,28 @@ logger = get_logger(__name__)
 
 
 class CycleDetail:
-    """循环信息记录类"""
+    """
+    循环信息记录类
+    
+    功能说明:
+    - 记录单次思考循环的详细信息
+    - 包含循环ID、思考ID、时间戳等基本信息
+    - 存储循环的规划信息和动作信息
+    - 提供序列化和转换功能
+    """
 
     def __init__(self, cycle_id: int):
+        """
+        初始化循环详情记录
+        
+        Args:
+            cycle_id: 循环ID，用于标识循环的顺序
+            
+        功能说明:
+        - 设置循环基本标识信息
+        - 初始化时间戳和计时器
+        - 准备循环信息存储容器
+        """
         self.cycle_id = cycle_id
         self.thinking_id = ""
         self.start_time = time.time()
@@ -26,7 +45,18 @@ class CycleDetail:
         self.loop_action_info: Dict[str, Any] = {}
 
     def to_dict(self) -> Dict[str, Any]:
-        """将循环信息转换为字典格式"""
+        """
+        将循环信息转换为字典格式
+        
+        Returns:
+            dict: 包含所有循环信息的字典，已处理循环引用和序列化问题
+            
+        功能说明:
+        - 递归转换复杂对象为可序列化格式
+        - 防止循环引用导致的无限递归
+        - 限制递归深度避免栈溢出
+        - 只保留基本数据类型和可序列化的值
+        """
 
         def convert_to_serializable(obj, depth=0, seen=None):
             if seen is None:
@@ -79,18 +109,36 @@ class CycleDetail:
         }
 
     def set_loop_info(self, loop_info: Dict[str, Any]):
-        """设置循环信息"""
+        """
+        设置循环信息
+        
+        Args:
+            loop_info: 包含循环规划和动作信息的字典
+            
+        功能说明:
+        - 从传入的循环信息中提取规划和动作信息
+        - 更新当前循环详情的相关字段
+        """
         self.loop_plan_info = loop_info["loop_plan_info"]
         self.loop_action_info = loop_info["loop_action_info"]
 
 
 def get_recent_message_stats(minutes: float = 30, chat_id: Optional[str] = None) -> dict:
     """
+    获取最近消息统计信息
+    
     Args:
-        minutes (float): 检索的分钟数，默认30分钟
-        chat_id (str, optional): 指定的chat_id，仅统计该chat下的消息。为None时统计全部。
+        minutes: 检索的分钟数，默认30分钟
+        chat_id: 指定的chat_id，仅统计该chat下的消息。为None时统计全部
+        
     Returns:
         dict: {"bot_reply_count": int, "total_message_count": int}
+        
+    功能说明:
+    - 统计指定时间范围内的消息数量
+    - 区分机器人回复和总消息数
+    - 可以针对特定聊天或全局统计
+    - 用于分析聊天活跃度和机器人参与度
     """
 
     now = time.time()
@@ -112,6 +160,15 @@ def get_recent_message_stats(minutes: float = 30, chat_id: Optional[str] = None)
 
 
 async def send_typing():
+    """
+    发送打字状态指示
+    
+    功能说明:
+    - 创建内心聊天流（用于状态显示）
+    - 发送typing状态消息
+    - 不存储到消息记录中
+    - 用于S4U功能的视觉反馈
+    """
     group_info = GroupInfo(platform="amaidesu_default", group_id="114514", group_name="内心")
 
     chat = await get_chat_manager().get_or_create_stream(
@@ -125,6 +182,15 @@ async def send_typing():
     )
 
 async def stop_typing():
+    """
+    停止打字状态指示
+    
+    功能说明:
+    - 创建内心聊天流（用于状态显示）
+    - 发送stop_typing状态消息
+    - 不存储到消息记录中
+    - 结束S4U功能的视觉反馈
+    """
     group_info = GroupInfo(platform="amaidesu_default", group_id="114514", group_name="内心")
 
     chat = await get_chat_manager().get_or_create_stream(

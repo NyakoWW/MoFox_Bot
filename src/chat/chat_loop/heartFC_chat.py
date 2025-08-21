@@ -24,6 +24,18 @@ logger = get_logger("hfc")
 
 class HeartFChatting:
     def __init__(self, chat_id: str):
+        """
+        初始化心跳聊天管理器
+        
+        Args:
+            chat_id: 聊天ID标识符
+            
+        功能说明:
+        - 创建聊天上下文和所有子管理器
+        - 初始化循环跟踪器、响应处理器、循环处理器等核心组件
+        - 设置能量管理器、主动思考器和普通模式处理器
+        - 初始化聊天模式并记录初始化完成日志
+        """
         self.context = HfcContext(chat_id)
         
         self.cycle_tracker = CycleTracker(self.context)
@@ -39,6 +51,16 @@ class HeartFChatting:
         logger.info(f"{self.context.log_prefix} HeartFChatting 初始化完成")
 
     def _initialize_chat_mode(self):
+        """
+        初始化聊天模式
+        
+        功能说明:
+        - 检测是否为群聊环境
+        - 根据全局配置设置强制聊天模式
+        - 在focus模式下设置能量值为35
+        - 在normal模式下设置能量值为15
+        - 如果是auto模式则保持默认设置
+        """
         is_group_chat = self.context.chat_stream.group_info is not None if self.context.chat_stream else False
         if is_group_chat and global_config.chat.group_chat_mode != "auto":
             if global_config.chat.group_chat_mode == "focus":
@@ -49,6 +71,16 @@ class HeartFChatting:
                 self.context.energy_value = 15
 
     async def start(self):
+        """
+        启动心跳聊天系统
+        
+        功能说明:
+        - 检查是否已经在运行，避免重复启动
+        - 初始化关系构建器和表达学习器
+        - 启动能量管理器和主动思考器
+        - 创建主聊天循环任务并设置完成回调
+        - 记录启动完成日志
+        """
         if self.context.running:
             return
         self.context.running = True
@@ -64,6 +96,16 @@ class HeartFChatting:
         logger.info(f"{self.context.log_prefix} HeartFChatting 启动完成")
 
     async def stop(self):
+        """
+        停止心跳聊天系统
+        
+        功能说明:
+        - 检查是否正在运行，避免重复停止
+        - 设置运行状态为False
+        - 停止能量管理器和主动思考器
+        - 取消主聊天循环任务
+        - 记录停止完成日志
+        """
         if not self.context.running:
             return
         self.context.running = False
@@ -77,6 +119,18 @@ class HeartFChatting:
         logger.info(f"{self.context.log_prefix} HeartFChatting 已停止")
 
     def _handle_loop_completion(self, task: asyncio.Task):
+        """
+        处理主循环任务完成
+        
+        Args:
+            task: 完成的异步任务对象
+            
+        功能说明:
+        - 处理任务异常完成的情况
+        - 区分正常停止和异常终止
+        - 记录相应的日志信息
+        - 处理取消任务的情况
+        """
         try:
             if exception := task.exception():
                 logger.error(f"{self.context.log_prefix} HeartFChatting: 脱离了聊天(异常): {exception}")
@@ -87,6 +141,16 @@ class HeartFChatting:
             logger.info(f"{self.context.log_prefix} HeartFChatting: 结束了聊天")
 
     async def _main_chat_loop(self):
+        """
+        主聊天循环
+        
+        功能说明:
+        - 持续运行聊天处理循环
+        - 每次循环调用_loop_body处理消息
+        - 处理取消和异常情况
+        - 在异常时尝试重新启动循环
+        - 记录循环结束日志
+        """
         try:
             while self.context.running:
                 await self._loop_body()
@@ -101,6 +165,17 @@ class HeartFChatting:
         logger.error(f"{self.context.log_prefix} 结束了当前聊天循环")
 
     async def _loop_body(self):
+        """
+        单次循环体处理
+        
+        功能说明:
+        - 检查是否处于睡眠模式，如果是则跳过处理
+        - 获取最近的新消息（过滤机器人自己的消息和命令）
+        - 更新最后消息时间和读取时间
+        - 根据当前聊天模式执行不同的处理逻辑
+        - FOCUS模式：直接处理所有消息并检查退出条件
+        - NORMAL模式：检查进入FOCUS模式的条件，并通过normal_mode_handler处理消息
+        """
         if schedule_manager.is_sleeping():
             return
 
@@ -129,6 +204,15 @@ class HeartFChatting:
                     await self.normal_mode_handler.handle_message(message)
 
     def _check_focus_exit(self):
+        """
+        检查是否应该退出FOCUS模式
+        
+        功能说明:
+        - 区分私聊和群聊环境
+        - 在强制私聊focus模式下，能量值低于1时重置为5但不退出
+        - 在群聊focus模式下，如果配置为focus则不退出
+        - 其他情况下，能量值低于1时退出到NORMAL模式
+        """
         is_private_chat = self.context.chat_stream.group_info is None if self.context.chat_stream else False
         is_group_chat = not is_private_chat
 
@@ -145,6 +229,19 @@ class HeartFChatting:
             self.context.loop_mode = ChatMode.NORMAL
 
     def _check_focus_entry(self, new_message_count: int):
+        """
+        检查是否应该进入FOCUS模式
+        
+        Args:
+            new_message_count: 新消息数量
+            
+        功能说明:
+        - 区分私聊和群聊环境
+        - 强制私聊focus模式：直接进入FOCUS模式并设置能量值为10
+        - 群聊normal模式：不进入FOCUS模式
+        - 根据focus_value配置和消息数量决定是否进入FOCUS模式
+        - 当消息数量超过阈值或能量值达到30时进入FOCUS模式
+        """
         is_private_chat = self.context.chat_stream.group_info is None if self.context.chat_stream else False
         is_group_chat = not is_private_chat
 

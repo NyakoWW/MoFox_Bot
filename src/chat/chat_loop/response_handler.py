@@ -13,6 +13,17 @@ logger = get_logger("hfc.response")
 
 class ResponseHandler:
     def __init__(self, context: HfcContext):
+        """
+        初始化响应处理器
+        
+        Args:
+            context: HFC聊天上下文对象
+            
+        功能说明:
+        - 负责生成和发送机器人的回复
+        - 处理回复的格式化和发送逻辑
+        - 管理回复状态和日志记录
+        """
         self.context = context
 
     async def generate_and_send_reply(
@@ -25,6 +36,27 @@ class ResponseHandler:
         thinking_id,
         plan_result,
     ) -> Tuple[Dict[str, Any], str, Dict[str, float]]:
+        """
+        生成并发送回复的主方法
+        
+        Args:
+            response_set: 生成的回复内容集合
+            reply_to_str: 回复目标字符串
+            loop_start_time: 循环开始时间
+            action_message: 动作消息数据
+            cycle_timers: 循环计时器
+            thinking_id: 思考ID
+            plan_result: 规划结果
+            
+        Returns:
+            tuple: (循环信息, 回复文本, 计时器信息)
+            
+        功能说明:
+        - 发送生成的回复内容
+        - 存储动作信息到数据库
+        - 构建并返回完整的循环信息
+        - 用于上级方法的状态跟踪
+        """
         reply_text = await self._send_response(response_set, reply_to_str, loop_start_time, action_message)
 
         person_info_manager = get_person_info_manager()
@@ -65,6 +97,25 @@ class ResponseHandler:
         return loop_info, reply_text, cycle_timers
 
     async def _send_response(self, reply_set, reply_to, thinking_start_time, message_data) -> str:
+        """
+        发送回复内容的具体实现
+        
+        Args:
+            reply_set: 回复内容集合，包含多个回复段
+            reply_to: 回复目标
+            thinking_start_time: 思考开始时间
+            message_data: 消息数据
+            
+        Returns:
+            str: 完整的回复文本
+            
+        功能说明:
+        - 检查是否有新消息需要回复
+        - 处理主动思考的"沉默"决定
+        - 根据消息数量决定是否添加回复引用
+        - 逐段发送回复内容，支持打字效果
+        - 正确处理元组格式的回复段
+        """
         current_time = time.time()
         new_message_count = message_api.count_new_messages(
             chat_id=self.context.stream_id, start_time=thinking_start_time, end_time=current_time
@@ -131,6 +182,24 @@ class ResponseHandler:
         reply_to: str,
         request_type: str = "chat.replyer.normal",
     ) -> Optional[list]:
+        """
+        生成回复内容
+        
+        Args:
+            message_data: 消息数据
+            available_actions: 可用动作列表
+            reply_to: 回复目标
+            request_type: 请求类型，默认为普通回复
+            
+        Returns:
+            list: 生成的回复内容列表，失败时返回None
+            
+        功能说明:
+        - 调用生成器API生成回复
+        - 根据配置启用或禁用工具功能
+        - 处理生成失败的情况
+        - 记录生成过程中的错误和异常
+        """
         try:
             success, reply_set, _ = await generator_api.generate_reply(
                 chat_stream=self.context.chat_stream,

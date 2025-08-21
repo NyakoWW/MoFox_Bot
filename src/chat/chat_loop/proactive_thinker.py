@@ -15,6 +15,19 @@ logger = get_logger("hfc.proactive")
 
 class ProactiveThinker:
     def __init__(self, context: HfcContext, cycle_processor: "CycleProcessor"):
+        """
+        初始化主动思考器
+        
+        Args:
+            context: HFC聊天上下文对象
+            cycle_processor: 循环处理器，用于执行主动思考的结果
+            
+        功能说明:
+        - 管理机器人的主动发言功能
+        - 根据沉默时间和配置触发主动思考
+        - 提供私聊和群聊不同的思考提示模板
+        - 使用3-sigma规则计算动态思考间隔
+        """
         self.context = context
         self.cycle_processor = cycle_processor
         self._proactive_thinking_task: Optional[asyncio.Task] = None
@@ -35,18 +48,47 @@ class ProactiveThinker:
         }
 
     async def start(self):
+        """
+        启动主动思考器
+        
+        功能说明:
+        - 检查运行状态和配置，避免重复启动
+        - 只有在启用主动思考功能时才启动
+        - 创建主动思考循环异步任务
+        - 设置任务完成回调处理
+        - 记录启动日志
+        """
         if self.context.running and not self._proactive_thinking_task and global_config.chat.enable_proactive_thinking:
             self._proactive_thinking_task = asyncio.create_task(self._proactive_thinking_loop())
             self._proactive_thinking_task.add_done_callback(self._handle_proactive_thinking_completion)
             logger.info(f"{self.context.log_prefix} 主动思考器已启动")
 
     async def stop(self):
+        """
+        停止主动思考器
+        
+        功能说明:
+        - 取消正在运行的主动思考任务
+        - 等待任务完全停止
+        - 记录停止日志
+        """
         if self._proactive_thinking_task and not self._proactive_thinking_task.done():
             self._proactive_thinking_task.cancel()
             await asyncio.sleep(0)
             logger.info(f"{self.context.log_prefix} 主动思考器已停止")
 
     def _handle_proactive_thinking_completion(self, task: asyncio.Task):
+        """
+        处理主动思考任务完成
+        
+        Args:
+            task: 完成的异步任务对象
+            
+        功能说明:
+        - 处理任务正常完成或异常情况
+        - 记录相应的日志信息
+        - 区分取消和异常终止的情况
+        """
         try:
             if exception := task.exception():
                 logger.error(f"{self.context.log_prefix} 主动思考循环异常: {exception}")
@@ -56,6 +98,17 @@ class ProactiveThinker:
             logger.info(f"{self.context.log_prefix} 主动思考循环被取消")
 
     async def _proactive_thinking_loop(self):
+        """
+        主动思考的主循环
+        
+        功能说明:
+        - 每15秒检查一次是否需要主动思考
+        - 只在FOCUS模式下进行主动思考
+        - 检查是否启用主动思考功能
+        - 计算沉默时间并与动态间隔比较
+        - 达到条件时执行主动思考并更新最后消息时间
+        - 处理执行过程中的异常
+        """
         while self.context.running:
             await asyncio.sleep(15)
 
@@ -79,6 +132,19 @@ class ProactiveThinker:
                     logger.error(traceback.format_exc())
     
     def _should_enable_proactive_thinking(self) -> bool:
+        """
+        检查是否应该启用主动思考
+        
+        Returns:
+            bool: 如果应该启用主动思考则返回True
+            
+        功能说明:
+        - 检查聊天流是否存在
+        - 检查当前聊天是否在启用列表中（如果配置了列表）
+        - 根据聊天类型（群聊/私聊）和配置决定是否启用
+        - 群聊需要proactive_thinking_in_group为True
+        - 私聊需要proactive_thinking_in_private为True
+        """
         if not self.context.chat_stream:
             return False
 
@@ -101,6 +167,19 @@ class ProactiveThinker:
         return True
     
     def _get_dynamic_thinking_interval(self) -> float:
+        """
+        获取动态思考间隔
+        
+        Returns:
+            float: 计算得出的思考间隔时间（秒）
+            
+        功能说明:
+        - 使用3-sigma规则计算正态分布的思考间隔
+        - 基于base_interval和delta_sigma配置计算
+        - 处理特殊情况（为0或负数的配置）
+        - 如果timing_utils不可用则使用固定间隔
+        - 间隔范围被限制在1秒到86400秒（1天）之间
+        """
         try:
             from src.utils.timing_utils import get_normal_distributed_interval
             
@@ -131,6 +210,21 @@ class ProactiveThinker:
             return max(300, abs(global_config.chat.proactive_thinking_interval))
     
     def _format_duration(self, seconds: float) -> str:
+        """
+        格式化持续时间为中文描述
+        
+        Args:
+            seconds: 持续时间（秒）
+            
+        Returns:
+            str: 格式化后的时间字符串，如"1小时30分45秒"
+            
+        功能说明:
+        - 将秒数转换为小时、分钟、秒的组合
+        - 只显示非零的时间单位
+        - 如果所有单位都为0则显示"0秒"
+        - 用于主动思考日志的时间显示
+        """
         hours = int(seconds // 3600)
         minutes = int((seconds % 3600) // 60)
         secs = int(seconds % 60)
@@ -146,6 +240,19 @@ class ProactiveThinker:
         return "".join(parts)
 
     async def _execute_proactive_thinking(self, silence_duration: float):
+        """
+        执行主动思考
+        
+        Args:
+            silence_duration: 沉默持续时间（秒）
+            
+        功能说明:
+        - 格式化沉默时间并记录触发日志
+        - 获取适当的思考提示模板
+        - 创建主动思考类型的消息数据
+        - 调用循环处理器执行思考和可能的回复
+        - 处理执行过程中的异常
+        """
         formatted_time = self._format_duration(silence_duration)
         logger.info(f"{self.context.log_prefix} 触发主动思考，已沉默{formatted_time}")
 
@@ -172,6 +279,21 @@ class ProactiveThinker:
             logger.error(traceback.format_exc())
 
     def _get_proactive_prompt(self, formatted_time: str) -> str:
+        """
+        获取主动思考的提示模板
+        
+        Args:
+            formatted_time: 格式化后的沉默时间字符串
+            
+        Returns:
+            str: 填充了时间信息的提示模板
+            
+        功能说明:
+        - 优先使用自定义的提示模板（如果配置了）
+        - 根据聊天类型（群聊/私聊）选择默认模板
+        - 将格式化的时间信息填入模板
+        - 返回完整的主动思考提示文本
+        """
         if hasattr(global_config.chat, 'proactive_thinking_prompt_template') and global_config.chat.proactive_thinking_prompt_template.strip():
             return global_config.chat.proactive_thinking_prompt_template.format(time=formatted_time)
         

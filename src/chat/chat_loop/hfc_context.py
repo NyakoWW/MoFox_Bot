@@ -9,6 +9,21 @@ from src.chat.chat_loop.hfc_utils import CycleDetail
 
 class HfcContext:
     def __init__(self, chat_id: str):
+        """
+        初始化HFC聊天上下文
+        
+        Args:
+            chat_id: 聊天ID标识符
+            
+        功能说明:
+        - 存储和管理单个聊天会话的所有状态信息
+        - 包含聊天流、关系构建器、表达学习器等核心组件
+        - 管理聊天模式、能量值、时间戳等关键状态
+        - 提供循环历史记录和当前循环详情的存储
+        
+        Raises:
+            ValueError: 如果找不到对应的聊天流
+        """
         self.stream_id: str = chat_id
         self.chat_stream: Optional[ChatStream] = get_chat_manager().get_stream(self.stream_id)
         if not self.chat_stream:
