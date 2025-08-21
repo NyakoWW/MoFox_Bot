@@ -5,7 +5,6 @@ from typing import Optional
 
 from src.common.logger import get_logger
 from src.config.config import global_config
-from src.chat.message_receive.chat_stream import get_chat_manager
 from src.person_info.relationship_builder_manager import relationship_builder_manager
 from src.chat.express.expression_learner import expression_learner_manager
 from src.plugin_system.base.component_types import ChatMode

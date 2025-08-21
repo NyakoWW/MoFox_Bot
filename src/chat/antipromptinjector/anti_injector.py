@@ -17,7 +17,7 @@ from typing import Optional, Tuple, Dict, Any
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.chat.message_receive.message import MessageRecv
-from .types import DetectionResult, ProcessResult
+from .types import ProcessResult
 from .core import PromptInjectionDetector, MessageShield
 from .processors import should_skip_injection_detection, initialize_skip_list, MessageProcessor
 from .management import AntiInjectionStatistics, UserBanManager

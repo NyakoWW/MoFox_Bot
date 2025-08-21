@@ -1,5 +1,5 @@
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 
 from src.config.config import global_config
 from src.common.logger import get_logger
@@ -23,7 +23,7 @@ class CycleDetail:
     - 提供序列化和转换功能
     """
 
-    def __init__(self, cycle_id: int):
+    def __init__(self, cycle_id: Union[int, str]):
         """
         初始化循环详情记录
         

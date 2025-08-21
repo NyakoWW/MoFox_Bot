@@ -5,12 +5,9 @@ from typing import Optional, Dict, Any
 
 from src.common.logger import get_logger
 from src.config.config import global_config
-from src.chat.utils.timer_calculator import Timer
 from src.chat.planner_actions.planner import ActionPlanner
 from src.chat.planner_actions.action_modifier import ActionModifier
-from src.plugin_system.core import events_manager
-from src.plugin_system.base.component_types import EventType, ChatMode
-from src.mais4u.mai_think import mai_thinking_manager
+from src.plugin_system.base.component_types import ChatMode
 from src.mais4u.constant_s4u import ENABLE_S4U
 from src.chat.chat_loop.hfc_utils import send_typing, stop_typing
 from .hfc_context import HfcContext
@@ -129,6 +126,34 @@ class CycleProcessor:
             await stop_typing()
         
         return True
+
+    async def execute_plan(self, action_result: Dict[str, Any], target_message: Optional[Dict[str, Any]]):
+        """
+        执行一个已经制定好的计划
+        """
+        action_type = action_result.get("action_type", "error")
+        
+        # 这里我们需要为执行计划创建一个新的循环追踪
+        cycle_timers, thinking_id = self.cycle_tracker.start_cycle(is_proactive=True)
+        loop_start_time = time.time()
+
+        if action_type == "reply":
+            # 主动思考不应该直接触发简单回复，但为了逻辑完整性，我们假设它会调用response_handler
+            # 注意：这里的 available_actions 和 plan_result 是缺失的，需要根据实际情况处理
+            await self._handle_reply_action(target_message, {}, None, loop_start_time, cycle_timers, thinking_id, {"action_result": action_result})
+        else:
+            await self._handle_other_actions(
+                action_type,
+                action_result.get("reasoning", ""),
+                action_result.get("action_data", {}),
+                action_result.get("is_parallel", False),
+                None,
+                target_message,
+                cycle_timers,
+                thinking_id,
+                {"action_result": action_result},
+                loop_start_time
+            )
 
     async def _handle_reply_action(self, message_data, available_actions, gen_task, loop_start_time, cycle_timers, thinking_id, plan_result):
         """

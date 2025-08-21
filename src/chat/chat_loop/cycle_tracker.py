@@ -21,10 +21,13 @@ class CycleTracker:
         """
         self.context = context
 
-    def start_cycle(self) -> Tuple[Dict[str, float], str]:
+    def start_cycle(self, is_proactive: bool = False) -> Tuple[Dict[str, float], str]:
         """
         开始新的思考循环
         
+        Args:
+            is_proactive: 标记这个循环是否由主动思考发起
+
         Returns:
             tuple: (循环计时器字典, 思考ID字符串)
             
@@ -34,8 +37,11 @@ class CycleTracker:
         - 生成唯一的思考ID
         - 初始化循环计时器
         """
-        self.context.cycle_counter += 1
-        self.context.current_cycle_detail = CycleDetail(self.context.cycle_counter)
+        if not is_proactive:
+            self.context.cycle_counter += 1
+        
+        cycle_id = self.context.cycle_counter if not is_proactive else f"{self.context.cycle_counter}.p"
+        self.context.current_cycle_detail = CycleDetail(cycle_id)
         self.context.current_cycle_detail.thinking_id = f"tid{str(round(time.time(), 2))}"
         cycle_timers = {}
         return cycle_timers, self.context.current_cycle_detail.thinking_id
