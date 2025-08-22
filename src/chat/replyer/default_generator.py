@@ -13,7 +13,7 @@ from src.config.api_ada_configs import TaskConfig
 from src.individuality.individuality import get_individuality
 from src.llm_models.utils_model import LLMRequest
 from src.chat.message_receive.message import UserInfo, Seg, MessageRecv, MessageSending
-from src.chat.message_receive.chat_stream import ChatStream
+from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
 from src.chat.message_receive.uni_message_sender import HeartFCSender
 from src.chat.utils.timer_calculator import Timer  # <--- Import Timer
 from src.chat.utils.utils import get_chat_type_and_target_info
@@ -22,6 +22,7 @@ from src.chat.utils.chat_message_builder import (
     build_readable_messages,
     get_raw_msg_before_timestamp_with_chat,
     replace_user_references_sync,
+    build_readable_messages_with_id,
 )
 from src.chat.express.expression_selector import expression_selector
 from src.chat.memory_system.memory_activator import MemoryActivator
@@ -84,6 +85,7 @@ def init_prompt():
 {relation_info_block}
 {extra_info_block}
 
+{cross_context_block}
 
 {identity}
 
@@ -154,6 +156,7 @@ If you need to use the search tool, please directly call the function "lpmm_sear
 {relation_info_block}
 {extra_info_block}
 
+{cross_context_block}
 {identity}
 如果有人说你是人机，你可以用一种阴阳怪气的口吻来回应
 {schedule_block}
@@ -227,14 +230,93 @@ class DefaultReplyer:
         self.heart_fc_sender = HeartFCSender()
         self.memory_activator = MemoryActivator()
         # 使用纯向量瞬时记忆系统V2，支持自定义保留时间
-        self.instant_memory = VectorInstantMemoryV2(
-            chat_id=self.chat_stream.stream_id,
-            retention_hours=1
-        )
+        self.instant_memory = VectorInstantMemoryV2(chat_id=self.chat_stream.stream_id, retention_hours=1)
 
         from src.plugin_system.core.tool_use import ToolExecutor  # 延迟导入ToolExecutor，不然会循环依赖
 
         self.tool_executor = ToolExecutor(chat_id=self.chat_stream.stream_id, enable_cache=False)
+
+    async def _build_cross_context_block(self, current_chat_id: str, target_user_info: Optional[Dict[str, Any]]) -> str:
+        """构建跨群聊上下文"""
+        if not global_config.cross_context.enable:
+            return ""
+
+        # 找到当前群聊所在的共享组
+        target_group = None
+        current_stream = get_chat_manager().get_stream(current_chat_id)
+        if not current_stream or not current_stream.group_info:
+            return ""
+        current_chat_raw_id = current_stream.group_info.group_id
+
+        for group in global_config.cross_context.groups:
+            if str(current_chat_raw_id) in group.chat_ids:
+                target_group = group
+                break
+
+        if not target_group:
+            return ""
+
+        # 根据prompt_mode选择策略
+        prompt_mode = global_config.personality.prompt_mode
+        other_chat_raw_ids = [chat_id for chat_id in target_group.chat_ids if chat_id != str(current_chat_raw_id)]
+
+        cross_context_messages = []
+
+        if prompt_mode == "normal":
+            # normal模式：获取其他群聊的最近N条消息
+            for chat_raw_id in other_chat_raw_ids:
+                stream_id = get_chat_manager().get_stream_id(current_stream.platform, chat_raw_id, is_group=True)
+                if not stream_id:
+                    continue
+
+                messages = get_raw_msg_before_timestamp_with_chat(
+                    chat_id=stream_id,
+                    timestamp=time.time(),
+                    limit=5,  # 可配置
+                )
+                if messages:
+                    chat_name = get_chat_manager().get_stream_name(stream_id) or stream_id
+                    formatted_messages, _ = build_readable_messages_with_id(messages, timestamp_mode="relative")
+                    cross_context_messages.append(f"[以下是来自“{chat_name}”的近期消息]\n{formatted_messages}")
+
+        elif prompt_mode == "s4u":
+            # s4u模式：获取当前发言用户在其他群聊的消息
+            if target_user_info:
+                user_id = target_user_info.get("user_id")
+
+                if user_id:
+                    for chat_raw_id in other_chat_raw_ids:
+                        stream_id = get_chat_manager().get_stream_id(
+                            current_stream.platform, chat_raw_id, is_group=True
+                        )
+                        if not stream_id:
+                            continue
+
+                        messages = get_raw_msg_before_timestamp_with_chat(
+                            chat_id=stream_id,
+                            timestamp=time.time(),
+                            limit=20,  # 获取更多消息以供筛选
+                        )
+                        user_messages = [msg for msg in messages if msg.get("user_id") == user_id][
+                            -5:
+                        ]  # 筛选并取最近5条
+
+                        if user_messages:
+                            chat_name = get_chat_manager().get_stream_name(stream_id) or stream_id
+                            user_name = (
+                                target_user_info.get("person_name") or target_user_info.get("user_nickname") or user_id
+                            )
+                            formatted_messages, _ = build_readable_messages_with_id(
+                                user_messages, timestamp_mode="relative"
+                            )
+                            cross_context_messages.append(
+                                f"[以下是“{user_name}”在“{chat_name}”的近期发言]\n{formatted_messages}"
+                            )
+
+        if not cross_context_messages:
+            return ""
+
+        return "# 跨群上下文参考\n" + "\n\n".join(cross_context_messages) + "\n"
 
     def _select_weighted_models_config(self) -> Tuple[TaskConfig, float]:
         """使用加权随机选择来挑选一个模型配置"""
@@ -477,55 +559,50 @@ class DefaultReplyer:
             # 使用异步记忆包装器（最优化的非阻塞模式）
             try:
                 from src.chat.memory_system.async_instant_memory_wrapper import get_async_instant_memory
-                
+
                 # 获取异步记忆包装器
                 async_memory = get_async_instant_memory(self.chat_stream.stream_id)
-                
+
                 # 后台存储聊天历史（完全非阻塞）
                 async_memory.store_memory_background(chat_history)
-                
+
                 # 快速检索记忆，最大超时2秒
                 instant_memory = await async_memory.get_memory_with_fallback(target, max_timeout=2.0)
-                
+
                 logger.info(f"异步瞬时记忆：{instant_memory}")
-                
+
             except ImportError:
                 # 如果异步包装器不可用，尝试使用异步记忆管理器
                 try:
                     from src.chat.memory_system.async_memory_optimizer import (
                         retrieve_memory_nonblocking,
-                        store_memory_nonblocking
+                        store_memory_nonblocking,
                     )
-                    
+
                     # 异步存储聊天历史（非阻塞）
-                    asyncio.create_task(store_memory_nonblocking(
-                        chat_id=self.chat_stream.stream_id,
-                        content=chat_history
-                    ))
-                    
-                    # 尝试从缓存获取瞬时记忆
-                    instant_memory = await retrieve_memory_nonblocking(
-                        chat_id=self.chat_stream.stream_id,
-                        query=target
+                    asyncio.create_task(
+                        store_memory_nonblocking(chat_id=self.chat_stream.stream_id, content=chat_history)
                     )
-                    
+
+                    # 尝试从缓存获取瞬时记忆
+                    instant_memory = await retrieve_memory_nonblocking(chat_id=self.chat_stream.stream_id, query=target)
+
                     # 如果没有缓存结果，快速检索一次
                     if instant_memory is None:
                         try:
                             instant_memory = await asyncio.wait_for(
-                                self.instant_memory.get_memory_for_context(target),
-                                timeout=1.5
+                                self.instant_memory.get_memory_for_context(target), timeout=1.5
                             )
                         except asyncio.TimeoutError:
                             logger.warning("瞬时记忆检索超时，使用空结果")
                             instant_memory = ""
-                    
+
                     logger.info(f"向量瞬时记忆：{instant_memory}")
-                    
+
                 except ImportError:
                     # 最后的fallback：使用原有逻辑但加上超时控制
                     logger.warning("异步记忆系统不可用，使用带超时的同步方式")
-                    
+
                     # 异步存储聊天历史
                     asyncio.create_task(self.instant_memory.store_message(chat_history))
 
@@ -533,7 +610,7 @@ class DefaultReplyer:
                     try:
                         instant_memory = await asyncio.wait_for(
                             self.instant_memory.get_memory_for_context(target),
-                            timeout=1.0  # 最保守的1秒超时
+                            timeout=1.0,  # 最保守的1秒超时
                         )
                     except asyncio.TimeoutError:
                         logger.warning("瞬时记忆检索超时，跳过记忆获取")
@@ -541,9 +618,9 @@ class DefaultReplyer:
                     except Exception as e:
                         logger.error(f"瞬时记忆检索失败: {e}")
                         instant_memory = ""
-                    
+
                     logger.info(f"同步瞬时记忆：{instant_memory}")
-            
+
             except Exception as e:
                 logger.error(f"瞬时记忆系统异常: {e}")
                 instant_memory = ""
@@ -837,7 +914,7 @@ class DefaultReplyer:
         if global_config.mood.enable_mood:
             chat_mood = mood_manager.get_mood_by_chat_id(chat_id)
             mood_prompt = chat_mood.mood_state
-            
+
             # 检查是否有愤怒状态的补充提示词
             angry_prompt_addition = mood_manager.get_angry_prompt_addition(chat_id)
             if angry_prompt_addition:
@@ -885,7 +962,12 @@ class DefaultReplyer:
             show_actions=True,
         )
 
-        # 并行执行五个构建任务
+        # 获取目标用户信息，用于s4u模式
+        target_user_info = None
+        if sender:
+            target_user_info = await person_info_manager.get_person_info_by_name(sender)
+        
+        # 并行执行六个构建任务
         task_results = await asyncio.gather(
             self._time_and_run_task(
                 self.build_expression_habits(chat_talking_prompt_short, target), "expression_habits"
@@ -896,6 +978,7 @@ class DefaultReplyer:
                 self.build_tool_info(chat_talking_prompt_short, reply_to, enable_tool=enable_tool), "tool_info"
             ),
             self._time_and_run_task(self.get_prompt_info(chat_talking_prompt_short, reply_to), "prompt_info"),
+            self._time_and_run_task(self._build_cross_context_block(chat_id, target_user_info), "cross_context"),
         )
 
         # 任务名称中英文映射
@@ -922,7 +1005,8 @@ class DefaultReplyer:
         relation_info = results_dict["relation_info"]
         memory_block = results_dict["memory_block"]
         tool_info = results_dict["tool_info"]
-        prompt_info = results_dict["prompt_info"]  # 直接使用格式化后的结果
+        prompt_info = results_dict["prompt_info"]
+        cross_context_block = results_dict["cross_context"]
 
         keywords_reaction_prompt = await self.build_keywords_reaction_prompt(target)
 
@@ -1024,13 +1108,13 @@ class DefaultReplyer:
         # 根据配置选择模板
         current_prompt_mode = global_config.personality.prompt_mode
         logger.debug(f"[Prompt模式调试] 当前配置的prompt_mode: {current_prompt_mode}")
-        
+
         if current_prompt_mode == "normal":
             template_name = "normal_style_prompt"
             logger.debug(f"[Prompt模式调试] 选择使用normal模式模板: {template_name}")
             # normal模式使用统一的聊天历史，不分离核心对话和背景对话
             config_expression_style = global_config.personality.reply_style
-            
+
             # 获取统一的聊天历史（不分离）
             unified_message_list = get_raw_msg_before_timestamp_with_chat(
                 chat_id=self.chat_stream.stream_id,
@@ -1046,23 +1130,23 @@ class DefaultReplyer:
                 truncate=True,
                 show_actions=True,
             )
-            
+
             # 为normal模式构建简化的chat_info（不包含时间，因为time_block单独传递）
             chat_info = f"""群里的聊天内容：
 {unified_chat_history}"""
             logger.debug("[Prompt模式调试] normal模式使用统一聊天历史，不分离对话")
-            
+
             logger.debug("[Prompt模式调试] normal模式参数准备完成，开始调用format_prompt")
             logger.debug(f"[Prompt模式调试] normal模式传递的参数: template_name={template_name}")
             logger.debug("[Prompt模式调试] 检查global_prompt_manager是否有该模板...")
-            
+
             # 检查模板是否存在
             try:
                 test_prompt = await global_prompt_manager.get_prompt_async(template_name)
                 logger.debug(f"[Prompt模式调试] 找到模板 {template_name}, 内容预览: {test_prompt[:100]}...")
             except Exception as e:
                 logger.error(f"[Prompt模式调试] 模板 {template_name} 不存在或获取失败: {e}")
-            
+
             result = await global_prompt_manager.format_prompt(
                 template_name,
                 expression_habits_block=expression_habits_block,
@@ -1074,30 +1158,31 @@ class DefaultReplyer:
                 identity=identity_block,
                 schedule_block=schedule_block,
                 action_descriptions=action_descriptions,
-                time_block=time_block,  # 保留time_block参数
+                time_block=time_block,
                 chat_info=chat_info,
                 reply_target_block=reply_target_block,
                 mood_state=mood_prompt,
                 config_expression_style=config_expression_style,
                 keywords_reaction_prompt=keywords_reaction_prompt,
                 moderation_prompt=moderation_prompt_block,
+                cross_context_block=cross_context_block,
             )
             return result
         else:
             # 使用 s4u 风格的模板
             template_name = "s4u_style_prompt"
             logger.debug(f"[Prompt模式调试] 选择使用s4u模式模板: {template_name} (prompt_mode={current_prompt_mode})")
-            
+
             logger.debug("[Prompt模式调试] s4u模式参数准备完成，开始调用format_prompt")
-            
+
             # 检查s4u模板是否存在
             try:
                 test_prompt = await global_prompt_manager.get_prompt_async(template_name)
                 logger.debug(f"[Prompt模式调试] 找到s4u模板 {template_name}, 内容预览: {test_prompt[:100]}...")
             except Exception as e:
-                #理论上我觉得这玩意没多大可能炸就是了
+                # 理论上我觉得这玩意没多大可能炸就是了
                 logger.error(f"[Prompt模式调试] s4u模板 {template_name} 不存在或获取失败: {e}")
-            
+
             result = await global_prompt_manager.format_prompt(
                 template_name,
                 expression_habits_block=expression_habits_block,
@@ -1119,6 +1204,7 @@ class DefaultReplyer:
                 reply_style=global_config.personality.reply_style,
                 keywords_reaction_prompt=keywords_reaction_prompt,
                 moderation_prompt=moderation_prompt_block,
+                cross_context_block=cross_context_block,
             )
             logger.debug(f"[Prompt模式调试] s4u format_prompt调用完成，结果预览: {result[:200]}...")
             return result
@@ -1139,7 +1225,7 @@ class DefaultReplyer:
         if global_config.mood.enable_mood:
             chat_mood = mood_manager.get_mood_by_chat_id(chat_id)
             mood_prompt = chat_mood.mood_state
-            
+
             # 检查是否有愤怒状态的补充提示词
             angry_prompt_addition = mood_manager.get_angry_prompt_addition(chat_id)
             if angry_prompt_addition:
