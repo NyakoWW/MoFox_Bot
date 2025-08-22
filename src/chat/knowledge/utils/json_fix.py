@@ -58,8 +58,7 @@ def fix_broken_generated_json(json_str: str) -> str:
         # Try to load the JSON to see if it is valid
         json.loads(json_str)
         return json_str  # Return as-is if valid
-    except json.JSONDecodeError:
-        pass
+    except json.JSONDecodeError: ...
 
     # Step 1: Remove trailing content after the last comma.
     last_comma_index = json_str.rfind(",")

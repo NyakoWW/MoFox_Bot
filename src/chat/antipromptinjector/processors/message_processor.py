@@ -17,10 +17,6 @@ logger = get_logger("anti_injector.message_processor")
 class MessageProcessor:
     """消息内容处理器"""
     
-    def __init__(self):
-        """初始化消息处理器"""
-        pass
-    
     def extract_text_content(self, message: MessageRecv) -> str:
         """提取消息中的文本内容，过滤掉引用的历史内容
         
