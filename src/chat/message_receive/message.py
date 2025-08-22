@@ -11,7 +11,7 @@ from maim_message import Seg, UserInfo, BaseMessageInfo, MessageBase
 from src.common.logger import get_logger
 from src.chat.utils.utils_image import get_image_manager
 from src.chat.utils.utils_voice import get_voice_text
-from src.chat.utils.utils_video import get_video
+from src.chat.utils.utils_video import get_video_analyzer
 from src.config.config import global_config
 from .chat_stream import ChatStream
 
@@ -196,7 +196,6 @@ class MessageRecv(Message):
                 self.is_emoji = False
                 self.is_voice = False
                 logger.info(f"接收到视频消息，数据类型: {type(segment.data)}")
-                logger.debug(f"视频数据内容: {segment.data}")
                 if global_config.video_analysis.enable:
                     logger.info("已启用视频识别,开始识别")
                     if isinstance(segment.data, dict):
@@ -214,7 +213,7 @@ class MessageRecv(Message):
                                 logger.info(f"解码后视频大小: {len(video_bytes)} 字节")
                                 
                                 # 使用video analyzer分析视频
-                                video_analyzer = get_video()
+                                video_analyzer = get_video_analyzer()
                                 result = await video_analyzer.analyze_video_from_bytes(
                                     video_bytes, 
                                     filename,
@@ -372,7 +371,6 @@ class MessageRecvS4U(MessageRecv):
                 self.is_emoji = False
                 
                 logger.info(f"接收到视频消息，数据类型: {type(segment.data)}")
-                logger.debug(f"视频数据内容: {segment.data}")
                 if global_config.video_analysis.enable:
                     logger.info("已启用视频识别,开始识别")
                     if isinstance(segment.data, dict):
@@ -390,7 +388,7 @@ class MessageRecvS4U(MessageRecv):
                                 logger.info(f"解码后视频大小: {len(video_bytes)} 字节")
                                 
                                 # 使用video analyzer分析视频
-                                video_analyzer = get_video()
+                                video_analyzer = get_video_analyzer()
                                 result = await video_analyzer.analyze_video_from_bytes(
                                     video_bytes, 
                                     filename,

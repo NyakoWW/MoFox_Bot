@@ -225,7 +225,6 @@ class Videos(Base):
     video_id = Column(Text, nullable=False, default="")
     video_hash = Column(get_string_field(64), nullable=False, index=True, unique=True)
     description = Column(Text, nullable=True)
-    path = Column(get_string_field(500), nullable=False, unique=True)
     count = Column(Integer, nullable=False, default=1)
     timestamp = Column(Float, nullable=False)
     vlm_processed = Column(Boolean, nullable=False, default=False)
@@ -239,7 +238,6 @@ class Videos(Base):
 
     __table_args__ = (
         Index('idx_videos_video_hash', 'video_hash'),
-        Index('idx_videos_path', 'path'),
         Index('idx_videos_timestamp', 'timestamp'),
     )
 

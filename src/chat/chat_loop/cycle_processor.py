@@ -174,6 +174,9 @@ class CycleProcessor:
         - 在FOCUS模式下同步生成确保及时响应
         - 发送生成的回复并结束循环
         """
+        # 初始化reply_to_str以避免UnboundLocalError
+        reply_to_str = None
+        
         if self.context.loop_mode == ChatMode.NORMAL:
             if not gen_task:
                 reply_to_str = await self._build_reply_to_str(message_data)
@@ -185,6 +188,11 @@ class CycleProcessor:
                         request_type="chat.replyer.normal",
                     )
                 )
+            else:
+                # 如果gen_task已存在但reply_to_str还未构建，需要构建它
+                if reply_to_str is None:
+                    reply_to_str = await self._build_reply_to_str(message_data)
+            
             try:
                 response_set = await asyncio.wait_for(gen_task, timeout=global_config.chat.thinking_timeout)
             except asyncio.TimeoutError:

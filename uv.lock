@@ -1979,6 +1979,12 @@ wheels = [
 ]
 
 [[package]]
+name = "lunar-python"
+version = "1.4.4"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/fb/c1/93a993095234d51720e0179204c4b153adc11156ba1baa6b69213f4372d0/lunar_python-1.4.4.tar.gz", hash = "sha256:e14a8cc74a12d5628eaa50d33ec4feceeb44a2c44c74890b895a4e4f5ec17457", size = 106007, upload-time = "2025-04-29T08:14:13.847Z" }
+
+[[package]]
 name = "lxml"
 version = "6.0.0"
 source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
@@ -2079,6 +2085,7 @@ dependencies = [
     { name = "json5" },
     { name = "jsonlines" },
     { name = "langfuse" },
+    { name = "lunar-python" },
     { name = "lxml" },
     { name = "maim-message" },
     { name = "matplotlib" },
@@ -2157,6 +2164,7 @@ requires-dist = [
     { name = "json5", specifier = ">=0.12.1" },
     { name = "jsonlines", specifier = ">=4.0.0" },
     { name = "langfuse", specifier = "==2.46.2" },
+    { name = "lunar-python", specifier = ">=1.4.4" },
     { name = "lxml", specifier = ">=6.0.0" },
     { name = "maim-message", specifier = ">=0.3.8" },
     { name = "matplotlib", specifier = ">=3.10.3" },

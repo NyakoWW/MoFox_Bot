@@ -26,6 +26,7 @@ dependencies = [
     "json5>=0.12.1",
     "jsonlines>=4.0.0",
     "langfuse==2.46.2",
+    "lunar-python>=1.4.4",
     "lxml>=6.0.0",
     "maim-message>=0.3.8",
     "matplotlib>=3.10.3",

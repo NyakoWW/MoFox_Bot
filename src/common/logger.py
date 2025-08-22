@@ -439,7 +439,7 @@ MODULE_COLORS = {
     # 聊天和多媒体扩展
     "chat_voice": "\033[38;5;87m",  # 浅青色
     "typo_gen": "\033[38;5;123m",  # 天蓝色
-    "src.multimodal.video_analyzer": "\033[38;5;75m",  # 亮蓝色
+    "utils_video": "\033[38;5;75m",  # 亮蓝色
     "ReplyerManager": "\033[38;5;173m",  # 浅橙色
     "relationship_builder_manager": "\033[38;5;176m",  # 浅紫色
     "expression_selector": "\033[38;5;176m",
@@ -542,7 +542,7 @@ MODULE_ALIASES = {
     # 聊天和多媒体扩展
     "chat_voice": "语音处理",
     "typo_gen": "错字生成",
-    "src.multimodal.video_analyzer": "视频分析",
+    "src.chat.utils.utils_video": "视频分析",
     "ReplyerManager": "回复管理",
     "relationship_builder_manager": "关系管理",
     
