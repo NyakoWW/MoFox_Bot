@@ -271,7 +271,7 @@ class VectorInstantMemoryV2:
                 return f"{int(diff/3600)}小时前"
             else:
                 return f"{int(diff/86400)}天前"
-        except:
+        except Exception:
             return "时间格式错误"
     
     async def get_memory_for_context(self, current_message: str, context_size: int = 3) -> str:
@@ -318,7 +318,7 @@ class VectorInstantMemoryV2:
             try:
                 result = self.collection.count()
                 stats["total_messages"] = result
-            except:
+            except Exception:
                 stats["total_messages"] = "查询失败"
         
         return stats

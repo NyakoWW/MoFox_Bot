@@ -650,3 +650,39 @@ def get_engine():
     """获取数据库引擎"""
     engine, _ = initialize_database()
     return engine
+
+
+class PermissionNodes(Base):
+    """权限节点模型"""
+    __tablename__ = 'permission_nodes'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    node_name = Column(get_string_field(255), nullable=False, unique=True, index=True)  # 权限节点名称
+    description = Column(Text, nullable=False)  # 权限描述
+    plugin_name = Column(get_string_field(100), nullable=False, index=True)  # 所属插件
+    default_granted = Column(Boolean, default=False, nullable=False)  # 默认是否授权
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)  # 创建时间
+    
+    __table_args__ = (
+        Index('idx_permission_plugin', 'plugin_name'),
+        Index('idx_permission_node', 'node_name'),
+    )
+
+
+class UserPermissions(Base):
+    """用户权限模型"""
+    __tablename__ = 'user_permissions'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    platform = Column(get_string_field(50), nullable=False, index=True)  # 平台类型
+    user_id = Column(get_string_field(100), nullable=False, index=True)  # 用户ID
+    permission_node = Column(get_string_field(255), nullable=False, index=True)  # 权限节点名称
+    granted = Column(Boolean, default=True, nullable=False)  # 是否授权
+    granted_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)  # 授权时间
+    granted_by = Column(get_string_field(100), nullable=True)  # 授权者信息
+    
+    __table_args__ = (
+        Index('idx_user_platform_id', 'platform', 'user_id'),
+        Index('idx_user_permission', 'platform', 'user_id', 'permission_node'),
+        Index('idx_permission_granted', 'permission_node', 'granted'),
+    )

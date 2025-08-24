@@ -458,7 +458,7 @@ class VideoAnalyzer:
                 try:
                     # 等待处理完成的事件信号，最多等待60秒
                     await asyncio.wait_for(video_event.wait(), timeout=60.0)
-                    logger.info(f"✅ 等待结束，检查是否有处理结果")
+                    logger.info("✅ 等待结束，检查是否有处理结果")
                     
                     # 检查是否有结果了
                     existing_video = self._check_video_exists(video_hash)
@@ -466,9 +466,9 @@ class VideoAnalyzer:
                         logger.info(f"✅ 找到了处理结果，直接返回 (id: {existing_video.id})")
                         return {"summary": existing_video.description}
                     else:
-                        logger.warning(f"⚠️ 等待完成但未找到结果，可能处理失败")
+                        logger.warning("⚠️ 等待完成但未找到结果，可能处理失败")
                 except asyncio.TimeoutError:
-                    logger.warning(f"⚠️ 等待超时(60秒)，放弃等待")
+                    logger.warning("⚠️ 等待超时(60秒)，放弃等待")
             
             # 获取锁开始处理
             async with video_lock:

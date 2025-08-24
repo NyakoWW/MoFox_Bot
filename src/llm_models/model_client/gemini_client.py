@@ -12,12 +12,24 @@ from google.generativeai.types import (
 
 try:
     # 尝试从较新的API导入
-    from google.generativeai import configure
     from google.generativeai.types import SafetySetting, GenerationConfig
 except ImportError:
     # 回退到基本类型
     SafetySetting = Dict
     GenerationConfig = Dict
+
+from src.config.api_ada_configs import ModelInfo, APIProvider
+from src.common.logger import get_logger
+from .base_client import APIResponse, UsageRecord, BaseClient, client_registry
+from ..exceptions import (
+    RespParseException,
+    NetworkConnectionError,
+    RespNotOkException,
+    ReqAbortException,
+)
+from ..payload_content.message import Message, RoleType
+from ..payload_content.resp_format import RespFormat, RespFormatType
+from ..payload_content.tool_option import ToolOption, ToolParam, ToolCall
 
 # 定义兼容性类型
 ContentDict = Dict
@@ -49,20 +61,6 @@ class UnsupportedFunctionError(Exception):
 
 class FunctionInvocationError(Exception):
     pass
-
-from src.config.api_ada_configs import ModelInfo, APIProvider
-from src.common.logger import get_logger
-
-from .base_client import APIResponse, UsageRecord, BaseClient, client_registry
-from ..exceptions import (
-    RespParseException,
-    NetworkConnectionError,
-    RespNotOkException,
-    ReqAbortException,
-)
-from ..payload_content.message import Message, RoleType
-from ..payload_content.resp_format import RespFormat, RespFormatType
-from ..payload_content.tool_option import ToolOption, ToolParam, ToolCall
 
 logger = get_logger("Gemini客户端")
 

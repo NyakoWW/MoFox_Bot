@@ -1,5 +1,5 @@
 [inner]
-version = "6.4.3"
+version = "6.4.4"
 
 #----以下是给开发人员阅读的，如果你只是部署了麦麦，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -39,6 +39,14 @@ mysql_sql_mode = "TRADITIONAL" # SQL模式
 # 连接池配置
 connection_pool_size = 10 # 连接池大小（仅MySQL有效）
 connection_timeout = 10 # 连接超时时间（秒）
+
+[permission] # 权限系统配置
+# Master用户配置（拥有最高权限，无视所有权限节点）
+# 格式：[[platform, user_id], ...]
+# 示例：[["qq", "123456"], ["telegram", "user789"]]
+master_users = [
+    # ["qq", "123456789"],  # 示例：QQ平台的Master用户
+]
 
 [bot]
 platform = "qq"

@@ -1,7 +1,6 @@
 import asyncio
 import time
 import traceback
-import re
 from typing import Optional
 
 from src.common.logger import get_logger

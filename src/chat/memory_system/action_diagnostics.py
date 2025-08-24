@@ -214,7 +214,7 @@ class ActionDiagnostics:
                 raise Exception("注册失败")
                 
         except Exception as e:
-            raise Exception(f"手动注册no_reply Action失败: {e}")
+            raise Exception(f"手动注册no_reply Action失败: {e}") from e
     
     def run_full_diagnosis(self) -> Dict[str, Any]:
         """运行完整诊断"""

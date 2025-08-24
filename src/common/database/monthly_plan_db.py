@@ -19,7 +19,7 @@ def add_new_plans(plans: List[str], month: str):
             # 1. 获取当前有效计划数量
             current_plan_count = session.query(MonthlyPlan).filter(
                 MonthlyPlan.target_month == month,
-                MonthlyPlan.is_deleted == False
+                not MonthlyPlan.is_deleted
             ).count()
 
             # 2. 从配置获取上限
@@ -62,7 +62,7 @@ def get_active_plans_for_month(month: str) -> List[MonthlyPlan]:
         try:
             plans = session.query(MonthlyPlan).filter(
                 MonthlyPlan.target_month == month,
-                MonthlyPlan.is_deleted == False
+                not MonthlyPlan.is_deleted
             ).all()
             return plans
         except Exception as e:

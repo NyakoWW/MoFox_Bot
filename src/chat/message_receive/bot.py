@@ -16,11 +16,9 @@ from src.chat.utils.prompt_builder import Prompt, global_prompt_manager
 from src.plugin_system.core import component_registry, events_manager, global_announcement_manager
 from src.plugin_system.base import BaseCommand, EventType
 from src.mais4u.mais4u_chat.s4u_msg_processor import S4UMessageProcessor
-from src.plugin_system.apis import send_api
 
 # 导入反注入系统
-from src.chat.antipromptinjector import get_anti_injector, initialize_anti_injector
-from src.chat.antipromptinjector.types import ProcessResult
+from src.chat.antipromptinjector import initialize_anti_injector
 
 # 定义日志配置
 
