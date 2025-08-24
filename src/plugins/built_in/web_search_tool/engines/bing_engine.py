@@ -183,7 +183,7 @@ class BingSearchEngine(BaseSearchEngine):
             results = root.select("ol#b_results li.b_algo")
             
             if results:
-                for rank, result in enumerate(results, 1):
+                for _rank, result in enumerate(results, 1):
                     # 提取标题和链接
                     title_link = result.select_one("h2 a")
                     if not title_link:

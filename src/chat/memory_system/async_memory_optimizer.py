@@ -131,7 +131,7 @@ class AsyncMemoryQueue:
                         await task.callback(None)
                     else:
                         task.callback(None)
-                except:
+                except Exception:
                     pass
     
     async def _handle_store_task(self, task: MemoryTask) -> Any:

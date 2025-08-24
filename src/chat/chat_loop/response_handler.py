@@ -142,11 +142,10 @@ class ResponseHandler:
             
             # 修正：正确处理元组格式 (格式为: (type, content))
             if isinstance(reply_seg, tuple) and len(reply_seg) >= 2:
-                reply_type, data = reply_seg
+                _, data = reply_seg
             else:
                 # 向下兼容：如果已经是字符串，则直接使用
                 data = str(reply_seg)
-                reply_type = "text"
             
             reply_text += data
 

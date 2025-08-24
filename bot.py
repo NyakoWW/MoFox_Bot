@@ -22,14 +22,15 @@ else:
 
 # 最早期初始化日志系统，确保所有后续模块都使用正确的日志格式
 from src.common.logger import initialize_logging, get_logger, shutdown_logging
+
 initialize_logging()
 
-from src.main import MainSystem #noqa
-from src import BaseMain
-from src.manager.async_task_manager import async_task_manager #noqa
-from src.config.config import global_config
-from src.common.database.database import initialize_sql_database
-from src.common.database.sqlalchemy_models import initialize_database as init_db
+from src.main import MainSystem  # noqa
+from src import BaseMain  # noqa
+from src.manager.async_task_manager import async_task_manager  # noqa
+from src.config.config import global_config  # noqa
+from src.common.database.database import initialize_sql_database  # noqa
+from src.common.database.sqlalchemy_models import initialize_database as init_db  # noqa
         
 
 logger = get_logger("main")

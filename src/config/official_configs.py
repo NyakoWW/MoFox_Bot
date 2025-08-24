@@ -697,3 +697,10 @@ class CrossContextConfig(ValidatedConfigBase):
     """跨群聊上下文共享配置"""
     enable: bool = Field(default=False, description="是否启用跨群聊上下文共享功能")
     groups: List[ContextGroup] = Field(default_factory=list, description="上下文共享组列表")
+
+
+class PermissionConfig(ValidatedConfigBase):
+    """权限系统配置类"""
+    
+    # Master用户配置（拥有最高权限，无视所有权限节点）
+    master_users: List[List[str]] = Field(default_factory=list, description="Master用户列表，格式: [[platform, user_id], ...]")

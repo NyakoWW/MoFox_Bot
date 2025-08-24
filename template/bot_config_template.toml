@@ -40,6 +40,14 @@ mysql_sql_mode = "TRADITIONAL" # SQL模式
 connection_pool_size = 10 # 连接池大小（仅MySQL有效）
 connection_timeout = 10 # 连接超时时间（秒）
 
+[permission] # 权限系统配置
+# Master用户配置（拥有最高权限，无视所有权限节点）
+# 格式：[[platform, user_id], ...]
+# 示例：[["qq", "123456"], ["telegram", "user789"]]
+master_users = [
+    # ["qq", "123456789"],  # 示例：QQ平台的Master用户
+]
+
 [bot]
 platform = "qq"
 qq_account = 1145141919810 # 麦麦的QQ账号

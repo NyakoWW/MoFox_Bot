@@ -147,6 +147,13 @@ MaiMbot-Pro-Max(第三方修改版)
         # 添加统计信息输出任务
         await async_task_manager.add_task(StatisticOutputTask())
 
+        # 初始化权限管理器
+        from src.plugin_system.core.permission_manager import PermissionManager
+        from src.plugin_system.apis.permission_api import permission_api
+        permission_manager = PermissionManager()
+        permission_api.set_permission_manager(permission_manager)
+        logger.info("权限管理器初始化成功")
+
         # 启动API服务器
         # start_api_server()
         # logger.info("API服务器启动成功")

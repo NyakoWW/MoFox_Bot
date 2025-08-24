@@ -340,7 +340,7 @@ class QZoneService:
                     retry_delay *= 2
                     continue
                 logger.error(f"无法连接到Napcat服务(最终尝试): {url}，错误: {str(e)}")
-                raise RuntimeError(f"无法连接到Napcat服务: {url}")
+                raise RuntimeError(f"无法连接到Napcat服务: {url}") from e
             except Exception as e:
                 logger.error(f"获取cookie异常: {str(e)}")
                 raise
@@ -718,7 +718,8 @@ class QZoneService:
                 
                 feeds_list = []
                 for feed in feeds_data:
-                    if not feed: continue
+                    if not feed:
+                        continue
 
                     # 过滤非说说动态
                     if str(feed.get('appid', '')) != '311':
