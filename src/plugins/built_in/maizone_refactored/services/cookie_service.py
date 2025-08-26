@@ -58,7 +58,7 @@ class CookieService:
             else:
                 response = await send_api.adapter_command_to_stream(action="get_cookies", params=params, platform="qq", timeout=40.0)
 
-            if response.get("status") == "ok":
+            if response and response.get("status") == "ok":
                 cookie_str = response.get("data", {}).get("cookies", "")
                 if cookie_str:
                     return {k.strip(): v.strip() for k, v in (p.split('=', 1) for p in cookie_str.split('; ') if '=' in p)}
