@@ -87,12 +87,6 @@ class ChatConfig(ValidatedConfigBase):
     proactive_thinking_enable_in_private: List[str] = Field(default_factory=list, description="启用主动思考的私聊范围，格式：platform:user_id，为空则不限制")
     proactive_thinking_enable_in_groups: List[str] = Field(default_factory=list, description="启用主动思考的群聊范围，格式：platform:group_id，为空则不限制")
     delta_sigma: int = Field(default=120, description="采用正态分布随机时间间隔")
-    proactive_thinking_prompt_template: str = Field(default="""现在群里面已经隔了{time}没有人发送消息了，请你结合上下文以及群聊里面之前聊过的话题和你的人设来决定要不要主动发送消息，你可以选择：
-
-1. 继续保持沉默（当{time}以前已经结束了一个话题并且你不想挑起新话题时）
-2. 选择回复（当{time}以前你发送了一条消息且没有人回复你时、你想主动挑起一个话题时）
-
-请根据当前情况做出选择。如果选择回复，请直接发送你想说的内容；如果选择保持沉默，请只回复"沉默"（注意：这个词不会被发送到群聊中）。""", description="主动思考提示模板")
 
     def get_current_talk_frequency(self, chat_stream_id: Optional[str] = None) -> float:
         """
@@ -525,12 +519,6 @@ class ResponseSplitterConfig(ValidatedConfigBase):
     enable_kaomoji_protection: bool = Field(default=False, description="启用颜文字保护")
 
 
-class TelemetryConfig(ValidatedConfigBase):
-    """遥测配置类"""
-
-    enable: bool = Field(default=True, description="启用")
-
-
 class DebugConfig(ValidatedConfigBase):
     """调试配置类"""
 
@@ -539,8 +527,6 @@ class DebugConfig(ValidatedConfigBase):
 
 class ExperimentalConfig(ValidatedConfigBase):
     """实验功能配置类"""
-
-    enable_friend_chat: bool = Field(default=False, description="启用好友聊天")
     pfc_chatting: bool = Field(default=False, description="启用PFC聊天")
 
 
@@ -600,20 +586,6 @@ class DependencyManagementConfig(ValidatedConfigBase):
 
 
 
-class ExaConfig(ValidatedConfigBase):
-    """EXA搜索引擎配置类"""
-
-    api_keys: list[str] = Field(default_factory=lambda: [], description="API密钥列表")
-
-
-
-class TavilyConfig(ValidatedConfigBase):
-    """Tavily搜索引擎配置类"""
-
-    api_keys: list[str] = Field(default_factory=lambda: [], description="API密钥列表")
-
-
-
 class VideoAnalysisConfig(ValidatedConfigBase):
     """视频分析配置类"""
 
@@ -633,6 +605,8 @@ class WebSearchConfig(ValidatedConfigBase):
 
     enable_web_search_tool: bool = Field(default=True, description="启用网络搜索工具")
     enable_url_tool: bool = Field(default=True, description="启用URL工具")
+    tavily_api_keys: list[str] = Field(default_factory=lambda: [], description="Tavily API密钥列表，支持轮询机制")
+    exa_api_keys: list[str] = Field(default_factory=lambda: [], description="exa API密钥列表，支持轮询机制")
     enabled_engines: list[str] = Field(default_factory=lambda: ["ddg"], description="启用的搜索引擎")
     search_strategy: Literal["fallback","single","parallel"] = Field(default="single", description="搜索策略")
 
