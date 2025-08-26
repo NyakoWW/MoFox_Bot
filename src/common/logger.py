@@ -485,6 +485,33 @@ MODULE_COLORS = {
     # 其他工具
     "消息压缩工具": "\033[38;5;244m",  # 灰色
     "lpmm_get_knowledge_tool": "\033[38;5;102m",  # 绿色
+    "message_chunker": "\033[38;5;244m",
+    "plan_generator": "\033[38;5;171m",
+    "Permission": "\033[38;5;196m",
+    "web_search_plugin": "\033[38;5;130m",
+    "url_parser_tool": "\033[38;5;130m",
+    "api_key_manager": "\033[38;5;130m",
+    "tavily_engine": "\033[38;5;130m",
+    "exa_engine": "\033[38;5;130m",
+    "ddg_engine": "\033[38;5;130m",
+    "bing_engine": "\033[38;5;130m",
+    "vector_instant_memory_v2": "\033[38;5;117m",
+    "async_memory_optimizer": "\033[38;5;117m",
+    "async_instant_memory_wrapper": "\033[38;5;117m",
+    "action_diagnostics": "\033[38;5;214m",
+    "anti_injector.message_processor": "\033[38;5;196m",
+    "anti_injector.user_ban": "\033[38;5;196m",
+    "anti_injector.statistics": "\033[38;5;196m",
+    "anti_injector.decision_maker": "\033[38;5;196m",
+    "anti_injector.counter_attack": "\033[38;5;196m",
+    "hfc.processor": "\033[38;5;81m",
+    "hfc.normal_mode": "\033[38;5;81m",
+    "wakeup": "\033[38;5;81m",
+    "cache_manager": "\033[38;5;244m",
+    "monthly_plan_db": "\033[38;5;94m",
+    "db_migration": "\033[38;5;94m",
+    "小彩蛋": "\033[38;5;214m",
+    "AioHTTP-Gemini客户端": "\033[38;5;81m",
 }
 
 # 定义模块别名映射 - 将真实的logger名称映射到显示的别名
@@ -531,6 +558,7 @@ MODULE_ALIASES = {
     "base_event_handler": "事件处理",
     "events_manager": "事件管理",
     "global_announcement_manager": "全局通知",
+    "event_manager"
     
     # 工具和依赖管理
     "dependency_config": "依赖配置",
@@ -585,6 +613,34 @@ MODULE_ALIASES = {
     # 其他工具
     "消息压缩工具": "消息压缩",
     "lpmm_get_knowledge_tool": "知识获取",
+    "message_chunker": "消息分块",
+    "plan_generator": "计划生成",
+    "Permission": "权限管理",
+    "web_search_plugin": "网页搜索插件",
+    "url_parser_tool": "URL解析工具",
+    "api_key_manager": "API密钥管理",
+    "tavily_engine": "Tavily引擎",
+    "exa_engine": "Exa引擎",
+    "ddg_engine": "DDG引擎",
+    "bing_engine": "Bing引擎",
+    "vector_instant_memory_v2": "向量瞬时记忆",
+    "async_memory_optimizer": "异步记忆优化器",
+    "async_instant_memory_wrapper": "异步瞬时记忆包装器",
+    "action_diagnostics": "动作诊断",
+    "anti_injector.message_processor": "反注入消息处理器",
+    "anti_injector.user_ban": "反注入用户封禁",
+    "anti_injector.statistics": "反注入统计",
+    "anti_injector.decision_maker": "反注入决策者",
+    "anti_injector.counter_attack": "反注入反击",
+    "hfc.processor": "聊天节奏处理器",
+    "hfc.normal_mode": "聊天节奏普通模式",
+    "wakeup": "唤醒",
+    "cache_manager": "缓存管理",
+    "monthly_plan_db": "月度计划数据库",
+    "db_migration": "数据库迁移",
+    "小彩蛋": "小彩蛋",
+    "AioHTTP-Gemini客户端": "AioHTTP-Gemini客户端",
+    "event_manager" : "事件管理器"
 }
 
 RESET_COLOR = "\033[0m"
