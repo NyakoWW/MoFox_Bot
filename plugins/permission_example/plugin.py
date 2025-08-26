@@ -11,7 +11,7 @@ from src.plugin_system.base.base_plugin import BasePlugin
 from src.plugin_system.base.base_command import BaseCommand
 from src.plugin_system.apis.logging_api import get_logger
 from src.plugin_system.base.config_types import ConfigField
-from src.plugin_system.utils.permission_decorators import require_permission, require_master, PermissionChecker
+from src.plugin_system.utils.permission_decorators import require_permission, require_master
 from src.common.message import ChatStream, Message
 
 

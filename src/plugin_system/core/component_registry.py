@@ -10,14 +10,12 @@ from src.plugin_system.base.component_types import (
     CommandInfo,
     EventHandlerInfo,
     PluginInfo,
-    EventInfo,
     ComponentType,
 )
 from src.plugin_system.base.base_command import BaseCommand
 from src.plugin_system.base.base_action import BaseAction
 from src.plugin_system.base.base_tool import BaseTool
 from src.plugin_system.base.base_events_handler import BaseEventHandler
-from src.plugin_system.base.base_event import BaseEvent
 
 logger = get_logger("component_registry")
 

@@ -4,7 +4,6 @@
 if __name__ == "__main__":
     # 设置Python路径并执行bot.py
     import sys
-    import os
     from pathlib import Path
     
     # 添加当前目录到Python路径

@@ -20,6 +20,7 @@ from src.plugin_system.apis import (
     tool_api,
     permission_api,
 )
+from src.plugin_system.apis.chat_api import ChatManager as context_api
 from .logging_api import get_logger
 from .plugin_register_api import register_plugin
 
@@ -40,4 +41,5 @@ __all__ = [
     "register_plugin",
     "tool_api",
     "permission_api",
+    "context_api",
 ]
