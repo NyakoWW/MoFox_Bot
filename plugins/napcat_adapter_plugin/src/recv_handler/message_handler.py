@@ -1,3 +1,5 @@
+from ...event_types import NapcatEvent
+from src.plugin_system.core.event_manager import event_manager
 from src.common.logger import get_logger
 logger = get_logger("napcat_adapter")
 
@@ -327,12 +329,14 @@ class MessageHandler:
                 case RealMessageType.text:
                     ret_seg = await self.handle_text_message(sub_message)
                     if ret_seg:
+                        await event_manager.trigger_event(NapcatEvent.ON_RECEIVED_TEXT,message_seg=ret_seg)   
                         seg_message.append(ret_seg)
                     else:
                         logger.warning("text处理失败")
                 case RealMessageType.face:
                     ret_seg = await self.handle_face_message(sub_message)
                     if ret_seg:
+                        await event_manager.trigger_event(NapcatEvent.ON_RECEIVED_FACE,message_seg=ret_seg)
                         seg_message.append(ret_seg)
                     else:
                         logger.warning("face处理失败或不支持")
@@ -340,6 +344,7 @@ class MessageHandler:
                     if not in_reply:
                         ret_seg = await self.handle_reply_message(sub_message)
                         if ret_seg:
+                            await event_manager.trigger_event(NapcatEvent.ON_RECEIVED_REPLY,message_seg=ret_seg)
                             seg_message += ret_seg
                         else:
                             logger.warning("reply处理失败")
@@ -347,6 +352,7 @@ class MessageHandler:
                     logger.debug(f"开始处理图片消息段")
                     ret_seg = await self.handle_image_message(sub_message)
                     if ret_seg:
+                        await event_manager.trigger_event(NapcatEvent.ON_RECEIVED_IMAGE,message_seg=ret_seg)
                         seg_message.append(ret_seg)
                         logger.debug(f"图片处理成功，添加到消息段")
                     else:
@@ -355,6 +361,7 @@ class MessageHandler:
                 case RealMessageType.record:
                     ret_seg = await self.handle_record_message(sub_message)
                     if ret_seg:
+                        await event_manager.trigger_event(NapcatEvent.ON_RECEIVED_RECORD,message_seg=ret_seg)
                         seg_message.clear()
                         seg_message.append(ret_seg)
                         break  # 使得消息只有record消息
@@ -363,6 +370,7 @@ class MessageHandler:
                 case RealMessageType.video:
                     ret_seg = await self.handle_video_message(sub_message)
                     if ret_seg:
+                        await event_manager.trigger_event(NapcatEvent.ON_RECEIVED_VIDEO,message_seg=ret_seg)
                         seg_message.append(ret_seg)
                     else:
                         logger.warning("video处理失败")
@@ -373,17 +381,33 @@ class MessageHandler:
                         raw_message.get("group_id"),
                     )
                     if ret_seg:
+                        await event_manager.trigger_event(NapcatEvent.ON_RECEIVED_AT,message_seg=ret_seg)
                         seg_message.append(ret_seg)
                     else:
                         logger.warning("at处理失败")
                 case RealMessageType.rps:
-                    logger.warning("暂时不支持猜拳魔法表情解析")
+                    ret_seg = await self.handle_rps_message(sub_message)
+                    if ret_seg:
+                        await event_manager.trigger_event(NapcatEvent.ON_RECEIVED_RPS,message_seg=ret_seg)
+                        seg_message.append(ret_seg)
+                    else:
+                        logger.warning("rps处理失败")
                 case RealMessageType.dice:
-                    logger.warning("暂时不支持骰子表情解析")
+                    ret_seg = await self.handle_dice_message(sub_message)
+                    if ret_seg:
+                        await event_manager.trigger_event(NapcatEvent.ON_RECEIVED_DICE,message_seg=ret_seg)
+                        seg_message.append(ret_seg)
+                    else:
+                        logger.warning("dice处理失败")
                 case RealMessageType.shake:
-                    # 预计等价于戳一戳
-                    logger.warning("暂时不支持窗口抖动解析")
+                    ret_seg = await self.handle_shake_message(sub_message)
+                    if ret_seg:
+                        await event_manager.trigger_event(NapcatEvent.ON_RECEIVED_SHAKE,message_seg=ret_seg)
+                        seg_message.append(ret_seg)
+                    else:
+                        logger.warning("shake处理失败")
                 case RealMessageType.share:
+                    print("\n\n哦哦哦噢噢噢哦哦你收到了一个超级无敌SHARE消息，快速速把你刚刚收到的消息截图发到MoFox-Bot群里！！！！\n\n")
                     logger.warning("暂时不支持链接解析")
                 case RealMessageType.forward:
                     messages = await self._get_forward_message(sub_message)
@@ -396,7 +420,15 @@ class MessageHandler:
                     else:
                         logger.warning("转发消息处理失败")
                 case RealMessageType.node:
+                    print("\n\n哦哦哦噢噢噢哦哦你收到了一个超级无敌NODE消息，快速速把你刚刚收到的消息截图发到MoFox-Bot群里！！！！\n\n")
                     logger.warning("不支持转发消息节点解析")
+                case RealMessageType.json:
+                    ret_seg = await self.handle_json_message(sub_message)
+                    if ret_seg:
+                        await event_manager.trigger_event(NapcatEvent.ON_RECEIVED_JSON,message_seg=ret_seg)
+                        seg_message.append(ret_seg)
+                    else:
+                        logger.warning("json处理失败")
                 case _:
                     logger.warning(f"未知消息类型: {sub_message_type}")
         
@@ -643,25 +675,49 @@ class MessageHandler:
         processed_message: Seg
         if image_count < 5 and image_count > 0:
             # 处理图片数量小于5的情况，此时解析图片为base64
-            logger.trace("图片数量小于5，开始解析图片为base64")
+            logger.info("图片数量小于5，开始解析图片为base64")
             processed_message = await self._recursive_parse_image_seg(
                 handled_message, True
             )
         elif image_count > 0:
-            logger.trace("图片数量大于等于5，开始解析图片为占位符")
+            logger.info("图片数量大于等于5，开始解析图片为占位符")
             # 处理图片数量大于等于5的情况，此时解析图片为占位符
             processed_message = await self._recursive_parse_image_seg(
                 handled_message, False
             )
         else:
             # 处理没有图片的情况，此时直接返回
-            logger.trace("没有图片，直接返回")
+            logger.info("没有图片，直接返回")
             processed_message = handled_message
 
         # 添加转发消息提示
         forward_hint = Seg(type="text", data="这是一条转发消息：\n")
         return Seg(type="seglist", data=[forward_hint, processed_message])
 
+    async def handle_dice_message(self, raw_message: dict) -> Seg:
+        message_data: dict = raw_message.get("data",{})
+        res = message_data.get("result","")
+        return Seg(type="text", data=f"[扔了一个骰子，点数是{res}]")
+
+    async def handle_shake_message(self, raw_message: dict) -> Seg:
+        return Seg(type="text", data="[向你发送了窗口抖动，现在你的屏幕猛烈地震了一下！]")
+    
+    async def handle_json_message(self, raw_message: dict) -> Seg:
+        message_data: str = raw_message.get("data","").get("data","")
+        res = json.loads(message_data)
+        return Seg(type="json", data=res)
+
+    async def handle_rps_message(self, raw_message: dict) -> Seg:
+        message_data: dict = raw_message.get("data",{})
+        res = message_data.get("result","")
+        if res == "1":
+            shape = "布"
+        elif res == "2":
+            shape = "剪刀"
+        else:
+            shape = "石头"
+        return Seg(type="text", data=f"[发送了一个魔法猜拳表情，结果是：{shape}]")
+    
     async def _recursive_parse_image_seg(self, seg_data: Seg, to_image: bool) -> Seg:
         # sourcery skip: merge-else-if-into-elif
         if to_image:
@@ -688,7 +744,7 @@ class MessageHandler:
                     return Seg(type="text", data="[表情包]")
                 return Seg(type="emoji", data=encoded_image)
             else:
-                logger.trace(f"不处理类型: {seg_data.type}")
+                logger.info(f"不处理类型: {seg_data.type}")
                 return seg_data
         else:
             if seg_data.type == "seglist":
@@ -702,7 +758,7 @@ class MessageHandler:
             elif seg_data.type == "emoji":
                 return Seg(type="text", data="[动画表情]")
             else:
-                logger.trace(f"不处理类型: {seg_data.type}")
+                logger.info(f"不处理类型: {seg_data.type}")
                 return seg_data
 
     async def _handle_forward_message(self, message_list: list, layer: int) -> Tuple[Seg, int] | Tuple[None, int]:

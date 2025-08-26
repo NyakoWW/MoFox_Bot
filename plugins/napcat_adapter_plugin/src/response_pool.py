@@ -12,7 +12,7 @@ response_time_dict: Dict = {}
 async def get_response(request_id: str, timeout: int = 10) -> dict:
     response = await asyncio.wait_for(_get_response(request_id), timeout)
     _ = response_time_dict.pop(request_id)
-    logger.trace(f"响应信息id: {request_id} 已从响应字典中取出")
+    logger.info(f"响应信息id: {request_id} 已从响应字典中取出")
     return response
 
 async def _get_response(request_id: str) -> dict:
@@ -28,7 +28,7 @@ async def put_response(response: dict):
     now_time = time.time()
     response_dict[echo_id] = response
     response_time_dict[echo_id] = now_time
-    logger.trace(f"响应信息id: {echo_id} 已存入响应字典")
+    logger.info(f"响应信息id: {echo_id} 已存入响应字典")
 
 
 async def check_timeout_response() -> None:

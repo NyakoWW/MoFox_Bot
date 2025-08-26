@@ -35,6 +35,7 @@ class NoticeType:  # 通知事件
 
     class Notify:
         poke = "poke"  # 戳一戳
+        input_status = "input_status" # 正在输入
 
     class GroupBan:
         ban = "ban"  # 禁言
@@ -56,6 +57,7 @@ class RealMessageType:  # 实际消息分类
     reply = "reply"  # 回复消息
     forward = "forward"  # 转发消息
     node = "node"  # 转发消息节点
+    json = "json"  # json消息
 
 
 class MessageSentType:

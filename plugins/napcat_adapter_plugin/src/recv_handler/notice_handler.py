@@ -115,6 +115,10 @@ class NoticeHandler:
                             handled_message, user_info = await self.handle_poke_notify(raw_message, group_id, user_id)
                         else:
                             logger.warning("戳一戳消息被禁用，取消戳一戳处理")
+                    case NoticeType.Notify.input_status:
+                        from src.plugin_system.core.event_manager import event_manager
+                        from ...event_types import NapcatEvent
+                        await event_manager.trigger_event(NapcatEvent.ON_FRIEND_INPUT)
                     case _:
                         logger.warning(f"不支持的notify类型: {notice_type}.{sub_type}")
             case NoticeType.group_ban:
