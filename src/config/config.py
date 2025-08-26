@@ -47,7 +47,8 @@ from src.config.official_configs import (
     WakeUpSystemConfig,
     MonthlyPlanSystemConfig,
     CrossContextConfig,
-    PermissionConfig
+    PermissionConfig,
+    MaizoneIntercomConfig,
 )
 
 from .api_ada_configs import (
@@ -396,6 +397,7 @@ class Config(ValidatedConfigBase):
     wakeup_system: WakeUpSystemConfig = Field(default_factory=lambda: WakeUpSystemConfig(), description="唤醒度系统配置")
     monthly_plan_system: MonthlyPlanSystemConfig = Field(default_factory=lambda: MonthlyPlanSystemConfig(), description="月层计划系统配置")
     cross_context: CrossContextConfig = Field(default_factory=lambda: CrossContextConfig(), description="跨群聊上下文共享配置")
+    maizone_intercom: MaizoneIntercomConfig = Field(default_factory=lambda: MaizoneIntercomConfig(), description="Maizone互通组配置")
 
 
 class APIAdapterConfig(ValidatedConfigBase):

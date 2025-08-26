@@ -3,7 +3,7 @@
 内容服务模块
 负责生成所有与QQ空间相关的文本内容，例如说说、评论等。
 """
-from typing import Callable
+from typing import Callable, Optional
 import datetime
 
 from src.common.logger import get_logger
@@ -28,11 +28,12 @@ class ContentService:
         """
         self.get_config = get_config
 
-    async def generate_story(self, topic: str) -> str:
+    async def generate_story(self, topic: str, context: Optional[str] = None) -> str:
         """
-        根据指定主题生成一条QQ空间说说。
+        根据指定主题和可选的上下文生成一条QQ空间说说。
 
         :param topic: 说说的主题。
+        :param context: 可选的聊天上下文。
         :return: 生成的说说内容，如果失败则返回空字符串。
         """
         try:
@@ -57,22 +58,18 @@ class ContentService:
             weekday = weekday_names[now.weekday()]
 
             # 构建提示词
-            if topic:
-                prompt = f"""
-                你是'{bot_personality}'，现在是{current_time}（{weekday}），你想写一条主题是'{topic}'的说说发表在qq空间上，
-                {bot_expression}
-                不要刻意突出自身学科背景，不要浮夸，不要夸张修辞，可以适当使用颜文字，
-                你可以在说说中自然地提及当前的时间（如"今天"、"现在"、"此刻"等），让说说更贴近发布时间，
-                只输出一条说说正文的内容，不要有其他的任何正文以外的冗余输出
-                """
-            else:
-                prompt = f"""
-                你是'{bot_personality}'，现在是{current_time}（{weekday}），你想写一条说说发表在qq空间上，主题不限
-                {bot_expression}
-                不要刻意突出自身学科背景，不要浮夸，不要夸张修辞，可以适当使用颜文字，
-                你可以在说说中自然地提及当前的时间（如"今天"、"现在"、"此刻"等），让说说更贴近发布时间，
-                只输出一条说说正文的内容，不要有其他的任何正文以外的冗余输出
-                """
+            prompt_topic = f"主题是'{topic}'" if topic else "主题不限"
+            prompt = f"""
+            你是'{bot_personality}'，现在是{current_time}（{weekday}），你想写一条{prompt_topic}的说说发表在qq空间上。
+            {bot_expression}
+            不要刻意突出自身学科背景，不要浮夸，不要夸张修辞，可以适当使用颜文字。
+            你可以在说说中自然地提及当前的时间（如"今天"、"现在"、"此刻"等），让说说更贴近发布时间。
+            只输出一条说说正文的内容，不要有其他的任何正文以外的冗余输出。
+            """
+
+            # 如果有上下文，则加入到prompt中
+            if context:
+                prompt += f"\n作为参考，这里有一些最近的聊天记录：\n---\n{context}\n---"
 
             # 添加历史记录以避免重复
             prompt += "\n以下是你以前发过的说说，写新说说时注意不要在相隔不长的时间发送相同主题的说说"

@@ -18,8 +18,6 @@ from pathlib import Path
 from typing import List, Tuple, Optional, Dict
 import io
 from concurrent.futures import ThreadPoolExecutor
-from functools import partial
-import numpy as np
 
 from src.llm_models.utils_model import LLMRequest
 from src.config.config import global_config, model_config

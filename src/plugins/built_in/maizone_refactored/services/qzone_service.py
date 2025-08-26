@@ -17,7 +17,12 @@ import aiohttp
 import bs4
 import json5
 from src.common.logger import get_logger
-from src.plugin_system.apis import config_api, person_api
+from src.plugin_system.apis import config_api, person_api,chat_api
+from src.chat.message_receive.chat_stream import get_chat_manager
+from src.chat.utils.chat_message_builder import (
+    build_readable_messages_with_id,
+    get_raw_msg_by_timestamp_with_chat,
+)
 
 from .content_service import ContentService
 from .image_service import ImageService
@@ -55,7 +60,10 @@ class QZoneService:
 
     async def send_feed(self, topic: str, stream_id: Optional[str]) -> Dict[str, Any]:
         """发送一条说说"""
-        story = await self.content_service.generate_story(topic)
+        # --- 获取互通组上下文 ---
+        context = await self._get_intercom_context(stream_id) if stream_id else None
+        
+        story = await self.content_service.generate_story(topic, context=context)
         if not story:
             return {"success": False, "message": "生成说说内容失败"}
 
@@ -166,6 +174,65 @@ class QZoneService:
             logger.error(f"监控好友动态时发生异常: {e}", exc_info=True)
 
     # --- Internal Helper Methods ---
+
+    async def _get_intercom_context(self, stream_id: str) -> Optional[str]:
+        """
+        根据 stream_id 查找其所属的互通组，并构建该组的聊天上下文。
+
+        Args:
+            stream_id: 需要查找的当前聊天流ID。
+
+        Returns:
+            如果找到匹配的组，则返回一个包含聊天记录的字符串；否则返回 None。
+        """
+        intercom_config = config_api.get_global_config("maizone_intercom")
+        if not (intercom_config and intercom_config.enable):
+            return None
+
+        chat_manager = get_chat_manager()
+        bot_platform = config_api.get_global_config('bot.platform')
+
+        for group in intercom_config.groups:
+            # 使用集合以优化查找效率
+            group_stream_ids = {
+                chat_manager.get_stream_id(bot_platform, chat_id, True)
+                for chat_id in group.chat_ids
+            }
+
+            if stream_id in group_stream_ids:
+                logger.debug(f"Stream ID '{stream_id}' 在互通组 '{getattr(group, 'name', 'Unknown')}' 中找到，正在构建上下文。")
+                
+                all_messages = []
+                end_time = time.time()
+                start_time = end_time - (3 * 24 * 60 * 60)  # 获取过去3天的消息
+
+                for chat_id in group.chat_ids:
+                    # 使用正确的函数获取历史消息
+                    messages = get_raw_msg_by_timestamp_with_chat(
+                        chat_id=chat_id,
+                        timestamp_start=start_time,
+                        timestamp_end=end_time,
+                        limit=20, # 每个聊天最多获取20条
+                        limit_mode="latest"
+                    )
+                    all_messages.extend(messages)
+
+                if not all_messages:
+                    return None
+
+                # 按时间戳对所有消息进行排序
+                all_messages.sort(key=lambda x: x.get("time", 0))
+                
+                # 限制总消息数，例如最多100条
+                if len(all_messages) > 100:
+                    all_messages = all_messages[-100:]
+
+                # build_readable_messages_with_id 返回一个元组 (formatted_string, message_id_list)
+                formatted_string, _ = build_readable_messages_with_id(all_messages)
+                return formatted_string
+
+        logger.debug(f"Stream ID '{stream_id}' 未在任何互通组中找到。")
+        return None
 
     async def _reply_to_own_feed_comments(self, feed: Dict, api_client: Dict):
         """处理对自己说说的评论并进行回复"""
@@ -290,15 +357,15 @@ class QZoneService:
             if cookie_data and "cookies" in cookie_data:
                 cookie_str = cookie_data["cookies"]
                 parsed_cookies = {k.strip(): v.strip() for k, v in (p.split('=', 1) for p in cookie_str.split('; ') if '=' in p)}
-                with open(cookie_file_path, "w", encoding="utf-8") as f:
-                    orjson.dump(parsed_cookies, f)
+                with open(cookie_file_path, "wb") as f:
+                    f.write(orjson.dumps(parsed_cookies))
                 logger.info(f"Cookie已更新并保存至: {cookie_file_path}")
                 return parsed_cookies
 
             # 如果HTTP获取失败，尝试读取本地文件
             if cookie_file_path.exists():
-                with open(cookie_file_path, "r", encoding="utf-8") as f:
-                    return orjson.loads(f)
+                with open(cookie_file_path, "rb") as f:
+                    return orjson.loads(f.read())
             return None
         except Exception as e:
             logger.error(f"更新或加载Cookie时发生异常: {e}")
@@ -682,25 +749,23 @@ class QZoneService:
                 
                 # 处理不同的响应格式
                 json_str = ""
-                # 使用strip()处理可能存在的前后空白字符
                 stripped_res_text = res_text.strip()
                 if stripped_res_text.startswith('_Callback(') and stripped_res_text.endswith(');'):
-                    # JSONP格式
                     json_str = stripped_res_text[len('_Callback('):-2]
                 elif stripped_res_text.startswith('{') and stripped_res_text.endswith('}'):
-                    # 直接JSON格式
                     json_str = stripped_res_text
                 else:
                     logger.warning(f"意外的响应格式: {res_text[:100]}...")
                     return []
                 
-                # 清理和标准化JSON字符串
                 json_str = json_str.replace('undefined', 'null').strip()
                 
                 try:
                     json_data = json5.loads(json_str)
-                    
-                    # 检查API返回的错误码
+                    if not isinstance(json_data, dict):
+                        logger.warning(f"解析后的JSON数据不是字典类型: {type(json_data)}")
+                        return []
+
                     if json_data.get('code') != 0:
                         error_code = json_data.get('code')
                         error_msg = json_data.get('message', '未知错误')
@@ -710,6 +775,7 @@ class QZoneService:
                 except Exception as parse_error:
                     logger.error(f"JSON解析失败: {parse_error}, 原始数据: {json_str[:200]}...")
                     return []
+
                 feeds_data = []
                 if isinstance(json_data, dict):
                     data_level1 = json_data.get('data')
@@ -718,10 +784,9 @@ class QZoneService:
                 
                 feeds_list = []
                 for feed in feeds_data:
-                    if not feed:
+                    if not feed or not isinstance(feed, dict):
                         continue
 
-                    # 过滤非说说动态
                     if str(feed.get('appid', '')) != '311':
                         continue
 
@@ -730,7 +795,6 @@ class QZoneService:
                     if not target_qq or not tid:
                         continue
 
-                    # 跳过自己的说说（监控是看好友的）
                     if target_qq == str(uin):
                         continue
 
@@ -740,16 +804,14 @@ class QZoneService:
 
                     soup = bs4.BeautifulSoup(html_content, 'html.parser')
                     
-                    # 通过点赞状态判断是否已读/处理过
                     like_btn = soup.find('a', class_='qz_like_btn_v3')
                     is_liked = False
-                    if like_btn:
+                    if like_btn and isinstance(like_btn, bs4.Tag):
                         is_liked = like_btn.get('data-islike') == '1'
 
                     if is_liked:
-                        continue # 如果已经点赞过，说明是已处理的说说，跳过
+                        continue
 
-                    # 提取内容
                     text_div = soup.find('div', class_='f-info')
                     text = text_div.get_text(strip=True) if text_div else ""
                     
