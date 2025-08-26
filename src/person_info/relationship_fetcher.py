@@ -1,6 +1,6 @@
 import time
 import traceback
-import json
+import orjson
 import random
 
 from typing import List, Dict, Any
@@ -187,7 +187,7 @@ class RelationshipFetcher:
             content, _ = await self.llm_model.generate_response_async(prompt=prompt)
 
             if content:
-                content_json = json.loads(repair_json(content))
+                content_json = orjson.loads(repair_json(content))
 
                 # 检查是否返回了不需要查询的标志
                 if "none" in content_json:
@@ -329,7 +329,7 @@ class RelationshipFetcher:
             content, _ = await self.instant_llm_model.generate_response_async(prompt=prompt)
 
             if content:
-                content_json = json.loads(repair_json(content))
+                content_json = orjson.loads(repair_json(content))
                 if info_type in content_json:
                     info_content = content_json[info_type]
                     is_unknown = info_content == "none" or not info_content

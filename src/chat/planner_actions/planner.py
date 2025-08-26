@@ -1,4 +1,4 @@
-import json
+import orjson
 import time
 import traceback
 from typing import Dict, Any, Optional, Tuple
@@ -264,7 +264,7 @@ class ActionPlanner:
 
             if llm_content:
                 try:
-                    parsed_json = json.loads(repair_json(llm_content))
+                    parsed_json = orjson.loads(repair_json(llm_content))
 
                     if isinstance(parsed_json, list):
                         if parsed_json:

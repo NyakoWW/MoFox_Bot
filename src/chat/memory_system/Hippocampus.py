@@ -4,7 +4,7 @@ import math
 import random
 import time
 import re
-import json
+import orjson
 import jieba
 import networkx as nx
 import numpy as np
@@ -912,7 +912,7 @@ class EntorhinalCortex:
                 # 将memory_items转换为JSON字符串
                 try:
                     memory_items = [str(item) for item in memory_items]
-                    memory_items_json = json.dumps(memory_items, ensure_ascii=False)
+                    memory_items_json = orjson.dumps(memory_items).decode("utf-8")
                     if not memory_items_json:
                         continue
                 except Exception:
@@ -1082,7 +1082,7 @@ class EntorhinalCortex:
 
                 try:
                     memory_items = [str(item) for item in memory_items]
-                    if memory_items_json := json.dumps(memory_items, ensure_ascii=False):
+                    if memory_items_json := orjson.dumps(memory_items).decode("utf-8"):
                         nodes_data.append(
                             {
                                 "concept": concept,
@@ -1156,7 +1156,7 @@ class EntorhinalCortex:
             for node in nodes:
                 concept = node.concept
                 try:
-                    memory_items = json.loads(node.memory_items)
+                    memory_items = orjson.loads(node.memory_items)
                     if not isinstance(memory_items, list):
                         memory_items = [memory_items] if memory_items else []
 

@@ -5,7 +5,7 @@ import random
 from src.llm_models.utils_model import LLMRequest
 from src.config.config import global_config, model_config
 from src.chat.utils.chat_message_builder import build_readable_messages
-import json
+import orjson
 from json_repair import repair_json
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -183,7 +183,7 @@ class RelationshipManager:
         # 解析JSON并转换为元组列表
         try:
             points = repair_json(points)
-            points_data = json.loads(points)
+            points_data = orjson.loads(points)
 
             # 只处理正确的格式，错误格式直接跳过
             if points_data == "none" or not points_data:
@@ -220,7 +220,7 @@ class RelationshipManager:
                         logger_str += f"({discarded_count} 条因重要性低被丢弃)\n"
                     logger.info(logger_str)
 
-        except json.JSONDecodeError:
+        except orjson.JSONDecodeError:
             logger.error(f"解析points JSON失败: {points}")
             return
         except (KeyError, TypeError) as e:
@@ -230,15 +230,15 @@ class RelationshipManager:
         current_points = await person_info_manager.get_value(person_id, "points") or []
         if isinstance(current_points, str):
             try:
-                current_points = json.loads(current_points)
-            except json.JSONDecodeError:
+                current_points = orjson.loads(current_points)
+            except orjson.JSONDecodeError:
                 logger.error(f"解析points JSON失败: {current_points}")
                 current_points = []
         elif not isinstance(current_points, list):
             current_points = []
         current_points.extend(points_list)
         await person_info_manager.update_one_field(
-            person_id, "points", json.dumps(current_points, ensure_ascii=False, indent=None)
+            person_id, "points", orjson.dumps(current_points).decode('utf-8')
         )
 
         # 将新记录添加到现有记录中
@@ -286,7 +286,7 @@ class RelationshipManager:
 
         # 更新数据库
         await person_info_manager.update_one_field(
-            person_id, "points", json.dumps(current_points, ensure_ascii=False, indent=None)
+            person_id, "points", orjson.dumps(current_points).decode('utf-8')
         )
 
         await person_info_manager.update_one_field(person_id, "know_times", know_times + 1)
@@ -331,8 +331,8 @@ class RelationshipManager:
         forgotten_points = await person_info_manager.get_value(person_id, "forgotten_points") or []
         if isinstance(forgotten_points, str):
             try:
-                forgotten_points = json.loads(forgotten_points)
-            except json.JSONDecodeError:
+                forgotten_points = orjson.loads(forgotten_points)
+            except orjson.JSONDecodeError:
                 logger.error(f"解析forgotten_points JSON失败: {forgotten_points}")
                 forgotten_points = []
         elif not isinstance(forgotten_points, list):
@@ -461,7 +461,7 @@ class RelationshipManager:
                 relation_value_response, _ = await self.relationship_llm.generate_response_async(
                     prompt=relation_value_prompt
                 )
-                relation_value_json = json.loads(repair_json(relation_value_response))
+                relation_value_json = orjson.loads(repair_json(relation_value_response))
 
                 # 从LLM获取新生成的值
                 new_attitude = int(relation_value_json.get("attitude", 50))
@@ -483,17 +483,17 @@ class RelationshipManager:
 
                 await person_info_manager.update_one_field(person_id, "attitude", attitude)
                 logger.info(f"更新了与 {person_name} 的态度: {attitude}")
-            except (json.JSONDecodeError, ValueError, TypeError) as e:
+            except (orjson.JSONDecodeError, ValueError, TypeError) as e:
                 logger.error(f"解析relation_value JSON失败或值无效: {e}, 响应: {relation_value_response}")
 
             forgotten_points = []
             info_list = []
             await person_info_manager.update_one_field(
-                person_id, "info_list", json.dumps(info_list, ensure_ascii=False, indent=None)
+                person_id, "info_list", orjson.dumps(info_list).decode('utf-8')
             )
 
         await person_info_manager.update_one_field(
-            person_id, "forgotten_points", json.dumps(forgotten_points, ensure_ascii=False, indent=None)
+            person_id, "forgotten_points", orjson.dumps(forgotten_points).decode('utf-8')
         )
 
         return current_points

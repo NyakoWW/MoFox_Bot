@@ -2,7 +2,7 @@ import copy
 import hashlib
 import datetime
 import asyncio
-import json
+import orjson
 import time
 
 from json_repair import repair_json
@@ -155,9 +155,9 @@ class PersonInfoManager:
         for key in JSON_SERIALIZED_FIELDS:
             if key in final_data:
                 if isinstance(final_data[key], (list, dict)):
-                    final_data[key] = json.dumps(final_data[key], ensure_ascii=False)
+                    final_data[key] = orjson.dumps(final_data[key]).decode('utf-8')
                 elif final_data[key] is None:  # Default for lists is [], store as "[]"
-                    final_data[key] = json.dumps([], ensure_ascii=False)
+                    final_data[key] = orjson.dumps([]).decode('utf-8')
                 # If it's already a string, assume it's valid JSON or a non-JSON string field
 
         def _db_create_sync(p_data: dict):
@@ -204,9 +204,9 @@ class PersonInfoManager:
         for key in JSON_SERIALIZED_FIELDS:
             if key in final_data:
                 if isinstance(final_data[key], (list, dict)):
-                    final_data[key] = json.dumps(final_data[key], ensure_ascii=False)
+                    final_data[key] = orjson.dumps(final_data[key]).decode('utf-8')
                 elif final_data[key] is None:  # Default for lists is [], store as "[]"
-                    final_data[key] = json.dumps([], ensure_ascii=False)
+                    final_data[key] = orjson.dumps([]).decode('utf-8') 
 
         def _db_safe_create_sync(p_data: dict):
             with get_db_session() as session:
@@ -243,9 +243,9 @@ class PersonInfoManager:
         processed_value = value
         if field_name in JSON_SERIALIZED_FIELDS:
             if isinstance(value, (list, dict)):
-                processed_value = json.dumps(value, ensure_ascii=False, indent=None)
+                processed_value = orjson.dumps(value).decode('utf-8')
             elif value is None:  # Store None as "[]" for JSON list fields
-                processed_value = json.dumps([], ensure_ascii=False, indent=None)
+                processed_value = orjson.dumps([]).decode('utf-8')
 
         def _db_update_sync(p_id: str, f_name: str, val_to_set):
 
@@ -324,7 +324,7 @@ class PersonInfoManager:
         try:
             fixed_json = repair_json(text)
             if isinstance(fixed_json, str):
-                parsed_json = json.loads(fixed_json)
+                parsed_json = orjson.loads(fixed_json)
             else:
                 parsed_json = fixed_json
 
@@ -494,8 +494,8 @@ class PersonInfoManager:
                 if f_name in JSON_SERIALIZED_FIELDS:
                     if isinstance(val, str):
                         try:
-                            return json.loads(val)
-                        except json.JSONDecodeError:
+                            return orjson.loads(val)
+                        except orjson.JSONDecodeError:
                             logger.warning(f"字段 {f_name} for {p_id} 包含无效JSON: {val}. 返回默认值.")
                             return []  # Default for JSON fields on error
                     elif val is None:  # Field exists in DB but is None
@@ -531,8 +531,8 @@ class PersonInfoManager:
                 if field_name in JSON_SERIALIZED_FIELDS:
                     if isinstance(val, str):
                         try:
-                            return json.loads(val)
-                        except json.JSONDecodeError:
+                            return orjson.loads(val)
+                        except orjson.JSONDecodeError:
                             logger.warning(f"字段 {field_name} for {person_id} 包含无效JSON: {val}. 返回默认值.")
                             return []
                     elif val is None:
@@ -671,9 +671,9 @@ class PersonInfoManager:
         for key in JSON_SERIALIZED_FIELDS:
             if key in initial_data:
                 if isinstance(initial_data[key], (list, dict)):
-                    initial_data[key] = json.dumps(initial_data[key], ensure_ascii=False)
+                    initial_data[key] = orjson.dumps(initial_data[key]).decode('utf-8')
                 elif initial_data[key] is None:
-                    initial_data[key] = json.dumps([], ensure_ascii=False)
+                    initial_data[key] = orjson.dumps([]).decode('utf-8')
 
         # 获取 SQLAlchemy 模odel的所有字段名
         model_fields = [column.name for column in PersonInfo.__table__.columns]

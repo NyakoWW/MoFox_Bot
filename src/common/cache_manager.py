@@ -1,5 +1,5 @@
 import time
-import json
+import orjson
 import hashlib
 from pathlib import Path
 import numpy as np
@@ -106,7 +106,7 @@ class CacheManager:
             logger.warning(f"无法获取文件信息: {tool_file_path}，错误: {e}")
         
         try:
-            sorted_args = json.dumps(function_args, sort_keys=True)
+            sorted_args = orjson.dumps(function_args, option=orjson.OPT_SORT_KEYS).decode('utf-8')
         except TypeError:
             sorted_args = repr(sorted(function_args.items()))
         return f"{tool_name}::{sorted_args}::{file_hash}"
@@ -163,7 +163,7 @@ class CacheManager:
             expires_at = cache_results["expires_at"]
             if time.time() < expires_at:
                 logger.info(f"命中L2键值缓存: {key}")
-                data = json.loads(cache_results["cache_value"])
+                data = orjson.loads(cache_results["cache_value"])
                 
                 # 更新访问统计
                 await db_query(
@@ -209,7 +209,7 @@ class CacheManager:
                         if semantic_cache_results:
                             expires_at = semantic_cache_results["expires_at"]
                             if time.time() < expires_at:
-                                data = json.loads(semantic_cache_results["cache_value"])
+                                data = orjson.loads(semantic_cache_results["cache_value"])
                                 logger.debug(f"L2语义缓存返回的数据: {data}")
                                 
                                 # 回填 L1
@@ -245,7 +245,7 @@ class CacheManager:
         # 写入 L2 (数据库)
         cache_data = {
             "cache_key": key,
-            "cache_value": json.dumps(data, ensure_ascii=False),
+            "cache_value": orjson.dumps(data).decode('utf-8'),
             "expires_at": expires_at,
             "tool_name": tool_name,
             "created_at": time.time(),

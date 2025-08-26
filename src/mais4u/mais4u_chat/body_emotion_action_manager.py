@@ -1,4 +1,4 @@
-import json
+import orjson
 import time
 
 from json_repair import repair_json
@@ -165,7 +165,7 @@ class ChatAction:
             logger.info(f"response: {response}")
             logger.info(f"reasoning_content: {reasoning_content}")
 
-            if action_data := json.loads(repair_json(response)):
+            if action_data := orjson.loads(repair_json(response)):
                 # 记录原动作，切换后进入冷却
                 prev_body_action = self.body_action
                 new_body_action = action_data.get("body_action", self.body_action)
@@ -228,7 +228,7 @@ class ChatAction:
             logger.info(f"response: {response}")
             logger.info(f"reasoning_content: {reasoning_content}")
 
-            if action_data := json.loads(repair_json(response)):
+            if action_data := orjson.loads(repair_json(response)):
                 prev_body_action = self.body_action
                 new_body_action = action_data.get("body_action", self.body_action)
                 if new_body_action != prev_body_action and prev_body_action:

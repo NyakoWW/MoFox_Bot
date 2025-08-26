@@ -1,6 +1,6 @@
 import time
 import random
-import json
+import orjson
 import os
 from datetime import datetime
 
@@ -558,7 +558,7 @@ class ExpressionLearnerManager:
                     continue
                 try:
                     with open(expr_file, "r", encoding="utf-8") as f:
-                        expressions = json.load(f)
+                        expressions = orjson.loads(f.read())
 
                     if not isinstance(expressions, list):
                         logger.warning(f"表达方式文件格式错误，跳过: {expr_file}")
@@ -604,7 +604,7 @@ class ExpressionLearnerManager:
                             
                             migrated_count += 1
                     logger.info(f"已迁移 {expr_file} 到数据库，包含 {len(expressions)} 个表达方式")
-                except json.JSONDecodeError as e:
+                except orjson.JSONDecodeError as e:
                     logger.error(f"JSON解析失败 {expr_file}: {e}")
                 except Exception as e:
                     logger.error(f"迁移表达方式 {expr_file} 失败: {e}")
