@@ -701,6 +701,12 @@ class CrossContextConfig(ValidatedConfigBase):
     groups: List[ContextGroup] = Field(default_factory=list, description="上下文共享组列表")
 
 
+class MaizoneIntercomConfig(ValidatedConfigBase):
+    """Maizone互通组配置"""
+    enable: bool = Field(default=False, description="是否启用Maizone互通组功能")
+    groups: List[ContextGroup] = Field(default_factory=list, description="Maizone互通组列表")
+
+
 class PermissionConfig(ValidatedConfigBase):
     """权限系统配置类"""
     

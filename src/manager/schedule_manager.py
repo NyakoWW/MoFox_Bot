@@ -1,6 +1,5 @@
 import orjson
 import asyncio
-import random
 from datetime import datetime, time, timedelta
 from typing import Optional, List, Dict, Any
 from lunar_python import Lunar
@@ -9,8 +8,7 @@ from pydantic import BaseModel, ValidationError, validator
 from src.common.database.sqlalchemy_models import Schedule, get_db_session
 from src.common.database.monthly_plan_db import (
     get_smart_plans_for_daily_schedule,
-    update_plan_usage,
-    soft_delete_plans  # 保留兼容性
+    update_plan_usage  # 保留兼容性
 )
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest

@@ -3,8 +3,6 @@
 import asyncio
 from datetime import datetime, timedelta
 from typing import List, Optional
-import orjson
-from json_repair import repair_json
 
 from src.common.database.monthly_plan_db import (
     add_new_plans,

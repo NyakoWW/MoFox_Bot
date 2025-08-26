@@ -482,9 +482,16 @@ chat_ids = [
     "222222"   # 假设这是“产品群”的ID
 ]
 
-[[cross_context.groups]]
-name = "日常闲聊组"
+[maizone_intercom]
+# QQ空间互通组配置
+# 启用后，发布说说时会读取指定互通组的上下文
+enable = false
+
+# 定义QQ空间互通组
+# 同一个组的chat_id会共享上下文，用于生成更相关的说说
+[[maizone_intercom.groups]]
+name = "Maizone默认互通组"
 chat_ids = [
-    "333333",  # 假设这是“吹水群”的ID
-    "444444"   # 假设这是“游戏群”的ID
+    "111111", # 示例群聊1
+    "222222"  # 示例群聊2
 ]
