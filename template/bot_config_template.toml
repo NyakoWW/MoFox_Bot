@@ -1,5 +1,5 @@
 [inner]
-version = "6.5.3"
+version = "6.5.4"
 
 #----以下是给开发人员阅读的，如果你只是部署了麦麦，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -44,9 +44,7 @@ connection_timeout = 10 # 连接超时时间（秒）
 # Master用户配置（拥有最高权限，无视所有权限节点）
 # 格式：[[platform, user_id], ...]
 # 示例：[["qq", "123456"], ["telegram", "user789"]]
-master_users = [
-    # ["qq", "123456789"],  # 示例：QQ平台的Master用户
-]
+master_users = []# ["qq", "123456789"],  # 示例：QQ平台的Master用户
 
 [bot]
 platform = "qq"
@@ -74,23 +72,37 @@ compress_identity = true # 是否压缩身份，压缩后会精简身份信息�
 
 [expression]
 # 表达学习配置
-expression_learning = [ # 表达学习配置列表，支持按聊天流配置
-    ["", "enable", "enable", 1.0],  # 全局配置：使用表达，启用学习，学习强度1.0
-    ["qq:1919810:group", "enable", "enable", 1.5],  # 特定群聊配置：使用表达，启用学习，学习强度1.5
-    ["qq:114514:private", "enable", "disable", 0.5],  # 特定私聊配置：使用表达，禁用学习，学习强度0.5
-    # 格式说明：
-    # 第一位: chat_stream_id，空字符串表示全局配置
-    # 第二位: 是否使用学到的表达 ("enable"/"disable")
-    # 第三位: 是否学习表达 ("enable"/"disable") 
-    # 第四位: 学习强度（浮点数），影响学习频率，最短学习时间间隔 = 300/学习强度（秒）
-    # 学习强度越高，学习越频繁；学习强度越低，学习越少
-]
+# rules是一个列表，每个元素都是一个学习规则
+# chat_stream_id: 聊天流ID，格式为 "platform:id:type"，例如 "qq:123456:private"。空字符串""表示全局配置
+# use_expression: 是否使用学到的表达 (true/false)
+# learn_expression: 是否学习新的表达 (true/false)
+# learning_strength: 学习强度（浮点数），影响学习频率
+# group: 表达共享组的名称（字符串），相同组的聊天会共享学习到的表达方式
+[[expression.rules]]
+chat_stream_id = ""
+use_expression = true
+learn_expression = true
+learning_strength = 1.0
 
-expression_groups = [
-    ["qq:1919810:private","qq:114514:private","qq:1111111:group"], # 在这里设置互通组，相同组的chat_id会共享学习到的表达方式
-    # 格式：["qq:123456:private","qq:654321:group"]
-    # 注意：如果为群聊，则需要设置为group，如果设置为私聊，则需要设置为private
-]
+[[expression.rules]]
+chat_stream_id = "qq:1919810:group"
+use_expression = true
+learn_expression = true
+learning_strength = 1.5
+
+[[expression.rules]]
+chat_stream_id = "qq:114514:private"
+group = "group_A"
+use_expression = true
+learn_expression = false
+learning_strength = 0.5
+
+[[expression.rules]]
+chat_stream_id = "qq:1919810:private"
+group = "group_A"
+use_expression = true
+learn_expression = true
+learning_strength = 1.0
 
 
 
@@ -427,7 +439,7 @@ guidelines = """
 """
 
 [wakeup_system]
-enable = true #"是否启用唤醒度系统"
+enable = false #"是否启用唤醒度系统"
 wakeup_threshold = 15.0 #唤醒阈值，达到此值时会被唤醒"
 private_message_increment = 3.0 #"私聊消息增加的唤醒度"
 group_mention_increment = 2.0 #"群聊艾特增加的唤醒度"
@@ -435,6 +447,22 @@ decay_rate = 0.2 #"每次衰减的唤醒度数值"
 decay_interval = 30.0 #"唤醒度衰减间隔(秒)"
 angry_duration = 300.0 #"愤怒状态持续时间(秒)"
 angry_prompt = "你被人吵醒了非常生气，说话带着怒气" # "被吵醒后的愤怒提示词"
+
+# --- 失眠机制相关参数 ---
+enable_insomnia_system = false # 是否启用失眠系统
+# 触发“压力不足型失眠”的睡眠压力阈值
+sleep_pressure_threshold = 30.0
+# 进入“深度睡眠”的睡眠压力阈值
+deep_sleep_threshold = 80.0
+# 压力不足时的失眠基础概率 (0.0 to 1.0)
+insomnia_chance_low_pressure = 0.6
+# 压力正常时的失眠基础概率 (0.0 to 1.0)
+insomnia_chance_normal_pressure = 0.1
+# 每次AI执行动作后，增加的睡眠压力值
+sleep_pressure_increment = 1.5
+# 睡眠时，每分钟衰减的睡眠压力值
+sleep_pressure_decay_rate = 1.5
+insomnia_duration_minutes = 30 # 单次失眠状态的持续时间（分钟）
 
 [cross_context] # 跨群聊上下文共享配置
 # 这是总开关，用于一键启用或禁用此功能
