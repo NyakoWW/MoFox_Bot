@@ -11,7 +11,6 @@ from bs4 import BeautifulSoup
 from src.common.logger import get_logger
 from src.plugin_system import BaseTool, ToolParamType, llm_api
 from src.plugin_system.apis import config_api
-from src.common.cache_manager import tool_cache
 
 from ..utils.formatters import format_url_parse_results
 from ..utils.url_utils import parse_urls_from_input, validate_urls
@@ -30,6 +29,12 @@ class URLParserTool(BaseTool):
     parameters = [
         ("urls", ToolParamType.STRING, "要理解的网站", True, None),
     ]
+
+    # --- 新的缓存配置 ---
+    enable_cache: bool = True
+    cache_ttl: int = 86400  # 缓存24小时
+    semantic_cache_query_key: str = "urls"
+    # --------------------
     
     def __init__(self, plugin_config=None):
         super().__init__(plugin_config)
@@ -42,10 +47,11 @@ class URLParserTool(BaseTool):
         if exa_api_keys is None:
             # 从插件配置文件读取
             exa_api_keys = self.get_config("exa.api_keys", [])
-        
+
         # 创建API密钥管理器
+        from typing import cast, List
         self.api_manager = create_api_key_manager_from_config(
-            exa_api_keys,
+            cast(List[str], exa_api_keys),
             lambda key: Exa(api_key=key),
             "Exa URL Parser"
         )
@@ -135,16 +141,6 @@ class URLParserTool(BaseTool):
         """
         执行URL内容提取和总结。优先使用Exa，失败后尝试本地解析。
         """
-        # 获取当前文件路径用于缓存键
-        import os
-        current_file_path = os.path.abspath(__file__)
-
-        # 检查缓存
-        cached_result = await tool_cache.get(self.name, function_args, current_file_path)
-        if cached_result:
-            logger.info(f"缓存命中: {self.name} -> {function_args}")
-            return cached_result
-            
         urls_input = function_args.get("urls")
         if not urls_input:
             return {"error": "URL列表不能为空。"}
@@ -235,8 +231,4 @@ class URLParserTool(BaseTool):
             "errors": error_messages
         }
         
-        # 保存到缓存
-        if "error" not in result:
-            await tool_cache.set(self.name, function_args, current_file_path, result)
-
         return result
