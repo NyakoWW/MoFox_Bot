@@ -17,7 +17,7 @@ import aiohttp
 import bs4
 import json5
 from src.common.logger import get_logger
-from src.plugin_system.apis import config_api, person_api,chat_api
+from src.plugin_system.apis import config_api, person_api
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.chat.utils.chat_message_builder import (
     build_readable_messages_with_id,
