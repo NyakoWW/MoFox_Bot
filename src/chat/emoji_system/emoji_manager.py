@@ -326,7 +326,7 @@ async def clear_temp_emoji() -> None:
         if os.path.exists(need_clear):
             files = os.listdir(need_clear)
             # 如果文件数超过100就全部删除
-            if len(files) > 100:
+            if len(files) > 1000:
                 for filename in files:
                     file_path = os.path.join(need_clear, filename)
                     if os.path.isfile(file_path):
