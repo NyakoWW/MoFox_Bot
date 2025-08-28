@@ -27,6 +27,7 @@ from src.chat.utils.chat_message_builder import (
 from .content_service import ContentService
 from .image_service import ImageService
 from .cookie_service import CookieService
+from .reply_tracker_service import ReplyTrackerService
 
 logger = get_logger("MaiZone.QZoneService")
 
@@ -55,6 +56,7 @@ class QZoneService:
         self.content_service = content_service
         self.image_service = image_service
         self.cookie_service = cookie_service
+        self.reply_tracker = ReplyTrackerService()
 
     # --- Public Methods (High-Level Business Logic) ---
 
@@ -154,7 +156,8 @@ class QZoneService:
             # --- 第一步: 单独处理自己说说的评论 ---
             if self.get_config("monitor.enable_auto_reply", False):
                 try:
-                    own_feeds = await api_client["list_feeds"](qq_account, 5) # 获取自己最近5条说说
+                    # 传入新参数，表明正在检查自己的说说
+                    own_feeds = await api_client["list_feeds"](qq_account, 5, is_monitoring_own_feeds=True)
                     if own_feeds:
                         logger.info(f"获取到自己 {len(own_feeds)} 条说说，检查评论...")
                         for feed in own_feeds:
@@ -248,42 +251,83 @@ class QZoneService:
         content = feed.get("content", "")
         fid = feed.get("tid", "")
 
-        if not comments:
+        if not comments or not fid:
             return
 
-        # 筛选出未被自己回复过的评论
-        if not comments:
+        # 1. 将评论分为用户评论和自己的回复
+        user_comments = [c for c in comments if str(c.get('qq_account')) != str(qq_account)]
+        my_replies = [c for c in comments if str(c.get('qq_account')) == str(qq_account)]
+        
+        if not user_comments:
             return
 
-        # 找到所有我已经回复过的评论的ID
-        replied_to_tids = {
-            c['parent_tid'] for c in comments
-            if c.get('parent_tid') and str(c.get('qq_account')) == str(qq_account)
-        }
+        # 2. 验证已记录的回复是否仍然存在，清理已删除的回复记录
+        await self._validate_and_cleanup_reply_records(fid, my_replies)
 
-        # 找出所有非我发出且我未回复过的评论
-        comments_to_reply = [
-            c for c in comments
-            if str(c.get('qq_account')) != str(qq_account) and c.get('comment_tid') not in replied_to_tids
-        ]
+        # 3. 使用验证后的持久化记录来筛选未回复的评论
+        comments_to_reply = []
+        for comment in user_comments:
+            comment_tid = comment.get('comment_tid')
+            if not comment_tid:
+                continue
+                
+            # 检查是否已经在持久化记录中标记为已回复
+            if not self.reply_tracker.has_replied(fid, comment_tid):
+                comments_to_reply.append(comment)
 
         if not comments_to_reply:
+            logger.debug(f"说说 {fid} 下的所有评论都已回复过")
             return
 
         logger.info(f"发现自己说说下的 {len(comments_to_reply)} 条新评论，准备回复...")
         for comment in comments_to_reply:
-            reply_content = await self.content_service.generate_comment_reply(
-                content, comment.get("content", ""), comment.get("nickname", "")
-            )
-            if reply_content:
-                success = await api_client["reply"](
-                    fid, qq_account, comment.get("nickname", ""), reply_content, comment.get("comment_tid")
+            comment_tid = comment.get("comment_tid")
+            nickname = comment.get("nickname", "")
+            comment_content = comment.get("content", "")
+            
+            try:
+                reply_content = await self.content_service.generate_comment_reply(
+                    content, comment_content, nickname
                 )
-                if success:
-                    logger.info(f"成功回复'{comment.get('nickname', '')}'的评论: '{reply_content}'")
+                if reply_content:
+                    success = await api_client["reply"](
+                        fid, qq_account, nickname, reply_content, comment_tid
+                    )
+                    if success:
+                        # 标记为已回复
+                        self.reply_tracker.mark_as_replied(fid, comment_tid)
+                        logger.info(f"成功回复'{nickname}'的评论: '{reply_content}'")
+                    else:
+                        logger.error(f"回复'{nickname}'的评论失败")
+                    await asyncio.sleep(random.uniform(10, 20))
                 else:
-                    logger.error(f"回复'{comment.get('nickname', '')}'的评论失败")
-                await asyncio.sleep(random.uniform(10, 20))
+                    logger.warning(f"生成回复内容失败，跳过回复'{nickname}'的评论")
+            except Exception as e:
+                logger.error(f"回复'{nickname}'的评论时发生异常: {e}", exc_info=True)
+
+    async def _validate_and_cleanup_reply_records(self, fid: str, my_replies: List[Dict]):
+        """验证并清理已删除的回复记录"""
+        # 获取当前记录中该说说的所有已回复评论ID
+        recorded_replied_comments = self.reply_tracker.get_replied_comments(fid)
+        
+        if not recorded_replied_comments:
+            return
+        
+        # 从API返回的我的回复中提取parent_tid（即被回复的评论ID）
+        current_replied_comments = set()
+        for reply in my_replies:
+            parent_tid = reply.get('parent_tid')
+            if parent_tid:
+                current_replied_comments.add(parent_tid)
+        
+        # 找出记录中有但实际已不存在的回复
+        deleted_replies = recorded_replied_comments - current_replied_comments
+        
+        if deleted_replies:
+            logger.info(f"检测到 {len(deleted_replies)} 个回复已被删除，清理记录...")
+            for comment_tid in deleted_replies:
+                self.reply_tracker.remove_reply_record(fid, comment_tid)
+                logger.debug(f"已清理删除的回复记录: feed_id={fid}, comment_id={comment_tid}")
 
     async def _process_single_feed(self, feed: Dict, api_client: Dict, target_qq: str, target_name: str):
         """处理单条说说，决定是否评论和点赞"""
@@ -641,7 +685,7 @@ class QZoneService:
                 logger.error(f"上传图片 {index+1} 异常: {e}", exc_info=True)
                 return None
 
-        async def _list_feeds(t_qq: str, num: int) -> List[Dict]:
+        async def _list_feeds(t_qq: str, num: int, is_monitoring_own_feeds: bool = False) -> List[Dict]:
             """获取指定用户说说列表"""
             try:
                 params = {
@@ -667,37 +711,41 @@ class QZoneService:
                 feeds_list = []
                 my_name = json_data.get("logininfo", {}).get("name", "")
                 for msg in json_data.get("msglist", []):
-                    is_commented = any(
-                        c.get("name") == my_name for c in msg.get("commentlist", []) if isinstance(c, dict)
-                    )
-                    if not is_commented:
-                        images = [pic['url1'] for pic in msg.get('pictotal', []) if 'url1' in pic]
-
-                        comments = []
-                        if 'commentlist' in msg:
-                            for c in msg['commentlist']:
-                                comments.append({
-                                    'qq_account': c.get('uin'),
-                                    'nickname': c.get('name'),
-                                    'content': c.get('content'),
-                                    'comment_tid': c.get('tid'),
-                                    'parent_tid': c.get('parent_tid') # API直接返回了父ID
-                                })
-
-                        feeds_list.append(
-                            {
-                                "tid": msg.get("tid", ""),
-                                "content": msg.get("content", ""),
-                                "created_time": time.strftime(
-                                    "%Y-%m-%d %H:%M:%S", time.localtime(msg.get("created_time", 0))
-                                ),
-                                "rt_con": msg.get("rt_con", {}).get("content", "")
-                                if isinstance(msg.get("rt_con"), dict)
-                                else "",
-                                "images": images,
-                                "comments": comments
-                            }
+                    # 只有在处理好友说说时，才检查是否已评论并跳过
+                    if not is_monitoring_own_feeds:
+                        is_commented = any(
+                            c.get("name") == my_name for c in msg.get("commentlist", []) if isinstance(c, dict)
                         )
+                        if is_commented:
+                            continue
+
+                    images = [pic['url1'] for pic in msg.get('pictotal', []) if 'url1' in pic]
+
+                    comments = []
+                    if 'commentlist' in msg:
+                        for c in msg['commentlist']:
+                            comments.append({
+                                'qq_account': c.get('uin'),
+                                'nickname': c.get('name'),
+                                'content': c.get('content'),
+                                'comment_tid': c.get('tid'),
+                                'parent_tid': c.get('parent_tid') # API直接返回了父ID
+                            })
+
+                    feeds_list.append(
+                        {
+                            "tid": msg.get("tid", ""),
+                            "content": msg.get("content", ""),
+                            "created_time": time.strftime(
+                                "%Y-%m-%d %H:%M:%S", time.localtime(msg.get("created_time", 0))
+                            ),
+                            "rt_con": msg.get("rt_con", {}).get("content", "")
+                            if isinstance(msg.get("rt_con"), dict)
+                            else "",
+                            "images": images,
+                            "comments": comments
+                        }
+                    )
                 return feeds_list
             except Exception as e:
                 logger.error(f"获取说说列表失败: {e}", exc_info=True)
