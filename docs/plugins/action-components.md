@@ -68,15 +68,15 @@ class ExampleAction(BaseAction):
 
 Action采用**两层决策机制**来优化性能和决策质量：
 
-> 设计目的：在加载许多插件的时候降低LLM决策压力，避免让麦麦在过多的选项中纠结。
+> 设计目的：在加载许多插件的时候降低LLM决策压力，避免让MoFox-Bot在过多的选项中纠结。
 
 **第一层：激活控制（Activation Control）**
 
-激活决定麦麦是否 **“知道”** 这个Action的存在，即这个Action是否进入决策候选池。不被激活的Action麦麦永远不会选择。
+激活决定MoFox-Bot是否 **“知道”** 这个Action的存在，即这个Action是否进入决策候选池。不被激活的ActionMoFox-Bot永远不会选择。
 
 **第二层：使用决策（Usage Decision）**
 
-在Action被激活后，使用条件决定麦麦什么时候会 **“选择”** 使用这个Action。
+在Action被激活后，使用条件决定MoFox-Bot什么时候会 **“选择”** 使用这个Action。
 
 ### 决策参数详解 🔧
 
@@ -84,8 +84,8 @@ Action采用**两层决策机制**来优化性能和决策质量：
 
 | 激活类型 | 说明 | 使用场景 |
 | ----------- | ---------------------------------------- | ---------------------- |
-| [`NEVER`](#never-激活)     | 从不激活，Action对麦麦不可见               | 临时禁用某个Action      |
-| [`ALWAYS`](#always-激活)    | 永远激活，Action总是在麦麦的候选池中        | 核心功能，如回复、不回复 |
+| [`NEVER`](#never-激活)     | 从不激活，Action对MoFox-Bot不可见               | 临时禁用某个Action      |
+| [`ALWAYS`](#always-激活)    | 永远激活，Action总是在MoFox-Bot的候选池中        | 核心功能，如回复、不回复 |
 | [`LLM_JUDGE`](#llm_judge-激活) | 通过LLM智能判断当前情境是否需要激活此Action | 需要智能判断的复杂场景   |
 | `RANDOM`    | 基于随机概率决定是否激活                   | 增加行为随机性的功能     |
 | `KEYWORD`   | 当检测到特定关键词时激活                   | 明确触发条件的功能       |
@@ -184,13 +184,13 @@ class GreetingAction(BaseAction):
 
 #### 第二层：使用决策
 
-**在Action被激活后，使用条件决定麦麦什么时候会"选择"使用这个Action**。
+**在Action被激活后，使用条件决定MoFox-Bot什么时候会"选择"使用这个Action**。
 
 这一层由以下因素综合决定：
 
 - `action_require`：使用场景描述，帮助LLM判断何时选择
 - `action_parameters`：所需参数，影响Action的可执行性
-- 当前聊天上下文和麦麦的决策逻辑
+- 当前聊天上下文和MoFox-Bot的决策逻辑
 
 ---
 
@@ -214,11 +214,11 @@ class EmojiAction(BaseAction):
 
 1. **第一层激活判断**：
 
-    - 使用随机数进行决策，当`random.random() < self.random_activation_probability`时，麦麦才"知道"可以使用这个Action
+    - 使用随机数进行决策，当`random.random() < self.random_activation_probability`时，MoFox-Bot才"知道"可以使用这个Action
 2. **第二层使用决策**：
 
-   - 即使Action被激活，麦麦还会根据 `action_require` 中的条件判断是否真正选择使用
-   - 例如：如果刚刚已经发过表情，根据"不要连续发送多个表情"的要求，麦麦可能不会选择这个Action
+   - 即使Action被激活，MoFox-Bot还会根据 `action_require` 中的条件判断是否真正选择使用
+   - 例如：如果刚刚已经发过表情，根据"不要连续发送多个表情"的要求，MoFox-Bot可能不会选择这个Action
 
 ---
 
