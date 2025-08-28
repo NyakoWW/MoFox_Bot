@@ -2,7 +2,6 @@
 事件管理器 - 实现Event和EventHandler的单例管理
 提供统一的事件注册、管理和触发接口
 """
-
 from typing import Dict, Type, List, Optional, Any, Union
 from threading import Lock
 
@@ -281,7 +280,7 @@ class EventManager:
         if event is None:
             logger.error(f"事件 {event_name} 不存在，无法触发")
             return None
-            
+
         return await event.activate(params)
     
     def init_default_events(self) -> None:
@@ -294,8 +293,7 @@ class EventManager:
             EventType.POST_LLM,
             EventType.AFTER_LLM,
             EventType.POST_SEND,
-            EventType.AFTER_SEND,
-            EventType.UNKNOWN
+            EventType.AFTER_SEND
         ]
         
         for event_name in default_events:
