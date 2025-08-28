@@ -150,8 +150,8 @@ class PermissionCommand(PlusCommand):
     
     def _parse_user_mention(self, mention: str) -> Optional[str]:
         """解析用户提及，提取QQ号"""
-        # 匹配 @用户 格式，提取QQ号
-        at_match = re.search(r'\[CQ:at,qq=(\d+)\]', mention)
+        # 匹配 @<用户名:QQ号> 格式，提取QQ号
+        at_match = re.search(r'@<[^:]+:(\d+)>', mention)
         if at_match:
             return at_match.group(1)
         
