@@ -138,6 +138,7 @@ class ScheduleManager:
         self._last_sleep_check_date: Optional[datetime.date] = None
         self._last_fully_slept_log_time: float = 0
         self._is_in_voluntary_delay: bool = False # 新增：标记是否处于主动延迟睡眠状态
+        self._is_woken_up: bool = False # 新增：标记是否被吵醒
         
         self._load_sleep_state()
 
@@ -453,14 +454,15 @@ class ScheduleManager:
                 self._is_preparing_sleep = False
                 self._sleep_buffer_end_time = None
                 self._is_in_voluntary_delay = False
+                self._is_woken_up = False # 离开睡眠时间，重置唤醒状态
                 self._save_sleep_state()
             return False
 
         # --- 处理唤醒状态 ---
-        if wakeup_manager and wakeup_manager.is_in_angry_state():
+        if self._is_woken_up:
             current_timestamp = now.timestamp()
             if current_timestamp - self.last_sleep_log_time > self.sleep_log_interval:
-                logger.info(f"在休眠活动 '{activity}' 期间，但已被唤醒。")
+                logger.info(f"在休眠活动 '{activity}' 期间，但已被唤醒，保持清醒状态。")
                 self.last_sleep_log_time = current_timestamp
             return False
 
@@ -501,6 +503,16 @@ class ScheduleManager:
             logger.info(f"当前处于休眠活动 '{activity}' 中 (经典模式)。")
             self.last_sleep_log_time = current_timestamp
         return True
+
+    def reset_sleep_state_after_wakeup(self):
+        """被唤醒后重置睡眠状态"""
+        if self._is_preparing_sleep or self.is_sleeping():
+            logger.info("被唤醒，重置所有睡眠准备状态，恢复清醒！")
+            self._is_preparing_sleep = False
+            self._sleep_buffer_end_time = None
+            self._is_in_voluntary_delay = False
+            self._is_woken_up = True  # 标记为已被唤醒
+            self._save_sleep_state()
 
     def _is_in_theoretical_sleep_time(self, now_time: time) -> (bool, Optional[str]):
         """检查当前时间是否落在日程表的任何一个睡眠活动中"""
@@ -600,6 +612,7 @@ class ScheduleManager:
                 "total_delayed_minutes_today": self._total_delayed_minutes_today,
                 "last_sleep_check_date_str": self._last_sleep_check_date.isoformat() if self._last_sleep_check_date else None,
                 "is_in_voluntary_delay": self._is_in_voluntary_delay,
+                "is_woken_up": self._is_woken_up,
             }
             local_storage["schedule_sleep_state"] = state
             logger.debug(f"已保存睡眠状态: {state}")
@@ -619,6 +632,7 @@ class ScheduleManager:
                 
                 self._total_delayed_minutes_today = state.get("total_delayed_minutes_today", 0)
                 self._is_in_voluntary_delay = state.get("is_in_voluntary_delay", False)
+                self._is_woken_up = state.get("is_woken_up", False)
                 
                 date_str = state.get("last_sleep_check_date_str")
                 if date_str:
@@ -627,6 +641,15 @@ class ScheduleManager:
                 logger.info(f"成功从本地存储加载睡眠状态: {state}")
         except Exception as e:
             logger.warning(f"加载睡眠状态失败，将使用默认值: {e}")
+
+    def reset_wakeup_state(self):
+        """重置被唤醒的状态，允许重新尝试入睡"""
+        if self._is_woken_up:
+            logger.info("重置唤醒状态，将重新尝试入睡。")
+            self._is_woken_up = False
+            self._is_preparing_sleep = False # 允许重新进入弹性睡眠判断
+            self._sleep_buffer_end_time = None
+            self._save_sleep_state()
 
     def _validate_schedule_with_pydantic(self, schedule_data) -> bool:
         """使用Pydantic验证日程数据格式和完整性"""

@@ -188,6 +188,10 @@ class WakeUpManager:
         from src.mood.mood_manager import mood_manager
         mood_manager.set_angry_from_wakeup(self.context.stream_id)
         
+        # 通知日程管理器重置睡眠状态
+        from src.schedule.schedule_manager import schedule_manager
+        schedule_manager.reset_sleep_state_after_wakeup()
+        
         logger.info(f"{self.context.log_prefix} 唤醒度达到阈值({self.wakeup_threshold})，被吵醒进入愤怒状态！")
 
     def get_angry_prompt_addition(self) -> str:

@@ -49,6 +49,7 @@ class HfcContext:
         # 失眠状态
         self.is_in_insomnia: bool = False
         self.insomnia_end_time: float = 0.0
+        self.last_wakeup_time: float = 0.0 # 被吵醒的时间
         
         self.last_message_time = time.time()
         self.last_read_time = time.time() - 10
@@ -92,6 +93,7 @@ class HfcContext:
             "sleep_pressure": self.sleep_pressure,
             "is_in_insomnia": self.is_in_insomnia,
             "insomnia_end_time": self.insomnia_end_time,
+            "last_wakeup_time": self.last_wakeup_time,
         }
         local_storage[self._get_storage_key()] = state
         logger = get_logger("hfc_context")

@@ -242,10 +242,16 @@ class HeartFChatting:
             # 处理唤醒度逻辑
             if is_sleeping:
                 self._handle_wakeup_messages(recent_messages)
-                # 如果处于失眠状态，则无视睡眠时间，继续处理消息
-                # 否则，如果仍然在睡眠（没被吵醒），则跳过本轮处理
-                if not self.context.is_in_insomnia and schedule_manager.is_sleeping(self.wakeup_manager):
+                # 再次检查睡眠状态，因为_handle_wakeup_messages可能会触发唤醒
+                current_is_sleeping = schedule_manager.is_sleeping(self.wakeup_manager)
+                
+                if not self.context.is_in_insomnia and current_is_sleeping:
+                    # 仍然在睡眠，跳过本轮的消息处理
                     return has_new_messages
+                else:
+                    # 从睡眠中被唤醒，需要继续处理本轮消息
+                    logger.info(f"{self.context.log_prefix} 从睡眠中被唤醒，将处理积压的消息。")
+                    self.context.last_wakeup_time = time.time()
 
             # 根据聊天模式处理新消息
             if self.context.loop_mode == ChatMode.FOCUS:
@@ -265,6 +271,15 @@ class HeartFChatting:
 
         # 更新上一帧的睡眠状态
         self.context.was_sleeping = is_sleeping
+        
+        # --- 重新入睡逻辑 ---
+        # 如果被吵醒了，并且在一定时间内没有新消息，则尝试重新入睡
+        if schedule_manager._is_woken_up and not has_new_messages:
+            re_sleep_delay = global_config.wakeup_system.re_sleep_delay_minutes * 60
+            # 使用 last_message_time 来判断空闲时间
+            if time.time() - self.context.last_message_time > re_sleep_delay:
+                logger.info(f"{self.context.log_prefix} 已被唤醒且超过 {re_sleep_delay / 60} 分钟无新消息，尝试重新入睡。")
+                schedule_manager.reset_wakeup_state()
         
         # 保存HFC上下文状态
         self.context.save_context_state()
