@@ -12,7 +12,6 @@ install(extra_lines=3)
 
 logger = get_logger("prompt_build")
 
-
 class PromptContext:
     def __init__(self):
         self._context_prompts: Dict[str, Dict[str, "Prompt"]] = {}
@@ -28,7 +27,7 @@ class PromptContext:
     @_current_context.setter
     def _current_context(self, value: Optional[str]):
         """设置当前协程的上下文ID"""
-        self._current_context_var.set(value)
+        self._current_context_var.set(value) # type: ignore
 
     @asynccontextmanager
     async def async_scope(self, context_id: Optional[str] = None):
@@ -52,7 +51,7 @@ class PromptContext:
             # 保存当前协程的上下文值，不影响其他协程
             previous_context = self._current_context
             # 设置当前协程的新上下文
-            token = self._current_context_var.set(context_id) if context_id else None
+            token = self._current_context_var.set(context_id) if context_id else None # type: ignore
         else:
             # 如果没有提供新上下文，保持当前上下文不变
             previous_context = self._current_context
@@ -90,7 +89,8 @@ class PromptContext:
         """异步注册提示模板到指定作用域"""
         async with self._context_lock:
             if target_context := context_id or self._current_context:
-                self._context_prompts.setdefault(target_context, {})[prompt.name] = prompt
+                if prompt.name:
+                    self._context_prompts.setdefault(target_context, {})[prompt.name] = prompt
 
 
 class PromptManager:
@@ -132,12 +132,16 @@ class PromptManager:
 
     def add_prompt(self, name: str, fstr: str) -> "Prompt":
         prompt = Prompt(fstr, name=name)
-        self._prompts[prompt.name] = prompt
+        if prompt.name:
+            self._prompts[prompt.name] = prompt
         return prompt
 
     async def format_prompt(self, name: str, **kwargs) -> str:
+        # 获取当前提示词
         prompt = await self.get_prompt_async(name)
-        return prompt.format(**kwargs)
+        # 获取基本格式化结果
+        result = prompt.format(**kwargs)
+        return result
 
 
 # 全局单例
@@ -145,6 +149,11 @@ global_prompt_manager = PromptManager()
 
 
 class Prompt(str):
+    template: str
+    name: Optional[str]
+    args: List[str]
+    _args: List[Any]
+    _kwargs: Dict[str, Any]
     # 临时标记，作为类常量
     _TEMP_LEFT_BRACE = "__ESCAPED_LEFT_BRACE__"
     _TEMP_RIGHT_BRACE = "__ESCAPED_RIGHT_BRACE__"
@@ -165,7 +174,7 @@ class Prompt(str):
         """将临时标记还原为实际的花括号字符"""
         return template.replace(Prompt._TEMP_LEFT_BRACE, "{").replace(Prompt._TEMP_RIGHT_BRACE, "}")
 
-    def __new__(cls, fstr, name: Optional[str] = None, args: Union[List[Any], tuple[Any, ...]] = None, **kwargs):
+    def __new__(cls, fstr, name: Optional[str] = None, args: Optional[Union[List[Any], tuple[Any, ...]]] = None, **kwargs):
         # 如果传入的是元组，转换为列表
         if isinstance(args, tuple):
             args = list(args)
@@ -201,7 +210,7 @@ class Prompt(str):
 
     @classmethod
     async def create_async(
-        cls, fstr, name: Optional[str] = None, args: Union[List[Any], tuple[Any, ...]] = None, **kwargs
+        cls, fstr, name: Optional[str] = None, args: Optional[Union[List[Any], tuple[Any, ...]]] = None, **kwargs
     ):
         """异步创建Prompt实例"""
         prompt = cls(fstr, name, args, **kwargs)
@@ -210,7 +219,9 @@ class Prompt(str):
         return prompt
 
     @classmethod
-    def _format_template(cls, template, args: List[Any] = None, kwargs: Dict[str, Any] = None) -> str:
+    def _format_template(cls, template, args: Optional[List[Any]] = None, kwargs: Optional[Dict[str, Any]] = None) -> str:
+        if kwargs is None:
+            kwargs = {}
         # 预处理模板中的转义花括号
         processed_template = cls._process_escaped_braces(template)
 

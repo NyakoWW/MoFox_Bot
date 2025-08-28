@@ -13,6 +13,7 @@ from src.plugin_system import (
     register_plugin
 )
 from src.plugin_system.base.config_types import ConfigField
+from src.plugin_system.apis.permission_api import permission_api
 
 from .actions.read_feed_action import ReadFeedAction
 from .actions.send_feed_action import SendFeedAction
@@ -42,6 +43,7 @@ class MaiZoneRefactoredPlugin(BasePlugin):
         "plugin": {"enable": ConfigField(type=bool, default=True, description="是否启用插件")},
         "models": {
             "text_model": ConfigField(type=str, default="maizone", description="生成文本的模型名称"),
+            "vision_model": ConfigField(type=str, default="YISHAN-gemini-2.5-flash", description="识别图片的模型名称"),
             "siliconflow_apikey": ConfigField(type=str, default="", description="硅基流动AI生图API密钥"),
         },
         "send": {
@@ -81,7 +83,12 @@ class MaiZoneRefactoredPlugin(BasePlugin):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
+        permission_api.register_permission_node(
+            "plugin.send.permission",
+            "是否可以使用机器人发送说说",
+            "maiZone",
+            False
+        )
         content_service = ContentService(self.get_config)
         image_service = ImageService(self.get_config)
         cookie_service = CookieService(self.get_config)
@@ -101,5 +108,5 @@ class MaiZoneRefactoredPlugin(BasePlugin):
         return [
             (SendFeedAction.get_action_info(), SendFeedAction),
             (ReadFeedAction.get_action_info(), ReadFeedAction),
-            (SendFeedCommand.get_command_info(), SendFeedCommand),
+            (SendFeedCommand.get_plus_command_info(), SendFeedCommand),
         ]

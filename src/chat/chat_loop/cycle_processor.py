@@ -100,7 +100,7 @@ class CycleProcessor:
         from src.plugin_system.core.event_manager import event_manager
         from src.plugin_system.base.component_types import EventType
         # 触发 ON_PLAN 事件
-        result = await event_manager.trigger_event(EventType.ON_PLAN, stream_id=self.context.stream_id)
+        result = await event_manager.trigger_event(EventType.ON_PLAN, plugin_name="SYSTEM", stream_id=self.context.stream_id)
         if result and not result.all_continue_process():
             return
             
@@ -131,6 +131,11 @@ class CycleProcessor:
 
         if ENABLE_S4U:
             await stop_typing()
+
+        # 在一轮动作执行完毕后，增加睡眠压力
+        if self.context.energy_manager and global_config.wakeup_system.enable_insomnia_system:
+            if action_type not in ["no_reply", "no_action"]:
+                self.context.energy_manager.increase_sleep_pressure()
         
         return True
 

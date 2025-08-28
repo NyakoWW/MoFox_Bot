@@ -45,6 +45,7 @@ from src.config.official_configs import (
     MonthlyPlanSystemConfig,
     CrossContextConfig,
     PermissionConfig,
+    CommandConfig,
     MaizoneIntercomConfig,
 )
 
@@ -372,7 +373,7 @@ class Config(ValidatedConfigBase):
     chinese_typo: ChineseTypoConfig = Field(..., description="中文错别字配置")
     response_post_process: ResponsePostProcessConfig = Field(..., description="响应后处理配置")
     response_splitter: ResponseSplitterConfig = Field(..., description="响应分割配置")
-    experimental: ExperimentalConfig = Field(..., description="实验性功能配置")
+    experimental: ExperimentalConfig = Field(default_factory=lambda: ExperimentalConfig(), description="实验性功能配置")
     maim_message: MaimMessageConfig = Field(..., description="Maim消息配置")
     lpmm_knowledge: LPMMKnowledgeConfig = Field(..., description="LPMM知识配置")
     tool: ToolConfig = Field(..., description="工具配置")
@@ -381,6 +382,7 @@ class Config(ValidatedConfigBase):
     voice: VoiceConfig = Field(..., description="语音配置")
     schedule: ScheduleConfig = Field(..., description="调度配置")
     permission: PermissionConfig = Field(..., description="权限配置")
+    command: CommandConfig = Field(..., description="命令系统配置")
     
     # 有默认值的字段放在后面
     anti_prompt_injection: AntiPromptInjectionConfig = Field(default_factory=lambda: AntiPromptInjectionConfig(), description="反提示注入配置")

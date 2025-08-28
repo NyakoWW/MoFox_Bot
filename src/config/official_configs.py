@@ -263,11 +263,20 @@ class NormalChatConfig(ValidatedConfigBase):
 
 
 
+class ExpressionRule(ValidatedConfigBase):
+    """表达学习规则"""
+
+    chat_stream_id: str = Field(..., description="聊天流ID，空字符串表示全局")
+    use_expression: bool = Field(default=True, description="是否使用学到的表达")
+    learn_expression: bool = Field(default=True, description="是否学习表达")
+    learning_strength: float = Field(default=1.0, description="学习强度")
+    group: Optional[str] = Field(default=None, description="表达共享组")
+
+
 class ExpressionConfig(ValidatedConfigBase):
     """表达配置类"""
 
-    expression_learning: list[list] = Field(default_factory=lambda: [], description="表达学习")
-    expression_groups: list[list[str]] = Field(default_factory=list, description="表达组")
+    rules: List[ExpressionRule] = Field(default_factory=list, description="表达学习规则")
 
     def _parse_stream_config_to_chat_id(self, stream_config_str: str) -> Optional[str]:
         """
@@ -314,87 +323,39 @@ class ExpressionConfig(ValidatedConfigBase):
         Returns:
             tuple: (是否使用表达, 是否学习表达, 学习间隔)
         """
-        if not self.expression_learning:
-            # 如果没有配置，使用默认值：启用表达，启用学习，300秒间隔
-            return True, True, 300
+        if not self.rules:
+            # 如果没有配置，使用默认值：启用表达，启用学习，强度1.0
+            return True, True, 1.0
 
         # 优先检查聊天流特定的配置
         if chat_stream_id:
-            specific_config = self._get_stream_specific_config(chat_stream_id)
-            if specific_config is not None:
-                return specific_config
+            for rule in self.rules:
+                if rule.chat_stream_id and self._parse_stream_config_to_chat_id(rule.chat_stream_id) == chat_stream_id:
+                    return rule.use_expression, rule.learn_expression, rule.learning_strength
 
-        # 检查全局配置（第一个元素为空字符串的配置）
-        global_config = self._get_global_config()
-        if global_config is not None:
-            return global_config
+        # 检查全局配置（chat_stream_id为空字符串的配置）
+        for rule in self.rules:
+            if rule.chat_stream_id == "":
+                return rule.use_expression, rule.learn_expression, rule.learning_strength
 
         # 如果都没有匹配，返回默认值
-        return True, True, 300
+        return True, True, 1.0
 
-    def _get_stream_specific_config(self, chat_stream_id: str) -> Optional[tuple[bool, bool, float]]:
-        """
-        获取特定聊天流的表达配置
 
-        Args:
-            chat_stream_id: 聊天流ID（哈希值）
+class ToolHistoryConfig(ValidatedConfigBase):
+    """工具历史记录配置类"""
 
-        Returns:
-            tuple: (是否使用表达, 是否学习表达, 学习间隔)，如果没有配置则返回 None
-        """
-        for config_item in self.expression_learning:
-            if not config_item or len(config_item) < 4:
-                continue
+    enable_history: bool = True
+    """是否启用工具历史记录"""
 
-            stream_config_str = config_item[0]  # 例如 "qq:1026294844:group"
+    enable_prompt_history: bool = True
+    """是否在提示词中加入工具历史记录"""
 
-            # 如果是空字符串，跳过（这是全局配置）
-            if stream_config_str == "":
-                continue
+    max_history: int = 5
+    """注入到提示词中的最大工具历史记录数量"""
 
-            # 解析配置字符串并生成对应的 chat_id
-            config_chat_id = self._parse_stream_config_to_chat_id(stream_config_str)
-            if config_chat_id is None:
-                continue
-
-            # 比较生成的 chat_id
-            if config_chat_id != chat_stream_id:
-                continue
-
-            # 解析配置
-            try:
-                use_expression = config_item[1].lower() == "enable"
-                enable_learning = config_item[2].lower() == "enable"
-                learning_intensity = float(config_item[3])
-                return use_expression, enable_learning, learning_intensity
-            except (ValueError, IndexError):
-                continue
-
-        return None
-
-    def _get_global_config(self) -> Optional[tuple[bool, bool, float]]:
-        """
-        获取全局表达配置
-
-        Returns:
-            tuple: (是否使用表达, 是否学习表达, 学习间隔)，如果没有配置则返回 None
-        """
-        for config_item in self.expression_learning:
-            if not config_item or len(config_item) < 4:
-                continue
-
-            # 检查是否为全局配置（第一个元素为空字符串）
-            if config_item[0] == "":
-                try:
-                    use_expression = config_item[1].lower() == "enable"
-                    enable_learning = config_item[2].lower() == "enable"
-                    learning_intensity = float(config_item[3])
-                    return use_expression, enable_learning, learning_intensity
-                except (ValueError, IndexError):
-                    continue
-
-        return None
-
+    data_dir: str = "data/tool_history"
+    """历史记录保存目录"""
 
 
 class ToolConfig(ValidatedConfigBase):
@@ -402,7 +363,8 @@ class ToolConfig(ValidatedConfigBase):
 
     enable_tool: bool = Field(default=False, description="启用工具")
 
-
+    history: ToolHistoryConfig = Field(default_factory=ToolHistoryConfig)
+    """工具历史记录配置"""
 
 class VoiceConfig(ValidatedConfigBase):
     """语音识别配置类"""
@@ -568,6 +530,14 @@ class ScheduleConfig(ValidatedConfigBase):
     enable: bool = Field(default=True, description="启用")
     guidelines: Optional[str] = Field(default=None, description="指导方针")
     enable_is_sleep: bool = Field(default=True, description="让AI会根据日程表睡觉和苏醒")
+    
+    enable_flexible_sleep: bool = Field(default=True, description="是否启用弹性睡眠")
+    flexible_sleep_pressure_threshold: float = Field(default=40.0, description="触发弹性睡眠的睡眠压力阈值，低于该值可能延迟入睡")
+    max_sleep_delay_minutes: int = Field(default=60, description="单日最大延迟入睡分钟数")
+    
+    enable_pre_sleep_notification: bool = Field(default=True, description="是否启用睡前消息")
+    pre_sleep_notification_groups: List[str] = Field(default_factory=list, description="接收睡前消息的群号列表, 格式: [\"platform:group_id1\", \"platform:group_id2\"]")
+    pre_sleep_prompt: str = Field(default="我准备睡觉了，请生成一句简短自然的晚安问候。", description="用于生成睡前消息的提示")
 
 
 
@@ -641,7 +611,7 @@ class PluginsConfig(ValidatedConfigBase):
 
 
 class WakeUpSystemConfig(ValidatedConfigBase):
-    """唤醒度系统配置类"""
+    """唤醒度与失眠系统配置类"""
 
     enable: bool = Field(default=True, description="是否启用唤醒度系统")
     wakeup_threshold: float = Field(default=15.0, ge=1.0, description="唤醒阈值，达到此值时会被唤醒")
@@ -651,6 +621,16 @@ class WakeUpSystemConfig(ValidatedConfigBase):
     decay_interval: float = Field(default=30.0, ge=1.0, description="唤醒度衰减间隔(秒)")
     angry_duration: float = Field(default=300.0, ge=10.0, description="愤怒状态持续时间(秒)")
     angry_prompt: str = Field(default="你被人吵醒了非常生气，说话带着怒气", description="被吵醒后的愤怒提示词")
+
+    # --- 失眠机制相关参数 ---
+    enable_insomnia_system: bool = Field(default=True, description="是否启用失眠系统")
+    insomnia_duration_minutes: int = Field(default=30, ge=1, description="单次失眠状态的持续时间（分钟）")
+    sleep_pressure_threshold: float = Field(default=30.0, description="触发“压力不足型失眠”的睡眠压力阈值")
+    deep_sleep_threshold: float = Field(default=80.0, description="进入“深度睡眠”的睡眠压力阈值")
+    insomnia_chance_low_pressure: float = Field(default=0.6, ge=0.0, le=1.0, description="压力不足时的失眠基础概率")
+    insomnia_chance_normal_pressure: float = Field(default=0.1, ge=0.0, le=1.0, description="压力正常时的失眠基础概率")
+    sleep_pressure_increment: float = Field(default=1.5, ge=0.0, description="每次AI执行动作后，增加的睡眠压力值")
+    sleep_pressure_decay_rate: float = Field(default=1.5, ge=0.0, description="睡眠时，每分钟衰减的睡眠压力值")
 
 
 class MonthlyPlanSystemConfig(ValidatedConfigBase):
@@ -679,6 +659,12 @@ class MaizoneIntercomConfig(ValidatedConfigBase):
     """Maizone互通组配置"""
     enable: bool = Field(default=False, description="是否启用Maizone互通组功能")
     groups: List[ContextGroup] = Field(default_factory=list, description="Maizone互通组列表")
+
+
+class CommandConfig(ValidatedConfigBase):
+    """命令系统配置类"""
+    
+    command_prefixes: List[str] = Field(default_factory=lambda: ['/', '!', '.', '#'], description="支持的命令前缀列表")
 
 
 class PermissionConfig(ValidatedConfigBase):

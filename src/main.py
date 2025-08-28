@@ -17,8 +17,8 @@ from src.individuality.individuality import get_individuality, Individuality
 from src.common.server import get_global_server, Server
 from src.mood.mood_manager import mood_manager
 from rich.traceback import install
-from src.manager.schedule_manager import schedule_manager
-from src.manager.monthly_plan_manager import monthly_plan_manager
+from src.schedule.schedule_manager import schedule_manager
+from src.schedule.monthly_plan_manager import monthly_plan_manager
 from src.plugin_system.core.event_manager import event_manager
 from src.plugin_system.base.component_types import EventType
 # from src.api.main import start_api_server
@@ -141,10 +141,10 @@ class MainSystem:
         logger.info(f"""
 全部系统初始化完成，{global_config.bot.nickname}已成功唤醒
 =========================================================
-MaiMbot-Pro-Max(第三方修改版)
+MoFox_Bot(第三方修改版)
 全部组件已成功启动!
 =========================================================
-🌐 项目地址: https://github.com/MaiBot-Plus/MaiMbot-Pro-Max
+🌐 项目地址: https://github.com/MoFox-Studio/MoFox_Bot
 🏠 官方项目: https://github.com/MaiM-with-u/MaiBot
 =========================================================
 这是基于原版MMC的社区改版，包含增强功能和优化(同时也有更多的'特性')
@@ -254,7 +254,7 @@ MaiMbot-Pro-Max(第三方修改版)
 
 
         try:
-            await event_manager.trigger_event(EventType.ON_START)
+            await event_manager.trigger_event(EventType.ON_START,plugin_name="SYSTEM")
             init_time = int(1000 * (time.time() - init_start_time))
             logger.info(f"初始化完成，神经元放电{init_time}次")
         except Exception as e:

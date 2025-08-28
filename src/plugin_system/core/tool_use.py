@@ -40,13 +40,12 @@ class ToolExecutor:
     可以直接输入聊天消息内容，自动判断并执行相应的工具，返回结构化的工具执行结果。
     """
 
-    def __init__(self, chat_id: str, enable_cache: bool = False, cache_ttl: int = 3):
+    def __init__(self, chat_id: str):
         """初始化工具执行器
 
         Args:
             executor_id: 执行器标识符，用于日志记录
-            enable_cache: 是否启用缓存机制
-            cache_ttl: 缓存生存时间（周期数）
+            chat_id: 聊天标识符，用于日志记录
         """
         self.chat_id = chat_id
         self.chat_stream = get_chat_manager().get_stream(self.chat_id)
@@ -54,12 +53,7 @@ class ToolExecutor:
 
         self.llm_model = LLMRequest(model_set=model_config.model_task_config.tool_use, request_type="tool_executor")
 
-        # 缓存配置
-        self.enable_cache = enable_cache
-        self.cache_ttl = cache_ttl
-        self.tool_cache = {}  # 格式: {cache_key: {"result": result, "ttl": ttl, "timestamp": timestamp}}
-
-        logger.info(f"{self.log_prefix}工具执行器初始化完成，缓存{'启用' if enable_cache else '禁用'}，TTL={cache_ttl}")
+        logger.info(f"{self.log_prefix}工具执行器初始化完成")
 
     async def execute_from_chat_message(
         self, target_message: str, chat_history: str, sender: str, return_details: bool = False
@@ -77,18 +71,6 @@ class ToolExecutor:
             如果return_details为True: Tuple[List[Dict], List[str], str] - (结果列表, 使用的工具, 提示词)
         """
 
-        # 首先检查缓存
-        cache_key = self._generate_cache_key(target_message, chat_history, sender)
-        if cached_result := self._get_from_cache(cache_key):
-            logger.info(f"{self.log_prefix}使用缓存结果，跳过工具执行")
-            if not return_details:
-                return cached_result, [], ""
-
-            # 从缓存结果中提取工具名称
-            used_tools = [result.get("tool_name", "unknown") for result in cached_result]
-            return cached_result, used_tools, ""
-
-        # 缓存未命中，执行工具调用
         # 获取可用工具
         tools = self._get_tool_definitions()
 
@@ -116,10 +98,6 @@ class ToolExecutor:
 
         # 执行工具调用
         tool_results, used_tools = await self.execute_tool_calls(tool_calls)
-
-        # 缓存结果
-        if tool_results:
-            self._set_cache(cache_key, tool_results)
 
         if used_tools:
             logger.info(f"{self.log_prefix}工具执行完成，共执行{len(used_tools)}个工具: {used_tools}")
@@ -151,9 +129,19 @@ class ToolExecutor:
             return [], []
         
         # 提取tool_calls中的函数名称
-        func_names = [call.func_name for call in tool_calls if call.func_name]
+        func_names = []
+        for call in tool_calls:
+            try:
+                if hasattr(call, 'func_name'):
+                    func_names.append(call.func_name)
+            except Exception as e:
+                logger.error(f"{self.log_prefix}获取工具名称失败: {e}")
+                continue
         
-        logger.info(f"{self.log_prefix}开始执行工具调用: {func_names}")
+        if func_names:
+            logger.info(f"{self.log_prefix}开始执行工具调用: {func_names}")
+        else:
+            logger.warning(f"{self.log_prefix}未找到有效的工具调用")
 
         # 执行每个工具调用
         for tool_call in tool_calls:
@@ -208,6 +196,7 @@ class ToolExecutor:
         try:
             function_name = tool_call.func_name
             function_args = tool_call.args or {}
+            logger.info(f"🤖 {self.log_prefix} 正在执行工具: [bold green]{function_name}[/bold green] | 参数: {function_args}")
             function_args["llm_called"] = True  # 标记为LLM调用
 
             # 获取对应工具实例
@@ -216,87 +205,23 @@ class ToolExecutor:
                 logger.warning(f"未知工具名称: {function_name}")
                 return None
 
-            # 执行工具
+            # 执行工具并记录日志
+            logger.debug(f"{self.log_prefix}执行工具 {function_name}，参数: {function_args}")
             result = await tool_instance.execute(function_args)
             if result:
+                logger.debug(f"{self.log_prefix}工具 {function_name} 执行成功，结果: {result}")
                 return {
                     "tool_call_id": tool_call.call_id,
                     "role": "tool",
                     "name": function_name,
                     "type": "function",
-                    "content": result["content"],
+                    "content": result.get("content", "")
                 }
+            logger.warning(f"{self.log_prefix}工具 {function_name} 返回空结果")
             return None
         except Exception as e:
             logger.error(f"执行工具调用时发生错误: {str(e)}")
             raise e
-
-    def _generate_cache_key(self, target_message: str, chat_history: str, sender: str) -> str:
-        """生成缓存键
-
-        Args:
-            target_message: 目标消息内容
-            chat_history: 聊天历史
-            sender: 发送者
-
-        Returns:
-            str: 缓存键
-        """
-        import hashlib
-
-        # 使用消息内容和群聊状态生成唯一缓存键
-        content = f"{target_message}_{chat_history}_{sender}"
-        return hashlib.md5(content.encode()).hexdigest()
-
-    def _get_from_cache(self, cache_key: str) -> Optional[List[Dict]]:
-        """从缓存获取结果
-
-        Args:
-            cache_key: 缓存键
-
-        Returns:
-            Optional[List[Dict]]: 缓存的结果，如果不存在或过期则返回None
-        """
-        if not self.enable_cache or cache_key not in self.tool_cache:
-            return None
-
-        cache_item = self.tool_cache[cache_key]
-        if cache_item["ttl"] <= 0:
-            # 缓存过期，删除
-            del self.tool_cache[cache_key]
-            logger.debug(f"{self.log_prefix}缓存过期，删除缓存键: {cache_key}")
-            return None
-
-        # 减少TTL
-        cache_item["ttl"] -= 1
-        logger.debug(f"{self.log_prefix}使用缓存结果，剩余TTL: {cache_item['ttl']}")
-        return cache_item["result"]
-
-    def _set_cache(self, cache_key: str, result: List[Dict]):
-        """设置缓存
-
-        Args:
-            cache_key: 缓存键
-            result: 要缓存的结果
-        """
-        if not self.enable_cache:
-            return
-
-        self.tool_cache[cache_key] = {"result": result, "ttl": self.cache_ttl, "timestamp": time.time()}
-        logger.debug(f"{self.log_prefix}设置缓存，TTL: {self.cache_ttl}")
-
-    def _cleanup_expired_cache(self):
-        """清理过期的缓存"""
-        if not self.enable_cache:
-            return
-
-        expired_keys = []
-        expired_keys.extend(cache_key for cache_key, cache_item in self.tool_cache.items() if cache_item["ttl"] <= 0)
-        for key in expired_keys:
-            del self.tool_cache[key]
-
-        if expired_keys:
-            logger.debug(f"{self.log_prefix}清理了{len(expired_keys)}个过期缓存")
 
     async def execute_specific_tool_simple(self, tool_name: str, tool_args: Dict) -> Optional[Dict]:
         """直接执行指定工具
@@ -336,86 +261,30 @@ class ToolExecutor:
 
         return None
 
-    def clear_cache(self):
-        """清空所有缓存"""
-        if self.enable_cache:
-            cache_count = len(self.tool_cache)
-            self.tool_cache.clear()
-            logger.info(f"{self.log_prefix}清空了{cache_count}个缓存项")
-
-    def get_cache_status(self) -> Dict:
-        """获取缓存状态信息
-
-        Returns:
-            Dict: 包含缓存统计信息的字典
-        """
-        if not self.enable_cache:
-            return {"enabled": False, "cache_count": 0}
-
-        # 清理过期缓存
-        self._cleanup_expired_cache()
-
-        total_count = len(self.tool_cache)
-        ttl_distribution = {}
-
-        for cache_item in self.tool_cache.values():
-            ttl = cache_item["ttl"]
-            ttl_distribution[ttl] = ttl_distribution.get(ttl, 0) + 1
-
-        return {
-            "enabled": True,
-            "cache_count": total_count,
-            "cache_ttl": self.cache_ttl,
-            "ttl_distribution": ttl_distribution,
-        }
-
-    def set_cache_config(self, enable_cache: Optional[bool] = None, cache_ttl: int = -1):
-        """动态修改缓存配置
-
-        Args:
-            enable_cache: 是否启用缓存
-            cache_ttl: 缓存TTL
-        """
-        if enable_cache is not None:
-            self.enable_cache = enable_cache
-            logger.info(f"{self.log_prefix}缓存状态修改为: {'启用' if enable_cache else '禁用'}")
-
-        if cache_ttl > 0:
-            self.cache_ttl = cache_ttl
-            logger.info(f"{self.log_prefix}缓存TTL修改为: {cache_ttl}")
 
 
 """
 ToolExecutor使用示例：
 
-# 1. 基础使用 - 从聊天消息执行工具（启用缓存，默认TTL=3）
-executor = ToolExecutor(executor_id="my_executor")
+# 1. 基础使用 - 从聊天消息执行工具
+executor = ToolExecutor(chat_id=my_chat_id)
 results, _, _ = await executor.execute_from_chat_message(
-    talking_message_str="今天天气怎么样？现在几点了？",
-    is_group_chat=False
+    target_message="今天天气怎么样？现在几点了？",
+    chat_history="",
+    sender="用户"
 )
 
-# 2. 禁用缓存的执行器
-no_cache_executor = ToolExecutor(executor_id="no_cache", enable_cache=False)
-
-# 3. 自定义缓存TTL
-long_cache_executor = ToolExecutor(executor_id="long_cache", cache_ttl=10)
-
-# 4. 获取详细信息
+# 2. 获取详细信息
 results, used_tools, prompt = await executor.execute_from_chat_message(
-    talking_message_str="帮我查询Python相关知识",
-    is_group_chat=False,
+    target_message="帮我查询Python相关知识",
+    chat_history="",
+    sender="用户",
     return_details=True
 )
 
-# 5. 直接执行特定工具
+# 3. 直接执行特定工具
 result = await executor.execute_specific_tool_simple(
     tool_name="get_knowledge",
     tool_args={"query": "机器学习"}
 )
-
-# 6. 缓存管理
-cache_status = executor.get_cache_status()  # 查看缓存状态
-executor.clear_cache()  # 清空缓存
-executor.set_cache_config(cache_ttl=5)  # 动态修改缓存配置
 """

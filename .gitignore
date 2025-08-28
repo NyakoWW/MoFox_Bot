@@ -327,6 +327,7 @@ run_pet.bat
 !/plugins/hello_world_plugin
 !/plugins/take_picture_plugin
 !/plugins/napcat_adapter_plugin
+!/plugins/echo_example
 
 config.toml
 

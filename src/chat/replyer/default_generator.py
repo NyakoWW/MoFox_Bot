@@ -32,7 +32,7 @@ from src.person_info.relationship_fetcher import relationship_fetcher_manager
 from src.person_info.person_info import get_person_info_manager
 from src.plugin_system.base.component_types import ActionInfo, EventType
 from src.plugin_system.apis import llm_api
-from src.manager.schedule_manager import schedule_manager
+from src.schedule.schedule_manager import schedule_manager
 
 logger = get_logger("replyer")
 
@@ -235,7 +235,7 @@ class DefaultReplyer:
 
         from src.plugin_system.core.tool_use import ToolExecutor  # 延迟导入ToolExecutor，不然会循环依赖
 
-        self.tool_executor = ToolExecutor(chat_id=self.chat_stream.stream_id, enable_cache=False)
+        self.tool_executor = ToolExecutor(chat_id=self.chat_stream.stream_id)
 
     async def _build_cross_context_block(self, current_chat_id: str, target_user_info: Optional[Dict[str, Any]]) -> str:
         """构建跨群聊上下文"""
@@ -370,7 +370,7 @@ class DefaultReplyer:
             from src.plugin_system.core.event_manager import event_manager
 
             if not from_plugin:
-                result = await event_manager.trigger_event(EventType.POST_LLM,prompt=prompt,stream_id=stream_id)
+                result = await event_manager.trigger_event(EventType.POST_LLM,plugin_name="SYSTEM",prompt=prompt,stream_id=stream_id)
                 if not result.all_continue_process():
                     raise UserWarning(f"插件{result.get_summary().get('stopped_handlers', '')}于请求前中断了内容生成")
 
@@ -390,7 +390,7 @@ class DefaultReplyer:
                 }
                 # 触发 AFTER_LLM 事件
                 if not from_plugin:
-                    result = await event_manager.trigger_event(EventType.AFTER_LLM,prompt=prompt,llm_response=llm_response,stream_id=stream_id)
+                    result = await event_manager.trigger_event(EventType.AFTER_LLM,plugin_name="SYSTEM",prompt=prompt,llm_response=llm_response,stream_id=stream_id)
                     if not result.all_continue_process():
                         raise UserWarning(f"插件{result.get_summary().get('stopped_handlers','')}于请求后取消了内容生成")
             except UserWarning as e:
