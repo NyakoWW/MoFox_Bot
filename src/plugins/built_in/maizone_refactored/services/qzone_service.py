@@ -151,24 +151,31 @@ class QZoneService:
             return
 
         try:
-            feeds = await api_client["monitor_list_feeds"](20)  # 监控时检查最近20条动态
-            if not feeds:
-                logger.info("监控完成：未发现新说说")
+            # --- 第一步: 单独处理自己说说的评论 ---
+            if self.get_config("monitor.enable_auto_reply", False):
+                try:
+                    own_feeds = await api_client["list_feeds"](qq_account, 5) # 获取自己最近5条说说
+                    if own_feeds:
+                        logger.info(f"获取到自己 {len(own_feeds)} 条说说，检查评论...")
+                        for feed in own_feeds:
+                            await self._reply_to_own_feed_comments(feed, api_client)
+                            await asyncio.sleep(random.uniform(3, 5))
+                except Exception as e:
+                    logger.error(f"处理自己说说评论时发生异常: {e}", exc_info=True)
+
+            # --- 第二步: 处理好友的动态 ---
+            friend_feeds = await api_client["monitor_list_feeds"](20)
+            if not friend_feeds:
+                logger.info("监控完成：未发现好友新说说")
                 return
 
-            logger.info(f"监控任务: 发现 {len(feeds)} 条新动态，准备处理...")
-            for feed in feeds:
+            logger.info(f"监控任务: 发现 {len(friend_feeds)} 条好友新动态，准备处理...")
+            for feed in friend_feeds:
                 target_qq = feed.get("target_qq")
-                if not target_qq:
+                if not target_qq or str(target_qq) == str(qq_account): # 确保不重复处理自己的
                     continue
-
-                # 区分是自己的说说还是他人的说说
-                if str(target_qq) == str(qq_account):
-                    if self.get_config("monitor.enable_auto_reply", False):
-                        await self._reply_to_own_feed_comments(feed, api_client)
-                else:
-                    await self._process_single_feed(feed, api_client, target_qq, target_qq)
-
+                
+                await self._process_single_feed(feed, api_client, target_qq, target_qq)
                 await asyncio.sleep(random.uniform(5, 10))
         except Exception as e:
             logger.error(f"监控好友动态时发生异常: {e}", exc_info=True)
@@ -666,6 +673,17 @@ class QZoneService:
                     if not is_commented:
                         images = [pic['url1'] for pic in msg.get('pictotal', []) if 'url1' in pic]
 
+                        comments = []
+                        if 'commentlist' in msg:
+                            for c in msg['commentlist']:
+                                comments.append({
+                                    'qq_account': c.get('uin'),
+                                    'nickname': c.get('name'),
+                                    'content': c.get('content'),
+                                    'comment_tid': c.get('tid'),
+                                    'parent_tid': c.get('parent_tid') # API直接返回了父ID
+                                })
+
                         feeds_list.append(
                             {
                                 "tid": msg.get("tid", ""),
@@ -676,7 +694,8 @@ class QZoneService:
                                 "rt_con": msg.get("rt_con", {}).get("content", "")
                                 if isinstance(msg.get("rt_con"), dict)
                                 else "",
-                                "images": images
+                                "images": images,
+                                "comments": comments
                             }
                         )
                 return feeds_list
@@ -827,7 +846,23 @@ class QZoneService:
                     text_div = soup.find('div', class_='f-info')
                     text = text_div.get_text(strip=True) if text_div else ""
                     
-                    images = [img['src'] for img in soup.find_all('img') if 'src' in img.attrs and 'user-avatar' not in img.get('class', [])]
+                    # --- 借鉴原版插件的精确图片提取逻辑 ---
+                    image_urls = []
+                    img_box = soup.find('div', class_='img-box')
+                    if img_box:
+                        for img in img_box.find_all('img'):
+                            src = img.get('src')
+                            # 排除QQ空间的小图标和表情
+                            if src and 'qzonestyle.gtimg.cn' not in src:
+                                image_urls.append(src)
+                    
+                    # 视频封面也视为图片
+                    video_thumb = soup.select_one('div.video-img img')
+                    if video_thumb and 'src' in video_thumb.attrs:
+                        image_urls.append(video_thumb['src'])
+
+                    # 去重
+                    images = list(set(image_urls))
                     
                     comments = []
                     comment_divs = soup.find_all('div', class_='f-single-comment')
