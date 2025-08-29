@@ -31,22 +31,15 @@ class WakeUpManager:
         self.log_interval = 30
         
         # 从配置文件获取参数
-        wakeup_config = global_config.wakeup_system
-        self.wakeup_threshold = wakeup_config.wakeup_threshold
-        self.private_message_increment = wakeup_config.private_message_increment
-        self.group_mention_increment = wakeup_config.group_mention_increment
-        self.decay_rate = wakeup_config.decay_rate
-        self.decay_interval = wakeup_config.decay_interval
-        self.angry_duration = wakeup_config.angry_duration
-        self.enabled = wakeup_config.enable
-        self.angry_prompt = wakeup_config.angry_prompt
-        
-        # 失眠系统参数
-        self.insomnia_enabled = wakeup_config.enable_insomnia_system
-        self.sleep_pressure_threshold = wakeup_config.sleep_pressure_threshold
-        self.deep_sleep_threshold = wakeup_config.deep_sleep_threshold
-        self.insomnia_chance_low_pressure = wakeup_config.insomnia_chance_low_pressure
-        self.insomnia_chance_normal_pressure = wakeup_config.insomnia_chance_normal_pressure
+        sleep_config = global_config.sleep_system
+        self.wakeup_threshold = sleep_config.wakeup_threshold
+        self.private_message_increment = sleep_config.private_message_increment
+        self.group_mention_increment = sleep_config.group_mention_increment
+        self.decay_rate = sleep_config.decay_rate
+        self.decay_interval = sleep_config.decay_interval
+        self.angry_duration = sleep_config.angry_duration
+        self.enabled = sleep_config.enable
+        self.angry_prompt = sleep_config.angry_prompt
         
         self._load_wakeup_state()
 
@@ -144,7 +137,9 @@ class WakeUpManager:
             
         # 只有在休眠且非失眠状态下才累积唤醒度
         from src.schedule.schedule_manager import schedule_manager
-        if not schedule_manager.is_sleeping() or self.context.is_in_insomnia:
+        from src.schedule.sleep_manager import SleepState
+        current_sleep_state = schedule_manager.get_current_sleep_state()
+        if current_sleep_state != SleepState.SLEEPING:
             return False
             
         old_value = self.wakeup_value
@@ -221,38 +216,3 @@ class WakeUpManager:
             "is_angry": self.is_angry,
             "angry_remaining_time": max(0, self.angry_duration - (time.time() - self.angry_start_time)) if self.is_angry else 0
         }
-
-    def check_for_insomnia(self) -> bool:
-        """
-        在尝试入睡时检查是否会失眠
-        
-        Returns:
-            bool: 如果失眠则返回 True，否则返回 False
-        """
-        if not self.insomnia_enabled:
-            return False
-
-        import random
-        
-        pressure = self.context.sleep_pressure
-        
-        # 压力过高，深度睡眠，极难失眠
-        if pressure > self.deep_sleep_threshold:
-            return False
-            
-        # 根据睡眠压力决定失眠概率
-        from src.schedule.schedule_manager import schedule_manager
-        if pressure < self.sleep_pressure_threshold:
-            # 压力不足型失眠
-            if schedule_manager._is_in_voluntary_delay:
-                logger.debug(f"{self.context.log_prefix} 处于主动延迟睡眠期间，跳过压力不足型失眠判断。")
-            elif random.random() < self.insomnia_chance_low_pressure:
-                logger.info(f"{self.context.log_prefix} 睡眠压力不足 ({pressure:.1f})，触发失眠！")
-                return True
-        else:
-            # 压力正常，随机失眠
-            if random.random() < self.insomnia_chance_normal_pressure:
-                logger.info(f"{self.context.log_prefix} 睡眠压力正常 ({pressure:.1f})，触发随机失眠！")
-                return True
-        
-        return False

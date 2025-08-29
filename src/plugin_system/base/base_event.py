@@ -9,7 +9,7 @@ class HandlerResult:
     
     所有事件处理器必须返回此类的实例
     """
-    def __init__(self, success: bool, continue_process: bool, message: Any = {}, handler_name: str = ""):
+    def __init__(self, success: bool, continue_process: bool, message: Any = None, handler_name: str = ""):
         self.success = success
         self.continue_process = continue_process
         self.message = message
@@ -39,6 +39,19 @@ class HandlerResultsCollection:
     def get_stopped_handlers(self) -> List[HandlerResult]:
         """获取continue_process为False的handler结果"""
         return [result for result in self.results if not result.continue_process]
+    
+    def get_message_result(self) -> Any:
+        """获取handler的message
+        
+        当只有一个handler的结果时，直接返回那个handler结果中的message字段
+        否则用字典的形式{handler_name:message}返回
+        """
+        if len(self.results) == 0:
+            return {}
+        elif len(self.results) == 1:
+            return self.results[0].message
+        else:
+            return {result.handler_name: result.message for result in self.results}
     
     def get_handler_result(self, handler_name: str) -> Optional[HandlerResult]:
         """获取指定handler的结果"""
@@ -70,8 +83,8 @@ class BaseEvent:
     def __init__(
             self, 
             name: str, 
-            allowed_subscribers: List[str]=[],  
-            allowed_triggers: List[str]=[]
+            allowed_subscribers: List[str] = None,
+            allowed_triggers: List[str] = None
         ):
         self.name = name
         self.enabled = True

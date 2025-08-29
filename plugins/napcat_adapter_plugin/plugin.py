@@ -1,12 +1,13 @@
 import sys
 import asyncio
 import json
+import inspect
 import websockets as Server
-from . import event_types,CONSTS
+from . import event_types,CONSTS,event_handlers
 
-from typing import List, Tuple
+from typing import List
 
-from src.plugin_system import BasePlugin, BaseEventHandler, register_plugin, EventType, ConfigField, BaseAction, ActionActivationType
+from src.plugin_system import BasePlugin, BaseEventHandler, register_plugin, EventType, ConfigField
 from src.plugin_system.base.base_event import HandlerResult
 from src.plugin_system.core.event_manager import event_manager
 
@@ -26,11 +27,18 @@ from .src.send_handler import send_handler
 from .src.config import global_config
 from .src.config.features_config import features_manager
 from .src.config.migrate_features import auto_migrate_features
-from .src.mmc_com_layer import mmc_start_com, mmc_stop_com, router
+from .src.mmc_com_layer import mmc_start_com, router
 from .src.response_pool import put_response, check_timeout_response
 from .src.websocket_manager import websocket_manager
 
 message_queue = asyncio.Queue()
+
+def get_classes_in_module(module):
+    classes = []
+    for name, member in inspect.getmembers(module):
+        if inspect.isclass(member):
+            classes.append(member)
+    return classes
 
 class LauchNapcatAdapterHandler(BaseEventHandler):
     """自动启动Adapter"""
@@ -98,6 +106,103 @@ class LauchNapcatAdapterHandler(BaseEventHandler):
         asyncio.create_task(self.message_process())
         asyncio.create_task(check_timeout_response())
 
+class APITestHandler(BaseEventHandler):
+    handler_name: str = "napcat_api_test_handler"
+    handler_description: str = "接口测试"
+    weight: int = 100
+    intercept_message: bool = False
+    init_subscribe = [EventType.ON_MESSAGE]
+
+    async def execute(self,_):
+        logger.info("5s后开始测试napcat接口...")
+        await asyncio.sleep(5)
+        '''
+        # 测试获取登录信息
+        logger.info("测试获取登录信息...")
+        res = await event_manager.trigger_event(
+            event_types.NapcatEvent.ACCOUNT.GET_LOGIN_INFO
+        )
+        logger.info(f"GET_LOGIN_INFO: {res.get_message_result()}")
+        
+        # 测试获取状态
+        logger.info("测试获取状态...")
+        res = await event_manager.trigger_event(
+            event_types.NapcatEvent.ACCOUNT.GET_STATUS
+        )
+        logger.info(f"GET_STATUS: {res.get_message_result()}")
+        
+        # 测试获取好友列表
+        logger.info("测试获取好友列表...")
+        res = await event_manager.trigger_event(
+            event_types.NapcatEvent.ACCOUNT.GET_FRIEND_LIST,
+            no_cache=False
+        )
+        logger.info(f"GET_FRIEND_LIST: {res.get_message_result()}")
+        
+        # 测试获取好友分组列表
+        logger.info("测试获取好友分组列表...")
+        res = await event_manager.trigger_event(
+            event_types.NapcatEvent.ACCOUNT.GET_FRIENDS_WITH_CATEGORY
+        )
+        logger.info(f"GET_FRIENDS_WITH_CATEGORY: {res.get_message_result()}")
+        
+        # 测试获取在线客户端
+        logger.info("测试获取在线客户端...")
+        res = await event_manager.trigger_event(
+            event_types.NapcatEvent.ACCOUNT.GET_ONLINE_CLIENTS,
+            no_cache=True
+        )
+        logger.info(f"GET_ONLINE_CLIENTS: {res.get_message_result()}")
+        
+        # 测试获取最近联系人
+        logger.info("测试获取最近联系人...")
+        res = await event_manager.trigger_event(
+            event_types.NapcatEvent.ACCOUNT.GET_RECENT_CONTACT,
+            count=5
+        )
+        logger.info(f"GET_RECENT_CONTACT: {res.get_message_result()}")
+        
+        # 测试设置个性签名
+        logger.info("测试设置个性签名...")
+        res = await event_manager.trigger_event(
+            event_types.NapcatEvent.ACCOUNT.SET_SELF_LONGNICK,
+            longNick="测试个性签名 - 来自APITestHandler"
+        )
+        logger.info(f"SET_SELF_LONGNICK: {res.get_message_result()}")
+        
+        # 测试设置在线状态
+        logger.info("测试设置在线状态...")
+        res = await event_manager.trigger_event(
+            event_types.NapcatEvent.ACCOUNT.SET_ONLINE_STATUS,
+            status="11",
+            ext_status="0",
+            battery_status="0"
+        )
+        logger.info(f"SET_ONLINE_STATUS: {res.get_message_result()}")
+        
+        # 测试设置自定义在线状态
+        logger.info("测试设置自定义在线状态...")
+        res = await event_manager.trigger_event(
+            event_types.NapcatEvent.ACCOUNT.SET_DIY_ONLINE_STATUS,
+            face_id="358",
+            face_type="1",
+            wording="测试中..."
+        )
+        logger.info(f"SET_DIY_ONLINE_STATUS: {res.get_message_result()}")
+        
+        # 测试获取点赞列表
+        logger.info("测试获取点赞列表...")
+        res = await event_manager.trigger_event(
+            event_types.NapcatEvent.ACCOUNT.GET_PROFILE_LIKE,
+            start=0,
+            count=5
+        )
+        logger.info(f"GET_PROFILE_LIKE: {res.get_message_result()}")
+        
+        logger.info("所有ACCOUNT接口测试完成！")
+        '''
+        return HandlerResult(True,True,"所有接口测试完成")
+        
 @register_plugin
 class NapcatAdapterPlugin(BasePlugin):
     plugin_name = CONSTS.PLUGIN_NAME
@@ -121,11 +226,23 @@ class NapcatAdapterPlugin(BasePlugin):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
         for e in event_types.NapcatEvent.ON_RECEIVED:
             event_manager.register_event(e ,allowed_triggers=[self.plugin_name])
-    
+        
+        for e in event_types.NapcatEvent.ACCOUNT:
+            event_manager.register_event(e,allowed_subscribers=[f"{e.value}_handler"])
+
+        for e in event_types.NapcatEvent.GROUP:
+            event_manager.register_event(e,allowed_subscribers=[f"{e.value}_handler"])
+
+        for e in event_types.NapcatEvent.MESSAGE:
+            event_manager.register_event(e,allowed_subscribers=[f"{e.value}_handler"])
+
     def get_plugin_components(self):
         components = []
         components.append((LauchNapcatAdapterHandler.get_handler_info(), LauchNapcatAdapterHandler))
+        components.append((APITestHandler.get_handler_info(), APITestHandler))
+        for handler in get_classes_in_module(event_handlers):
+            if issubclass(handler,BaseEventHandler):
+                components.append((handler.get_handler_info(), handler))
         return components
