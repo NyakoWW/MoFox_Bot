@@ -1,5 +1,5 @@
 [inner]
-version = "6.5.7"
+version = "6.5.8"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -337,8 +337,6 @@ auto_install_timeout = 300
 # 是否使用PyPI镜像源（推荐，可加速下载）
 use_mirror = true
 mirror_url = "https://pypi.tuna.tsinghua.edu.cn/simple" # PyPI镜像源URL，如: "https://pypi.tuna.tsinghua.edu.cn/simple" 
-# 安装前是否提示用户（暂未实现）
-prompt_before_install = false
 # 依赖安装日志级别
 install_log_level = "INFO"
 
