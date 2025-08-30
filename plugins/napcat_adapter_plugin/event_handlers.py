@@ -2,7 +2,7 @@ from src.plugin_system import BaseEventHandler
 from src.plugin_system.base.base_event import HandlerResult
 
 from .src.send_handler import send_handler
-from .event_types import *
+from .event_types import NapcatEvent
 
 from src.common.logger import get_logger
 logger = get_logger("napcat_adapter")
