@@ -1,6 +1,6 @@
 from enum import Enum
 
-class NapcatEvent(Enum):
+class NapcatEvent:
     """
     napcat插件事件枚举类
     """
