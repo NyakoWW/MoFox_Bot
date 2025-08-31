@@ -472,7 +472,7 @@ class OpenaiClient(BaseClient):
                         req_task.cancel()
                         raise ReqAbortException("请求被外部信号中断")
                     await asyncio.sleep(0.1)  # 等待0.5秒后再次检查任务&中断信号量状态
-                
+
                 # logger.info(f"OpenAI请求时间: {model_info.model_identifier}  {time.time() - start_time} \n{messages}")
 
                 resp, usage_record = async_response_parser(req_task.result())
@@ -516,7 +516,7 @@ class OpenaiClient(BaseClient):
             # 添加详细的错误信息以便调试
             logger.error(f"OpenAI API连接错误（嵌入模型）: {str(e)}")
             logger.error(f"错误类型: {type(e)}")
-            if hasattr(e, '__cause__') and e.__cause__:
+            if hasattr(e, "__cause__") and e.__cause__:
                 logger.error(f"底层错误: {str(e.__cause__)}")
             raise NetworkConnectionError() from e
         except APIStatusError as e:

@@ -24,7 +24,9 @@ class QAManager:
         self.kg_manager = kg_manager
         self.qa_model = LLMRequest(model_set=model_config.model_task_config.lpmm_qa, request_type="lpmm.qa")
 
-    async def process_query(self, question: str) -> Optional[Tuple[List[Tuple[str, float, float]], Optional[Dict[str, float]]]]:
+    async def process_query(
+        self, question: str
+    ) -> Optional[Tuple[List[Tuple[str, float, float]], Optional[Dict[str, float]]]]:
         """处理查询"""
 
         # 生成问题的Embedding
@@ -105,7 +107,7 @@ class QAManager:
             if not query_res:
                 logger.debug("知识库查询结果为空，可能是知识库中没有相关内容")
                 return None
-                
+
             knowledge = [
                 (
                     self.embed_manager.paragraphs_embedding_store.store[res[0]].str,

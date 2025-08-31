@@ -16,7 +16,7 @@ from rich.traceback import install
 
 from src.llm_models.utils_model import LLMRequest
 from src.config.config import global_config, model_config
-from sqlalchemy import select,insert,update,delete
+from sqlalchemy import select, insert, update, delete
 from src.common.database.sqlalchemy_models import Messages, GraphNodes, GraphEdges  # SQLAlchemy Models导入
 from src.common.logger import get_logger
 from src.common.database.sqlalchemy_database_api import get_db_session
@@ -30,6 +30,7 @@ from src.chat.utils.utils import translate_timestamp_to_human_readable
 
 
 install(extra_lines=3)
+
 
 def calculate_information_content(text):
     """计算文本的信息量（熵）"""
@@ -695,7 +696,9 @@ class Hippocampus:
 
         return result
 
-    async def get_activate_from_text(self, text: str, max_depth: int = 3, fast_retrieval: bool = False) -> tuple[float, list[str]]:
+    async def get_activate_from_text(
+        self, text: str, max_depth: int = 3, fast_retrieval: bool = False
+    ) -> tuple[float, list[str]]:
         """从文本中提取关键词并获取相关记忆。
 
         Args:
@@ -863,10 +866,10 @@ class EntorhinalCortex:
                             current_memorized_times = message.get("memorized_times", 0)
                             with get_db_session() as session:
                                 session.execute(
-                                update(Messages)
-                                .where(Messages.message_id == message["message_id"])
-                                .values(memorized_times=current_memorized_times + 1)
-                            )
+                                    update(Messages)
+                                    .where(Messages.message_id == message["message_id"])
+                                    .values(memorized_times=current_memorized_times + 1)
+                                )
                                 session.commit()
                         return messages  # 直接返回原始的消息列表
 
@@ -951,7 +954,6 @@ class EntorhinalCortex:
                 for i in range(0, len(nodes_to_create), batch_size):
                     batch = nodes_to_create[i : i + batch_size]
                     session.execute(insert(GraphNodes), batch)
-                    
 
             if nodes_to_update:
                 batch_size = 100
@@ -963,11 +965,9 @@ class EntorhinalCortex:
                             .where(GraphNodes.concept == node_data["concept"])
                             .values(**{k: v for k, v in node_data.items() if k != "concept"})
                         )
-                    
 
             if nodes_to_delete:
                 session.execute(delete(GraphNodes).where(GraphNodes.concept.in_(nodes_to_delete)))
-                
 
             # 处理边的信息
             db_edges = list(session.execute(select(GraphEdges)).scalars())
@@ -1023,7 +1023,6 @@ class EntorhinalCortex:
                 for i in range(0, len(edges_to_create), batch_size):
                     batch = edges_to_create[i : i + batch_size]
                     session.execute(insert(GraphEdges), batch)
-                    
 
             if edges_to_update:
                 batch_size = 100
@@ -1037,7 +1036,6 @@ class EntorhinalCortex:
                             )
                             .values(**{k: v for k, v in edge_data.items() if k not in ["source", "target"]})
                         )
-                    
 
             if edges_to_delete:
                 for source, target in edges_to_delete:
@@ -1048,12 +1046,10 @@ class EntorhinalCortex:
             # 提交事务
             session.commit()
 
-                
-
         end_time = time.time()
         logger.info(f"[同步] 总耗时: {end_time - start_time:.2f}秒")
         logger.info(f"[同步] 同步了 {len(memory_nodes)} 个节点和 {len(memory_edges)} 条边")
-        
+
     async def resync_memory_to_db(self):
         """清空数据库并重新同步所有记忆数据"""
         start_time = time.time()
@@ -1064,7 +1060,7 @@ class EntorhinalCortex:
             clear_start = time.time()
             session.execute(delete(GraphNodes))
             session.execute(delete(GraphEdges))
-            
+
             clear_end = time.time()
             logger.info(f"[数据库] 清空数据库耗时: {clear_end - clear_start:.2f}秒")
 
@@ -1122,7 +1118,7 @@ class EntorhinalCortex:
                 for i in range(0, len(nodes_data), batch_size):
                     batch = nodes_data[i : i + batch_size]
                     session.execute(insert(GraphNodes), batch)
-                    
+
             node_end = time.time()
             logger.info(f"[数据库] 写入 {len(nodes_data)} 个节点耗时: {node_end - node_start:.2f}秒")
 
@@ -1134,7 +1130,7 @@ class EntorhinalCortex:
                     batch = edges_data[i : i + batch_size]
                     session.execute(insert(GraphEdges), batch)
             session.commit()
-            
+
         edge_end = time.time()
         logger.info(f"[数据库] 写入 {len(edges_data)} 条边耗时: {edge_end - edge_start:.2f}秒")
 
@@ -1170,10 +1166,7 @@ class EntorhinalCortex:
                         if not node.last_modified:
                             update_data["last_modified"] = current_time
 
-                        session.execute(
-                            update(GraphNodes).where(GraphNodes.concept == concept).values(**update_data)
-                        )
-                        
+                        session.execute(update(GraphNodes).where(GraphNodes.concept == concept).values(**update_data))
 
                     # 获取时间信息(如果不存在则使用当前时间)
                     created_time = node.created_time or current_time
@@ -1209,7 +1202,6 @@ class EntorhinalCortex:
                         .where((GraphEdges.source == source) & (GraphEdges.target == target))
                         .values(**update_data)
                     )
-                    
 
                 # 获取时间信息(如果不存在则使用当前时间)
                 created_time = edge.created_time or current_time
@@ -1231,8 +1223,10 @@ class ParahippocampalGyrus:
     def __init__(self, hippocampus: Hippocampus):
         self.hippocampus = hippocampus
         self.memory_graph = hippocampus.memory_graph
-        
-        self.memory_modify_model = LLMRequest(model_set=model_config.model_task_config.utils, request_type="memory.modify")
+
+        self.memory_modify_model = LLMRequest(
+            model_set=model_config.model_task_config.utils, request_type="memory.modify"
+        )
 
     async def memory_compress(self, messages: list, compress_rate=0.1):
         """压缩和总结消息内容，生成记忆主题和摘要。
@@ -1532,14 +1526,20 @@ class ParahippocampalGyrus:
                         similarity = self._calculate_item_similarity(memory_items[i], memory_items[j])
                         if similarity > 0.8:  # 相似度阈值
                             # 合并相似记忆项
-                            longer_item = memory_items[i] if len(memory_items[i]) > len(memory_items[j]) else memory_items[j]
-                            shorter_item = memory_items[j] if len(memory_items[i]) > len(memory_items[j]) else memory_items[i]
+                            longer_item = (
+                                memory_items[i] if len(memory_items[i]) > len(memory_items[j]) else memory_items[j]
+                            )
+                            shorter_item = (
+                                memory_items[j] if len(memory_items[i]) > len(memory_items[j]) else memory_items[i]
+                            )
 
                             # 保留更长的记忆项，标记短的用于删除
                             if shorter_item not in items_to_remove:
                                 items_to_remove.append(shorter_item)
                                 merged_count += 1
-                                logger.debug(f"[整合] 在节点 {node} 中合并相似记忆: {shorter_item[:30]}... -> {longer_item[:30]}...")
+                                logger.debug(
+                                    f"[整合] 在节点 {node} 中合并相似记忆: {shorter_item[:30]}... -> {longer_item[:30]}..."
+                                )
 
                 # 移除被合并的记忆项
                 if items_to_remove:
@@ -1566,11 +1566,11 @@ class ParahippocampalGyrus:
 
         # 检查是否有变化需要同步到数据库
         has_changes = (
-            edge_changes["weakened"] or
-            edge_changes["removed"] or
-            node_changes["reduced"] or
-            node_changes["removed"] or
-            merged_count > 0
+            edge_changes["weakened"]
+            or edge_changes["removed"]
+            or node_changes["reduced"]
+            or node_changes["removed"]
+            or merged_count > 0
         )
 
         if has_changes:
@@ -1696,7 +1696,9 @@ class HippocampusManager:
             response = []
         return response
 
-    async def get_activate_from_text(self, text: str, max_depth: int = 3, fast_retrieval: bool = False) -> tuple[float, list[str]]:
+    async def get_activate_from_text(
+        self, text: str, max_depth: int = 3, fast_retrieval: bool = False
+    ) -> tuple[float, list[str]]:
         """从文本中获取激活值的公共接口"""
         if not self._initialized:
             raise RuntimeError("HippocampusManager 尚未初始化，请先调用 initialize 方法")
@@ -1720,6 +1722,6 @@ class HippocampusManager:
             raise RuntimeError("HippocampusManager 尚未初始化，请先调用 initialize 方法")
         return self._hippocampus.get_all_node_names()
 
+
 # 创建全局实例
 hippocampus_manager = HippocampusManager()
-

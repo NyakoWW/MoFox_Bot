@@ -24,11 +24,11 @@ class ClassicalWillingManager(BaseWillingManager):
         willing_info = self.ongoing_messages[message_id]
         chat_id = willing_info.chat_id
         current_willing = self.chat_reply_willing.get(chat_id, 0)
-        
+
         # print(f"[{chat_id}] 回复意愿: {current_willing}")
 
         interested_rate = willing_info.interested_rate
-        
+
         # print(f"[{chat_id}] 兴趣值: {interested_rate}")
 
         current_willing += interested_rate
@@ -37,14 +37,14 @@ class ClassicalWillingManager(BaseWillingManager):
             current_willing += 1 if current_willing < 1.0 else 0.2
 
         self.chat_reply_willing[chat_id] = min(current_willing, 1.0)
-        
+
         reply_probability = min(max((current_willing - 0.5), 0.01) * 2, 1.5)
-        
+
         # print(f"[{chat_id}] 回复概率: {reply_probability}")
-        
+
         return reply_probability
 
-    async def before_generate_reply_handle(self, message_id): 
+    async def before_generate_reply_handle(self, message_id):
         pass
 
     async def after_generate_reply_handle(self, message_id):

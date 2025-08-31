@@ -88,7 +88,7 @@ class RelationshipManager:
             # 获取平台信息，优先使用chat_info_platform，如果为None则使用user_platform
             platform = msg.get("chat_info_platform") or msg.get("user_platform", "unknown")
             user_id = msg.get("user_id")
-            
+
             await person_info_manager.get_or_create_person(
                 platform=platform,  # type: ignore
                 user_id=user_id,  # type: ignore
@@ -237,9 +237,7 @@ class RelationshipManager:
         elif not isinstance(current_points, list):
             current_points = []
         current_points.extend(points_list)
-        await person_info_manager.update_one_field(
-            person_id, "points", orjson.dumps(current_points).decode('utf-8')
-        )
+        await person_info_manager.update_one_field(person_id, "points", orjson.dumps(current_points).decode("utf-8"))
 
         # 将新记录添加到现有记录中
         if isinstance(current_points, list):
@@ -285,9 +283,7 @@ class RelationshipManager:
             current_points = await self._update_impression(person_id, current_points, timestamp)
 
         # 更新数据库
-        await person_info_manager.update_one_field(
-            person_id, "points", orjson.dumps(current_points).decode('utf-8')
-        )
+        await person_info_manager.update_one_field(person_id, "points", orjson.dumps(current_points).decode("utf-8"))
 
         await person_info_manager.update_one_field(person_id, "know_times", know_times + 1)
         know_since = await person_info_manager.get_value(person_id, "know_since") or 0
@@ -488,12 +484,10 @@ class RelationshipManager:
 
             forgotten_points = []
             info_list = []
-            await person_info_manager.update_one_field(
-                person_id, "info_list", orjson.dumps(info_list).decode('utf-8')
-            )
+            await person_info_manager.update_one_field(person_id, "info_list", orjson.dumps(info_list).decode("utf-8"))
 
         await person_info_manager.update_one_field(
-            person_id, "forgotten_points", orjson.dumps(forgotten_points).decode('utf-8')
+            person_id, "forgotten_points", orjson.dumps(forgotten_points).decode("utf-8")
         )
 
         return current_points
