@@ -6,7 +6,7 @@ from typing import Dict, Type, List, Optional, Any, Union
 from threading import Lock
 
 from src.common.logger import get_logger
-from src.plugin_system.base.base_event import BaseEvent, HandlerResultsCollection
+from src.plugin_system.base.base_event import BaseEvent, HandlerResultsCollection, HandlerResult
 from src.plugin_system.base.base_events_handler import BaseEventHandler
 from src.plugin_system.base.component_types import EventType
 logger = get_logger("event_manager")
