@@ -2,7 +2,6 @@
 智能Prompt系统 - 完全重构版本
 基于原有DefaultReplyer的完整功能集成，使用新的参数结构
 解决实现质量不高、功能集成不完整和错误处理不足的问题
-移除了缓存机制，简化架构
 """
 import asyncio
 import time
@@ -40,16 +39,14 @@ class ChatContext:
 
 
 class SmartPromptBuilder:
-    """重构的智能提示词构建器 - 统一错误处理和功能集成，移除缓存机制"""
+    """重构的智能提示词构建器 - 统一错误处理和功能集成"""
     
     def __init__(self):
         # 移除缓存相关初始化
         pass
         
     async def build_context_data(self, params: SmartPromptParameters) -> Dict[str, Any]:
-        """并行构建完整的上下文数据 - 移除缓存机制"""
-        
-        # 移除缓存检查和存储逻辑
+        """并行构建完整的上下文数据"""
         
         # 并行执行所有构建任务
         start_time = time.time()
@@ -77,46 +74,32 @@ class SmartPromptBuilder:
             
             # 根据新的参数结构确定要构建的项
             if params.enable_expression and not pre_built_params.get('expression_habits_block'):
-                tasks.append(self._build_with_fallback(
-                    self._build_expression_habits, params, "expression_habits_block", ""
-                ))
+                tasks.append(self._build_expression_habits(params))
                 task_names.append("expression_habits")
             
             if params.enable_memory and not pre_built_params.get('memory_block'):
-                tasks.append(self._build_with_fallback(
-                    self._build_memory_block, params, "memory_block", ""
-                ))
+                tasks.append(self._build_memory_block(params))
                 task_names.append("memory_block")
             
             if params.enable_relation and not pre_built_params.get('relation_info_block'):
-                tasks.append(self._build_with_fallback(
-                    self._build_relation_info, params, "relation_info_block", ""
-                ))
+                tasks.append(self._build_relation_info(params))
                 task_names.append("relation_info")
             
             # 添加mai_think上下文构建任务
             if not pre_built_params.get('mai_think'):
-                tasks.append(self._build_with_fallback(
-                    self._build_mai_think_context, params, "mai_think", None
-                ))
+                tasks.append(self._build_mai_think_context(params))
                 task_names.append("mai_think_context")
             
             if params.enable_tool and not pre_built_params.get('tool_info_block'):
-                tasks.append(self._build_with_fallback(
-                    self._build_tool_info, params, "tool_info_block", ""
-                ))
+                tasks.append(self._build_tool_info(params))
                 task_names.append("tool_info")
             
             if params.enable_knowledge and not pre_built_params.get('knowledge_prompt'):
-                tasks.append(self._build_with_fallback(
-                    self._build_knowledge_info, params, "knowledge_prompt", ""
-                ))
+                tasks.append(self._build_knowledge_info(params))
                 task_names.append("knowledge_info")
             
             if params.enable_cross_context and not pre_built_params.get('cross_context_block'):
-                tasks.append(self._build_with_fallback(
-                    self._build_cross_context, params, "cross_context_block", ""
-                ))
+                tasks.append(self._build_cross_context(params))
                 task_names.append("cross_context")
             
             # 性能优化：根据任务数量动态调整超时时间
@@ -196,8 +179,6 @@ class SmartPromptBuilder:
             'action_descriptions': params.action_descriptions,
         })
         
-        # 移除缓存存储逻辑
-        
         total_time = time.time() - start_time
         if timing_logs:
             timing_str = "; ".join([f"{name}: {time:.2f}s" for name, time in timing_logs.items()])
@@ -205,47 +186,6 @@ class SmartPromptBuilder:
         logger.debug(f"构建完成，总耗时: {total_time:.2f}s")
         
         return context_data
-    
-    async def _build_with_fallback(
-        self,
-        build_func: callable,
-        params: SmartPromptParameters,
-        component_name: str,
-        fallback_value: Any = "",
-        critical: bool = False
-    ) -> Dict[str, Any]:
-        """
-        统一的构建方法错误处理包装器
-        
-        Args:
-            build_func: 构建函数
-            params: 参数对象
-            component_name: 组件名称
-            fallback_value: 降级值
-            critical: 是否为关键组件，失败时抛出异常
-            
-        Returns:
-            Dict[str, Any]: 构建结果
-        """
-        start_time = time.time()
-        try:
-            result = await build_func(params)
-            end_time = time.time()
-            timing = end_time - start_time
-            logger.debug(f"构建{component_name}成功，耗时: {timing:.2f}s")
-            return {component_name: result, f"{component_name}_timing": timing}
-        except ImportError as e:
-            error_msg = f"构建{component_name}时导入依赖失败: {e}"
-            logger.error(error_msg)
-            if critical:
-                raise RuntimeError(error_msg) from e
-            return {component_name: fallback_value, f"{component_name}_timing": time.time() - start_time}
-        except Exception as e:
-            error_msg = f"构建{component_name}失败: {e}"
-            logger.error(error_msg)
-            if critical:
-                raise RuntimeError(error_msg) from e
-            return {component_name: fallback_value, f"{component_name}_timing": time.time() - start_time}
     
     async def _build_s4u_chat_context(self, context_data: Dict[str, Any], params: SmartPromptParameters) -> None:
         """构建S4U模式的聊天上下文 - 使用新参数结构"""
@@ -326,51 +266,44 @@ class SmartPromptBuilder:
 
     async def _build_mai_think_context(self, params: SmartPromptParameters) -> Any:
         """构建mai_think上下文 - 完全继承DefaultReplyer功能"""
-        try:
-            from src.mais4u.mai_think import mai_thinking_manager
-            
-            # 获取mai_think实例
-            mai_think = mai_thinking_manager.get_mai_think(params.chat_id)
-            
-            # 设置mai_think的上下文信息
-            mai_think.memory_block = params.memory_block or ""
-            mai_think.relation_info_block = params.relation_info_block or ""
-            mai_think.time_block = params.time_block or f"当前时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            
-            # 设置聊天目标信息
-            if params.is_group_chat:
-                from src.chat.utils.prompt_builder import global_prompt_manager
-                chat_target_1 = await global_prompt_manager.get_prompt_async("chat_target_group1")
-                chat_target_2 = await global_prompt_manager.get_prompt_async("chat_target_group2")
-            else:
-                chat_target_name = "对方"
-                if params.chat_target_info:
-                    chat_target_name = (
-                        params.chat_target_info.get("person_name") or 
-                        params.chat_target_info.get("user_nickname") or "对方"
-                    )
-                from src.chat.utils.prompt_builder import global_prompt_manager
-                chat_target_1 = await global_prompt_manager.format_prompt(
-                    "chat_target_private1", sender_name=chat_target_name
+        from src.mais4u.mai_think import mai_thinking_manager
+        
+        # 获取mai_think实例
+        mai_think = mai_thinking_manager.get_mai_think(params.chat_id)
+        
+        # 设置mai_think的上下文信息
+        mai_think.memory_block = params.memory_block or ""
+        mai_think.relation_info_block = params.relation_info_block or ""
+        mai_think.time_block = params.time_block or f"当前时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        
+        # 设置聊天目标信息
+        if params.is_group_chat:
+            chat_target_1 = await global_prompt_manager.get_prompt_async("chat_target_group1")
+            chat_target_2 = await global_prompt_manager.get_prompt_async("chat_target_group2")
+        else:
+            chat_target_name = "对方"
+            if params.chat_target_info:
+                chat_target_name = (
+                    params.chat_target_info.get("person_name") or 
+                    params.chat_target_info.get("user_nickname") or "对方"
                 )
-                chat_target_2 = await global_prompt_manager.format_prompt(
-                    "chat_target_private2", sender_name=chat_target_name
-                )
-            
-            mai_think.chat_target = chat_target_1
-            mai_think.chat_target_2 = chat_target_2
-            mai_think.chat_info = params.chat_talking_prompt_short or ""
-            mai_think.mood_state = params.mood_prompt or ""
-            mai_think.identity = params.identity_block or ""
-            mai_think.sender = params.sender
-            mai_think.target = params.target
-            
-            # 返回mai_think实例，以便后续使用
-            return mai_think
-            
-        except Exception as e:
-            logger.error(f"构建mai_think上下文失败: {e}")
-            return None
+            chat_target_1 = await global_prompt_manager.format_prompt(
+                "chat_target_private1", sender_name=chat_target_name
+            )
+            chat_target_2 = await global_prompt_manager.format_prompt(
+                "chat_target_private2", sender_name=chat_target_name
+            )
+        
+        mai_think.chat_target = chat_target_1
+        mai_think.chat_target_2 = chat_target_2
+        mai_think.chat_info = params.chat_talking_prompt_short or ""
+        mai_think.mood_state = params.mood_prompt or ""
+        mai_think.identity = params.identity_block or ""
+        mai_think.sender = params.sender
+        mai_think.target = params.target
+        
+        # 返回mai_think实例，以便后续使用
+        return mai_think
         
     
     def _parse_reply_target_id(self, reply_to: str) -> str:
@@ -390,19 +323,14 @@ class SmartPromptBuilder:
             user_id = person_info_manager.get_value_sync(person_id, "user_id")
             return str(user_id) if user_id else ""
     
-    async def _build_expression_habits(self, params: SmartPromptParameters) -> str:
+    async def _build_expression_habits(self, params: SmartPromptParameters) -> Dict[str, Any]:
         """构建表达习惯 - 使用共享工具类，完全继承DefaultReplyer功能"""
         # 检查是否允许在此聊天流中使用表达
         use_expression, _, _ = global_config.expression.get_expression_config_for_chat(params.chat_id)
         if not use_expression:
-            return ""
+            return {"expression_habits_block": ""}
         
-        # 检查依赖项
-        try:
-            from src.chat.express.expression_selector import expression_selector
-        except ImportError as e:
-            logger.error(f"expression_selector导入失败: {e}")
-            return ""
+        from src.chat.express.expression_selector import expression_selector
         
         style_habits = []
         grammar_habits = []
@@ -454,20 +382,15 @@ class SmartPromptBuilder:
         if style_habits_str.strip() and grammar_habits_str.strip():
             expression_habits_title = "你可以参考以下的语言习惯和句法，如果情景合适就使用，不要盲目使用,不要生硬使用，以合理的方式结合到你的回复中。"
         
-        return f"{expression_habits_title}\n{expression_habits_block}"
+        return {"expression_habits_block": f"{expression_habits_title}\n{expression_habits_block}"}
         
-    async def _build_memory_block(self, params: SmartPromptParameters) -> str:
+    async def _build_memory_block(self, params: SmartPromptParameters) -> Dict[str, Any]:
         """构建记忆块 - 使用共享工具类，完全继承DefaultReplyer功能"""
         if not global_config.memory.enable_memory:
-            return ""
+            return {"memory_block": ""}
         
-        # 检查依赖项
-        try:
-            from src.chat.memory_system.memory_activator import MemoryActivator
-            from src.chat.memory_system.vector_instant_memory import VectorInstantMemoryV2
-        except ImportError as e:
-            logger.error(f"记忆系统导入失败: {e}")
-            return ""
+        from src.chat.memory_system.memory_activator import MemoryActivator
+        from src.chat.memory_system.vector_instant_memory import VectorInstantMemoryV2
         
         instant_memory = None
         
@@ -583,7 +506,7 @@ class SmartPromptBuilder:
         memory_str = self._inject_video_prompt_if_needed(params.target, memory_str)
         
         # 只有当完全没有任何记忆时才返回空字符串
-        return memory_str if has_any_memory else ""
+        return {"memory_block": memory_str if has_any_memory else ""}
     
     def _inject_video_prompt_if_needed(self, target: str, memory_str: str) -> str:
         """统一视频分析结果注入逻辑"""
@@ -592,36 +515,32 @@ class SmartPromptBuilder:
             return memory_str + video_prompt_injection
         return memory_str
     
-    async def _build_relation_info(self, params: SmartPromptParameters) -> str:
+    async def _build_relation_info(self, params: SmartPromptParameters) -> Dict[str, Any]:
         """构建关系信息 - 使用共享工具类"""
         try:
-            return await PromptUtils.build_relation_info(
+            relation_info = await PromptUtils.build_relation_info(
                 params.chat_id,
                 params.reply_to
             )
+            return {"relation_info_block": relation_info}
         except Exception as e:
             logger.error(f"构建关系信息失败: {e}")
-            return ""
+            return {"relation_info_block": ""}
     
-    async def _build_tool_info(self, params: SmartPromptParameters) -> str:
+    async def _build_tool_info(self, params: SmartPromptParameters) -> Dict[str, Any]:
         """构建工具信息 - 使用共享工具类，完全继承DefaultReplyer功能"""
         if not params.enable_tool:
-            return ""
+            return {"tool_info_block": ""}
         
         if not params.reply_to:
-            return ""
+            return {"tool_info_block": ""}
         
         sender, text = PromptUtils.parse_reply_target(params.reply_to)
         
         if not text:
-            return ""
+            return {"tool_info_block": ""}
         
-        try:
-            # 检查依赖项
-            from src.plugin_system.core.tool_use import ToolExecutor
-        except ImportError as e:
-            logger.error(f"工具执行器导入失败: {e}")
-            return ""
+        from src.plugin_system.core.tool_use import ToolExecutor
         
         # 使用工具执行器获取信息
         try:
@@ -645,25 +564,25 @@ class SmartPromptBuilder:
                 tool_info_str += "以上是你获取到的实时信息，请在回复时参考这些信息。"
                 logger.info(f"获取到 {len(tool_results)} 个工具结果")
                 
-                return tool_info_str
+                return {"tool_info_block": tool_info_str}
             else:
                 logger.debug("未获取到任何工具结果")
-                return ""
+                return {"tool_info_block": ""}
         
         except Exception as e:
             logger.error(f"工具信息获取失败: {e}")
-            return ""
+            return {"tool_info_block": ""}
     
-    async def _build_knowledge_info(self, params: SmartPromptParameters) -> str:
+    async def _build_knowledge_info(self, params: SmartPromptParameters) -> Dict[str, Any]:
         """构建知识信息 - 使用共享工具类，完全继承DefaultReplyer功能"""
         if not params.reply_to:
             logger.debug("没有回复对象，跳过获取知识库内容")
-            return ""
+            return {"knowledge_prompt": ""}
         
         sender, content = PromptUtils.parse_reply_target(params.reply_to)
         if not content:
             logger.debug("回复对象内容为空，跳过获取知识库内容")
-            return ""
+            return {"knowledge_prompt": ""}
         
         logger.debug(f"获取知识库内容，元消息：{params.chat_talking_prompt_short[:30]}...，消息长度: {len(params.chat_talking_prompt_short)}")
         
@@ -672,9 +591,8 @@ class SmartPromptBuilder:
             # 检查LPMM知识库是否启用
             if not global_config.lpmm_knowledge.enable:
                 logger.debug("LPMM知识库未启用，跳过获取知识库内容")
-                return ""
+                return {"knowledge_prompt": ""}
             
-            # 检查依赖项
             from src.plugins.built_in.knowledge.lpmm_get_knowledge import SearchKnowledgeFromLPMMTool
             from src.plugin_system.apis import llm_api
             from src.config.config import model_config
@@ -703,33 +621,34 @@ class SmartPromptBuilder:
                 
                 if not result or not result.get("content"):
                     logger.debug("从LPMM知识库获取知识失败，返回空知识...")
-                    return ""
+                    return {"knowledge_prompt": ""}
                 
                 found_knowledge_from_lpmm = result.get("content", "")
                 logger.debug(
                     f"从LPMM知识库获取知识，相关信息：{found_knowledge_from_lpmm[:100]}...，信息长度: {len(found_knowledge_from_lpmm)}"
                 )
                 
-                return f"你有以下这些**知识**：\n{found_knowledge_from_lpmm}\n请你**记住上面的知识**，之后可能会用到。\n"
+                return {"knowledge_prompt": f"你有以下这些**知识**：\n{found_knowledge_from_lpmm}\n请你**记住上面的知识**，之后可能会用到。\n"}
             else:
                 logger.debug("从LPMM知识库获取知识失败，可能是从未导入过知识，返回空知识...")
-                return ""
+                return {"knowledge_prompt": ""}
         
         except Exception as e:
             logger.error(f"获取知识库内容时发生异常: {str(e)}")
-            return ""
+            return {"knowledge_prompt": ""}
     
-    async def _build_cross_context(self, params: SmartPromptParameters) -> str:
+    async def _build_cross_context(self, params: SmartPromptParameters) -> Dict[str, Any]:
         """构建跨群上下文 - 使用共享工具类"""
         try:
-            return await PromptUtils.build_cross_context(
+            cross_context = await PromptUtils.build_cross_context(
                 params.chat_id,
                 params.prompt_mode,
                 params.target_user_info
             )
+            return {"cross_context_block": cross_context}
         except Exception as e:
             logger.error(f"构建跨群上下文失败: {e}")
-            return ""
+            return {"cross_context_block": ""}
     
     def _parse_reply_target(self, target_message: str) -> Tuple[str, str]:
         """解析回复目标消息 - 使用共享工具类"""
@@ -737,7 +656,7 @@ class SmartPromptBuilder:
 
 
 class SmartPrompt:
-    """重构的智能提示词核心类 - 增强错误处理和降级机制，移除缓存机制"""
+    """重构的智能提示词核心类 - 移除缓存机制和依赖检查，简化架构"""
     
     def __init__(
         self,
@@ -758,17 +677,12 @@ class SmartPrompt:
             return "default_expressor_prompt"
     
     async def build_prompt(self) -> str:
-        """构建最终的Prompt文本 - 增强错误处理，移除缓存机制"""
+        """构建最终的Prompt文本 - 移除缓存机制和依赖检查"""
         # 参数验证
         errors = self.parameters.validate()
         if errors:
             logger.error(f"参数验证失败: {', '.join(errors)}")
-            return self._get_fallback_prompt("参数验证失败")
-        
-        # 依赖项检查
-        if not await self._check_dependencies():
-            logger.warning("依赖项检查失败，使用简化模式")
-            return self._get_simplified_prompt()
+            raise ValueError(f"参数验证失败: {', '.join(errors)}")
         
         start_time = time.time()
         try:
@@ -778,13 +692,13 @@ class SmartPrompt:
             # 检查关键上下文数据
             if not context_data or not isinstance(context_data, dict):
                 logger.error("构建的上下文数据无效")
-                return self._get_fallback_prompt("上下文数据无效")
+                raise ValueError("构建的上下文数据无效")
             
             # 获取模板
             template = await self._get_template()
             if not template:
                 logger.error("无法获取模板")
-                return self._get_fallback_prompt("模板获取失败")
+                raise ValueError("无法获取模板")
             
             # 根据模式传递不同的参数
             if self.parameters.prompt_mode == "s4u":
@@ -802,63 +716,10 @@ class SmartPrompt:
                 
         except asyncio.TimeoutError as e:
             logger.error(f"构建Prompt超时: {e}")
-            return self._get_fallback_prompt("构建超时")
+            raise TimeoutError(f"构建Prompt超时: {e}")
         except Exception as e:
             logger.error(f"构建Prompt失败: {e}")
-            return self._get_fallback_prompt(f"构建失败: {str(e)}")
-    
-    def _get_fallback_prompt(self, reason: str) -> str:
-        """获取降级Prompt"""
-        logger.warning(f"使用fallback prompt, 原因: {reason}")
-        
-        # 根据可用的信息构建尽可能有用的降级Prompt
-        if self.parameters.reply_to:
-            return f"用户说：{self.parameters.reply_to}。请回复。"
-        elif self.parameters.target:
-            return f"请回复以下内容：{self.parameters.target}"
-        else:
-            return "请进行回复。"
-    
-    def _get_simplified_prompt(self) -> str:
-        """获取简化Prompt"""
-        logger.info("使用简化prompt模式")
-        
-        # 构建一个只包含最基本信息的简化Prompt
-        basic_info = []
-        
-        if self.parameters.reply_to:
-            basic_info.append(f"用户说：{self.parameters.reply_to}")
-        elif self.parameters.target:
-            basic_info.append(f"请回复：{self.parameters.target}")
-        
-        if self.parameters.identity_block:
-            basic_info.append(f"你的身份：{self.parameters.identity_block}")
-        
-        if self.parameters.time_block:
-            basic_info.append(f"时间：{self.parameters.time_block}")
-        
-        return "\n".join(basic_info) + "\n请根据以上信息进行回复。"
-    
-    async def _check_dependencies(self) -> bool:
-        """检查关键依赖项是否可用"""
-        dependencies = [
-            ("expression_selector", "src.chat.express.expression_selector"),
-            ("memory_activator", "src.chat.memory_system.memory_activator"),
-            ("tool_executor", "src.plugin_system.core.tool_use"),
-            ("knowledge_tool", "src.plugins.built_in.knowledge.lpmm_get_knowledge")
-        ]
-        
-        missing_deps = []
-        for name, module_path in dependencies:
-            try:
-                __import__(module_path)
-                logger.debug(f"依赖项 {name} 可用")
-            except ImportError as e:
-                logger.error(f"依赖项 {name} 导入失败: {e}")
-                missing_deps.append(name)
-        
-        # 知识工具不是必需的，所以只要其他依赖可用就返回True
-        return all(dep not in missing_deps or dep == "knowledge_tool" for dep in missing_deps)
+            raise RuntimeError(f"构建Prompt失败: {e}")
     
     async def _get_template(self) -> Optional[Prompt]:
         """获取模板"""
@@ -866,7 +727,7 @@ class SmartPrompt:
             return await global_prompt_manager.get_prompt_async(self.template_name)
         except Exception as e:
             logger.error(f"获取模板 {self.template_name} 失败: {e}")
-            return None
+            raise RuntimeError(f"获取模板 {self.template_name} 失败: {e}")
     
     async def _build_s4u_prompt(self, template: Prompt, context_data: Dict[str, Any]) -> str:
         """构建S4U模式的完整Prompt - 使用新参数结构"""
@@ -961,11 +822,11 @@ def create_smart_prompt(
 
 
 class SmartPromptHealthChecker:
-    """SmartPrompt健康检查器"""
+    """SmartPrompt健康检查器 - 移除依赖检查"""
     
     @staticmethod
     async def check_system_health() -> Dict[str, Any]:
-        """检查系统健康状态"""
+        """检查系统健康状态 - 移除依赖检查"""
         health_status = {
             "status": "healthy",
             "components": {},
@@ -973,39 +834,6 @@ class SmartPromptHealthChecker:
         }
         
         try:
-            # 检查关键模块导入
-            try:
-                from src.chat.express.expression_selector import expression_selector
-                health_status["components"]["expression_selector"] = "ok"
-            except ImportError as e:
-                health_status["components"]["expression_selector"] = f"failed: {str(e)}"
-                health_status["issues"].append("expression_selector导入失败")
-                health_status["status"] = "degraded"
-            
-            try:
-                from src.chat.memory_system.memory_activator import MemoryActivator
-                health_status["components"]["memory_activator"] = "ok"
-            except ImportError as e:
-                health_status["components"]["memory_activator"] = f"failed: {str(e)}"
-                health_status["issues"].append("memory_activator导入失败")
-                health_status["status"] = "degraded"
-            
-            try:
-                from src.plugin_system.core.tool_use import ToolExecutor
-                health_status["components"]["tool_executor"] = "ok"
-            except ImportError as e:
-                health_status["components"]["tool_executor"] = f"failed: {str(e)}"
-                health_status["issues"].append("tool_executor导入失败")
-                health_status["status"] = "degraded"
-            
-            try:
-                from src.plugins.built_in.knowledge.lpmm_get_knowledge import SearchKnowledgeFromLPMMTool
-                health_status["components"]["knowledge_tool"] = "ok"
-            except ImportError as e:
-                health_status["components"]["knowledge_tool"] = f"failed: {str(e)}"
-                health_status["issues"].append("knowledge_tool导入失败")
-                # 知识工具不是必需的，所以不降低整体状态
-            
             # 检查配置
             try:
                 from src.config.config import global_config

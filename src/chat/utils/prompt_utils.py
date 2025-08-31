@@ -1,7 +1,6 @@
 """
 共享提示词工具模块 - 消除重复代码
 提供统一的工具函数供DefaultReplyer和SmartPrompt使用
-移除缓存相关功能
 """
 import re
 import time
@@ -23,7 +22,7 @@ logger = get_logger("prompt_utils")
 
 
 class PromptUtils:
-    """提示词工具类 - 提供共享功能，移除缓存相关功能"""
+    """提示词工具类 - 提供共享功能，移除缓存相关功能和依赖检查"""
     
     @staticmethod
     def parse_reply_target(target_message: str) -> Tuple[str, str]:
@@ -66,27 +65,23 @@ class PromptUtils:
         if not global_config.relationship.enable_relationship:
             return ""
 
-        try:
-            from src.person_info.relationship_fetcher import relationship_fetcher_manager
-            relationship_fetcher = relationship_fetcher_manager.get_fetcher(chat_id)
-            
-            if not reply_to:
-                return ""
-            sender, text = PromptUtils.parse_reply_target(reply_to)
-            if not sender or not text:
-                return ""
-
-            # 获取用户ID
-            person_info_manager = get_person_info_manager()
-            person_id = person_info_manager.get_person_id_by_person_name(sender)
-            if not person_id:
-                logger.warning(f"未找到用户 {sender} 的ID，跳过信息提取")
-                return f"你完全不认识{sender}，不理解ta的相关信息。"
-
-            return await relationship_fetcher.build_relation_info(person_id, points_num=5)
-        except Exception as e:
-            logger.error(f"构建关系信息失败: {e}")
+        from src.person_info.relationship_fetcher import relationship_fetcher_manager
+        relationship_fetcher = relationship_fetcher_manager.get_fetcher(chat_id)
+        
+        if not reply_to:
             return ""
+        sender, text = PromptUtils.parse_reply_target(reply_to)
+        if not sender or not text:
+            return ""
+
+        # 获取用户ID
+        person_info_manager = get_person_info_manager()
+        person_id = person_info_manager.get_person_id_by_person_name(sender)
+        if not person_id:
+            logger.warning(f"未找到用户 {sender} 的ID，跳过信息提取")
+            return f"你完全不认识{sender}，不理解ta的相关信息。"
+
+        return await relationship_fetcher.build_relation_info(person_id, points_num=5)
     
     @staticmethod
     async def build_cross_context(
@@ -225,90 +220,3 @@ class PromptUtils:
             return str(user_id) if user_id else ""
         
         return ""
-
-
-class DependencyChecker:
-    """依赖检查器 - 检查关键组件的可用性"""
-    
-    @staticmethod
-    async def check_expression_dependencies() -> Tuple[bool, List[str]]:
-        """
-        检查表达系统依赖
-        
-        Returns:
-            Tuple[bool, List[str]]: (是否可用, 缺失的依赖列表)
-        """
-        missing_deps = []
-        try:
-            from src.chat.express.expression_selector import expression_selector
-            # 尝试访问一个方法以确保模块可用
-            if not hasattr(expression_selector, 'select_suitable_expressions_llm'):
-                missing_deps.append("expression_selector.select_suitable_expressions_llm")
-        except ImportError as e:
-            missing_deps.append(f"expression_selector: {str(e)}")
-        
-        return len(missing_deps) == 0, missing_deps
-    
-    @staticmethod
-    async def check_memory_dependencies() -> Tuple[bool, List[str]]:
-        """
-        检查记忆系统依赖
-        
-        Returns:
-            Tuple[bool, List[str]]: (是否可用, 缺失的依赖列表)
-        """
-        missing_deps = []
-        try:
-            from src.chat.memory_system.memory_activator import MemoryActivator
-            from src.chat.memory_system.vector_instant_memory import VectorInstantMemoryV2
-        except ImportError as e:
-            missing_deps.append(f"memory_system: {str(e)}")
-        
-        return len(missing_deps) == 0, missing_deps
-    
-    @staticmethod
-    async def check_tool_dependencies() -> Tuple[bool, List[str]]:
-        """
-        检查工具系统依赖
-        
-        Returns:
-            Tuple[bool, List[str]]: (是否可用, 缺失的依赖列表)
-        """
-        missing_deps = []
-        try:
-            from src.plugin_system.core.tool_use import ToolExecutor
-        except ImportError as e:
-            missing_deps.append(f"tool_executor: {str(e)}")
-        
-        return len(missing_deps) == 0, missing_deps
-    
-    @staticmethod
-    async def check_knowledge_dependencies() -> Tuple[bool, List[str]]:
-        """
-        检查知识系统依赖
-        
-        Returns:
-            Tuple[bool, List[str]]: (是否可用, 缺失的依赖列表)
-        """
-        missing_deps = []
-        try:
-            from src.plugins.built_in.knowledge.lpmm_get_knowledge import SearchKnowledgeFromLPMMTool
-        except ImportError as e:
-            missing_deps.append(f"knowledge_tool: {str(e)}")
-        
-        return len(missing_deps) == 0, missing_deps
-    
-    @staticmethod
-    async def check_all_dependencies() -> Dict[str, Tuple[bool, List[str]]]:
-        """
-        检查所有依赖
-        
-        Returns:
-            Dict[str, Tuple[bool, List[str]]]: 各系统依赖状态
-        """
-        return {
-            "expression": await DependencyChecker.check_expression_dependencies(),
-            "memory": await DependencyChecker.check_memory_dependencies(),
-            "tool": await DependencyChecker.check_tool_dependencies(),
-            "knowledge": await DependencyChecker.check_knowledge_dependencies(),
-        }

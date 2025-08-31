@@ -1,7 +1,6 @@
 """
 默认回复生成器 - 集成SmartPrompt系统
 使用重构后的SmartPrompt系统替换原有的复杂提示词构建逻辑
-移除缓存机制，简化架构
 """
 import traceback
 import time
@@ -783,7 +782,7 @@ class DefaultReplyer:
         enable_tool: bool = True,
     ) -> str:  # sourcery skip: merge-else-if-into-elif, remove-redundant-if
         """
-        构建回复器上下文 - 使用重构后的SmartPrompt系统，移除缓存机制
+        构建回复器上下文
 
         Args:
             reply_to: 回复对象，格式为 "发送者:消息内容"
@@ -950,7 +949,7 @@ class DefaultReplyer:
         # 根据配置选择模板
         current_prompt_mode = global_config.personality.prompt_mode
 
-        # 使用重构后的SmartPrompt系统，移除缓存相关参数
+        # 使用重构后的SmartPrompt系统
         prompt_params = SmartPromptParameters(
             chat_id=chat_id,
             is_group_chat=is_group_chat,
@@ -1085,7 +1084,7 @@ class DefaultReplyer:
 
         template_name = "default_expressor_prompt"
 
-        # 使用重构后的SmartPrompt系统 - Expressor模式，移除缓存相关参数
+        # 使用重构后的SmartPrompt系统 - Expressor模式
         prompt_params = SmartPromptParameters(
             chat_id=chat_id,
             is_group_chat=is_group_chat,
