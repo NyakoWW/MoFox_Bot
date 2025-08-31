@@ -63,7 +63,7 @@ def get_active_plans_for_month(month: str) -> List[MonthlyPlan]:
             plans = session.query(MonthlyPlan).filter(
                 MonthlyPlan.target_month == month,
                 MonthlyPlan.status == 'active'
-            ).all()
+            ).order_by(MonthlyPlan.created_at.desc()).all()
             return plans
         except Exception as e:
             logger.error(f"查询 {month} 的有效月度计划时发生错误: {e}")
