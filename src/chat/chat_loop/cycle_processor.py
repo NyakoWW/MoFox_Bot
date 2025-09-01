@@ -159,19 +159,12 @@ class CycleProcessor:
         self.context.last_action = action_type
         
         # 处理no_reply相关的逻辑
-        if action_type != "no_reply" and action_type != "no_action":
-            # 导入NoReplyAction并重置计数器
-            from src.plugins.built_in.core_actions.no_reply import NoReplyAction
-            NoReplyAction.reset_consecutive_count()
+        if action_type != "no_reply":
             self.context.no_reply_consecutive = 0
-            logger.info(f"{self.context.log_prefix} 执行了{action_type}动作，重置no_reply计数器")
-        elif action_type == "no_action":
-            # 当执行回复动作时，也重置no_reply计数
-            from src.plugins.built_in.core_actions.no_reply import NoReplyAction
-            NoReplyAction.reset_consecutive_count()
-            self.context.no_reply_consecutive = 0
-            logger.info(f"{self.context.log_prefix} 执行了回复动作，重置no_reply计数器")
-            
+            if hasattr(self.context, 'chat_instance') and self.context.chat_instance:
+                self.context.chat_instance.recent_interest_records.clear()
+            logger.info(f"{self.context.log_prefix} 执行了{action_type}动作，重置no_reply计数器和兴趣度记录")
+        
         if action_type == "no_reply":
             self.context.no_reply_consecutive += 1
             # 调用HeartFChatting中的_determine_form_type方法

@@ -114,11 +114,7 @@ class ChatConfig(ValidatedConfigBase):
 
         # 检查全局时段配置（第一个元素为空字符串的配置）
         global_frequency = self._get_global_frequency()
-        if global_frequency is not None:
-            return global_frequency
-
-        # 如果都没有匹配，返回默认值
-        return self.talk_frequency
+        return self.talk_frequency if global_frequency is None else global_frequency
 
     def _get_time_based_frequency(self, time_freq_list: list[str]) -> Optional[float]:
         """

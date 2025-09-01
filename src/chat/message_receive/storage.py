@@ -15,6 +15,23 @@ logger = get_logger("message_storage")
 
 class MessageStorage:
     @staticmethod
+    def _serialize_keywords(keywords) -> str:
+        """将关键词列表序列化为JSON字符串"""
+        if isinstance(keywords, list):
+            return orjson.dumps(keywords).decode("utf-8")
+        return "[]"
+    
+    @staticmethod
+    def _deserialize_keywords(keywords_str: str) -> list:
+        """将JSON字符串反序列化为关键词列表"""
+        if not keywords_str:
+            return []
+        try:
+            return orjson.loads(keywords_str)
+        except (orjson.JSONDecodeError, TypeError):
+            return []
+
+    @staticmethod
     async def store_message(message: Union[MessageSending, MessageRecv], chat_stream: ChatStream) -> None:
         """存储消息到数据库"""
         try:
@@ -44,6 +61,8 @@ class MessageStorage:
                 is_picid = False
                 is_notify = False
                 is_command = False
+                key_words = ""
+                key_words_lite = ""
             else:
                 filtered_display_message = ""
                 interest_value = message.interest_value
@@ -55,6 +74,9 @@ class MessageStorage:
                 is_picid = message.is_picid
                 is_notify = message.is_notify
                 is_command = message.is_command
+                # 序列化关键词列表为JSON字符串
+                key_words = MessageStorage._serialize_keywords(message.key_words)
+                key_words_lite = MessageStorage._serialize_keywords(message.key_words_lite)
 
             chat_info_dict = chat_stream.to_dict()
             user_info_dict = message.message_info.user_info.to_dict()  # type: ignore
@@ -103,6 +125,8 @@ class MessageStorage:
                 is_picid=is_picid,
                 is_notify=is_notify,
                 is_command=is_command,
+                key_words=key_words,
+                key_words_lite=key_words_lite,
             )
             with get_db_session() as session:
                 session.add(new_message)
