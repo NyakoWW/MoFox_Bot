@@ -422,9 +422,7 @@ class HeartFChatting:
         """
         统一判断是否应该处理消息的函数
         根据当前循环模式和消息内容决定是否继续处理
-        """
-        from src.chat.utils.utils_image import is_image_message
-        
+        """   
         if self.context.loop_mode == ChatMode.FOCUS:
             if self.context.last_action == "no_reply":
                 if messages:
