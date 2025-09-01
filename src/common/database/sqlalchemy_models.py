@@ -128,6 +128,8 @@ class Messages(Base):
     chat_id = Column(get_string_field(64), nullable=False, index=True)
     reply_to = Column(Text, nullable=True)
     interest_value = Column(Float, nullable=True)
+    key_words = Column(Text, nullable=True)
+    key_words_lite = Column(Text, nullable=True)
     is_mentioned = Column(Boolean, nullable=True)
 
     # 从 chat_info 扁平化而来的字段

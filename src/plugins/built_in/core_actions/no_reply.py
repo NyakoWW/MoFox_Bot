@@ -1,5 +1,4 @@
-from typing import Tuple, List
-from collections import deque
+from typing import Tuple
 
 # 导入新插件系统
 from src.plugin_system import BaseAction, ActionActivationType, ChatMode
@@ -23,11 +22,10 @@ class NoReplyAction(BaseAction):
     action_name = "no_reply"
     action_description = "暂时不回复消息"
 
-    # 最近三次no_reply的新消息兴趣度记录
-    _recent_interest_records: deque = deque(maxlen=3)
-
     # 动作参数定义
-    action_parameters = {}
+    action_parameters = {
+        "reason": "不回复的原因",
+    }
 
     # 动作使用场景
     action_require = [""]
@@ -60,14 +58,3 @@ class NoReplyAction(BaseAction):
                 action_done=True,
             )
             return False, f"不回复动作执行失败: {e}"
-
-    @classmethod
-    def reset_consecutive_count(cls):
-        """重置连续计数器和兴趣度记录"""
-        cls._recent_interest_records.clear()
-        logger.debug("NoReplyAction连续计数器和兴趣度记录已重置")
-
-    @classmethod
-    def get_recent_interest_records(cls) -> List[float]:
-        """获取最近的兴趣度记录"""
-        return list(cls._recent_interest_records)
