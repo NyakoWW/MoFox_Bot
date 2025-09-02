@@ -55,7 +55,7 @@ class UILogHandler(logging.Handler):
 
             formatted_msg = f"{emoji_map.get(ui_level, '📝')} {msg}"
 
-            print(f"[UI日志适配器] 正在发送日志: {ui_level} - {formatted_msg[:50]}...")
+            # print(f"[UI日志适配器] 正在发送日志: {ui_level} - {formatted_msg[:50]}...")
 
             if ui_level == "info":
                 self.ui_logger.info(formatted_msg)
