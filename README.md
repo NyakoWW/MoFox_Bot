@@ -124,7 +124,7 @@
  
 > [!NOTE]
 > 详细的安装和配置步骤，请务必参考我们的官方文档：
-> *   **Windows 用户部署指南**: [https://mofox-studio.github.io/MoFox-Bot-Docs/docs/deployment_guide.html](https://mofox-studio.github.io/MoFox-Bot-Docs/docs/deployment_guide.html)
+> *   **Windows 用户部署指南**: [https://mofox-studio.github.io/MoFox-Bot-Docs/docs/guides/deployment_guide.html](https://mofox-studio.github.io/MoFox-Bot-Docs/docs/guides/deployment_guide.html)
 > *   **`bot_config.toml` 究极详细教程**: [https://mofox-studio.github.io/MoFox-Bot-Docs/docs/guides/bot_config_guide.html](https://mofox-studio.github.io/MoFox-Bot-Docs/docs/guides/bot_config_guide.html)
  
 <div align="center">
