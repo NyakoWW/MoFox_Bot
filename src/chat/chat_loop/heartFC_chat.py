@@ -245,8 +245,9 @@ class HeartFChatting:
             # 统一使用 _should_process_messages 判断是否应该处理
             should_process,interest_value = await self._should_process_messages(recent_messages if has_new_messages else None)
             if should_process:
-                earliest_message_data = recent_messages[0]
-                self.last_read_time = earliest_message_data.get("time")
+                #earliest_message_data = recent_messages[0]
+                #self.last_read_time = earliest_message_data.get("time")
+                self.context.last_read_time = time.time()
                 await self.cycle_processor.observe(interest_value = interest_value)
             else:
                 # Normal模式：消息数量不足，等待
@@ -430,6 +431,8 @@ class HeartFChatting:
             logger.info(
                 f"{self.context.log_prefix} 累计消息数量达到{new_message_count}条(>{modified_exit_count_threshold})，结束等待"
             )
+            logger.info(self.context.last_read_time)
+            logger.info(new_message)
             return True,total_interest/new_message_count
 
         # 检查累计兴趣值
@@ -452,9 +455,9 @@ class HeartFChatting:
                 )
                 return True,accumulated_interest/new_message_count
         # 每10秒输出一次等待状态
-        if int(time.time() - self.last_read_time) > 0 and int(time.time() - self.last_read_time) % 10 == 0:
+        if int(time.time() - self.context.last_read_time) > 0 and int(time.time() - self.context.last_read_time) % 10 == 0:
             logger.info(
-                f"{self.context.log_prefix} 已等待{time.time() - self.last_read_time:.0f}秒，累计{new_message_count}条消息，继续等待..."
+                f"{self.context.log_prefix} 已等待{time.time() - self.context.last_read_time:.0f}秒，累计{new_message_count}条消息，继续等待..."
             )
             await asyncio.sleep(0.5)
         
