@@ -48,6 +48,19 @@ def init_prompt():
 {actions_before_now_block}
 
 {no_action_block}
+
+动作：reply
+动作描述：参与聊天回复，发送文本进行表达
+- 你想要闲聊或者随便附
+- {mentioned_bonus}
+- 如果你刚刚进行了回复，不要对同一个话题重复回应
+- 不要回复自己发送的消息
+{{
+    "action": "reply",
+    "target_message_id":"触发action的消息id",
+    "reason":"回复的原因"
+}}
+
 {action_options_text}
 
 你必须从上面列出的可用action中选择一个，并说明触发action的消息id（不是消息原文）和选择该action的原因。
@@ -302,12 +315,11 @@ class ActionPlanner:
                         if key not in ["action", "reason"]:
                             action_data[key] = value
 
-                    # 在FOCUS模式下，非no_reply动作需要target_message_id
+                    # 非no_reply动作需要target_message_id
                     if action != "no_reply":
                         if target_message_id := parsed_json.get("target_message_id"):
                             # 根据target_message_id查找原始消息
                             target_message = self.find_message_by_id(target_message_id, message_id_list)
-                            # target_message = None
                             # 如果获取的target_message为None，输出warning并重新plan
                             if target_message is None:
                                 self.plan_retry_count += 1
@@ -320,7 +332,7 @@ class ActionPlanner:
                                     self.plan_retry_count = 0  # 重置计数器
                                 else:
                                     # 递归重新plan
-                                    return await self.plan(mode)
+                                    return await self.plan(mode, loop_start_time, available_actions)
                             else:
                                 # 成功获取到target_message，重置计数器
                                 self.plan_retry_count = 0
@@ -328,9 +340,7 @@ class ActionPlanner:
                             logger.warning(f"{self.log_prefix}动作'{action}'缺少target_message_id")
                     
                     
-                    if action == "no_action":
-                        reasoning = "normal决定不使用额外动作"
-                    elif action != "no_reply" and action != "reply" and action not in current_available_actions:
+                    if action != "no_reply" and action != "reply" and action not in current_available_actions:
                         logger.warning(
                             f"{self.log_prefix}LLM 返回了当前不可用或无效的动作: '{action}' (可用: {list(current_available_actions.keys())})，将强制使用 'no_reply'"
                         )
@@ -470,34 +480,15 @@ class ActionPlanner:
                 mentioned_bonus = "\n- 有人提到你，或者at你"
 
             if mode == ChatMode.FOCUS:
-                no_action_block = f"""重要说明：
-- 'no_reply' 表示只进行不进行回复，等待合适的回复时机
+                no_action_block = """重要说明：
+- 'no_reply' 表示不进行回复，等待合适的回复时机
 - 当你刚刚发送了消息，没有人回复时，选择no_reply
 - 当你一次发送了太多消息，为了避免打扰聊天节奏，选择no_reply
-
-动作：reply
-动作描述：参与聊天回复，发送文本进行表达
-- 你想要闲聊或者随便附和{mentioned_bonus}
-- 如果你刚刚进行了回复，不要对同一个话题重复回应
-- 不要回复自己发送的消息
-{{
-    "action": "reply",
-    "target_message_id":"触发action的消息id",
-    "reason":"回复的原因"
-}}
-
 """
             else:  # NORMAL Mode
-                no_action_block = f"""重要说明：
+                no_action_block = """重要说明：
 - 'reply' 表示只进行普通聊天回复，不执行任何额外动作
 - 其他action表示在普通回复的基础上，执行相应的额外动作
-
-动作：reply
-动作描述：参与聊天回复，发送文本进行表达
-- 你想要闲聊或者随便附
-- {mentioned_bonus}
-- 如果你刚刚进行了回复，不要对同一个话题重复回应
-- 不要回复自己发送的消息
 {{
     "action": "reply",
     "target_message_id":"触发action的消息id",
@@ -505,6 +496,7 @@ class ActionPlanner:
 }}"""
 
             chat_context_description = "你现在正在一个群聊中"
+            chat_target_name = None 
             if not is_group_chat and chat_target_info:
                 chat_target_name = (
                     chat_target_info.get("person_name")
@@ -535,6 +527,7 @@ class ActionPlanner:
                 chat_context_description=chat_context_description,
                 chat_content_block=chat_content_block,
                 actions_before_now_block=actions_before_now_block,
+                mentioned_bonus=mentioned_bonus,
                 no_action_block=no_action_block,
                 action_options_text=action_options_block,
                 moderation_prompt=moderation_prompt_block,
