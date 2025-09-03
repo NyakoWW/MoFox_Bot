@@ -320,6 +320,12 @@ class HeartFChatting:
 
     def _determine_form_type(self) -> str:
         """判断使用哪种形式的no_reply"""
+        # 检查是否启用breaking模式
+        if not global_config.chat.enable_breaking_mode:
+            logger.info(f"{self.context.log_prefix} breaking模式已禁用，使用waiting形式")
+            self.context.focus_energy = 1
+            return
+            
         # 如果连续no_reply次数少于3次，使用waiting形式
         if self.context.no_reply_consecutive <= 3:
             self.context.focus_energy = 1

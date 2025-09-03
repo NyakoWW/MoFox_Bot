@@ -1,5 +1,5 @@
 [inner]
-version = "6.7.0"
+version = "6.7.1"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -108,8 +108,11 @@ talk_frequency = 1
 # MoFox-Bot活跃度，越高，麦麦回复越多
 # 专注时能更好把握发言时机，能够进行持久的连续对话
 
-focus_value = 1 
+focus_value = 1
 # MoFox-Bot的专注思考能力，越高越容易持续连续对话
+
+# breaking模式配置
+enable_breaking_mode = true # 是否启用自动进入breaking模式，关闭后不会自动进入breaking形式
 
 # 强制私聊专注模式
 force_focus_private = false # 是否强制私聊进入专注模式，开启后私聊将始终保持专注状态
