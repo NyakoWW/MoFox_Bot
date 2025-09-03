@@ -58,7 +58,8 @@ class QAManager:
         logger.debug(f"关系检索用时：{part_end_time - part_start_time:.5f}s")
 
         for res in relation_search_res:
-            rel_str = self.embed_manager.relation_embedding_store.store.get(res[0]).str
+            if store_item := self.embed_manager.relation_embedding_store.store.get(res[0]):
+                rel_str = store_item.str
             print(f"找到相关关系，相似度：{(res[1] * 100):.2f}%  -  {rel_str}")
 
         # TODO: 使用LLM过滤三元组结果

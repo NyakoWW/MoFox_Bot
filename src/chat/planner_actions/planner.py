@@ -39,7 +39,7 @@ def init_prompt():
 {identity_block}
 
 {custom_prompt_block}
-{chat_context_description}，以下是具体的聊天内容，其中[mxxx]是消息id。
+{chat_context_description}，以下是具体的聊天内容。
 {chat_content_block}
 
 {moderation_prompt}
@@ -63,7 +63,7 @@ def init_prompt():
 
 {action_options_text}
 
-你必须从上面列出的可用action中选择一个，并说明触发action的消息id（不是消息原文）和选择该action的原因。
+你必须从上面列出的可用action中选择一个，并说明触发action的消息id（不是消息原文）和选择该action的原因。消息id格式:m+数字
 
 请根据动作示例，以严格的 JSON 格式输出，不要输出markdown格式```json等内容，直接输出且仅包含 JSON 内容：
 """,
