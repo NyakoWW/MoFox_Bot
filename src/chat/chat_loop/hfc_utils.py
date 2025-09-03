@@ -122,43 +122,6 @@ class CycleDetail:
         self.loop_plan_info = loop_info["loop_plan_info"]
         self.loop_action_info = loop_info["loop_action_info"]
 
-
-def get_recent_message_stats(minutes: float = 30, chat_id: Optional[str] = None) -> dict:
-    """
-    获取最近消息统计信息
-
-    Args:
-        minutes: 检索的分钟数，默认30分钟
-        chat_id: 指定的chat_id，仅统计该chat下的消息。为None时统计全部
-
-    Returns:
-        dict: {"bot_reply_count": int, "total_message_count": int}
-
-    功能说明:
-    - 统计指定时间范围内的消息数量
-    - 区分机器人回复和总消息数
-    - 可以针对特定聊天或全局统计
-    - 用于分析聊天活跃度和机器人参与度
-    """
-
-    now = time.time()
-    start_time = now - minutes * 60
-    bot_id = global_config.bot.qq_account
-
-    filter_base: Dict[str, Any] = {"time": {"$gte": start_time}}
-    if chat_id is not None:
-        filter_base["chat_id"] = chat_id
-
-    # 总消息数
-    total_message_count = count_messages(filter_base)
-    # bot自身回复数
-    bot_filter = filter_base.copy()
-    bot_filter["user_id"] = bot_id
-    bot_reply_count = count_messages(bot_filter)
-
-    return {"bot_reply_count": bot_reply_count, "total_message_count": total_message_count}
-
-
 async def send_typing():
     """
     发送打字状态指示

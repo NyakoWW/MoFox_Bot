@@ -629,31 +629,6 @@ class CycleProcessor:
             traceback.print_exc()
             return False, "", ""
 
-    def _get_direct_reply_plan(self, loop_start_time):
-        """
-        获取直接回复的规划结果
-
-        Args:
-            loop_start_time: 循环开始时间
-
-        Returns:
-            dict: 包含直接回复动作的规划结果
-
-        功能说明:
-        - 在某些情况下跳过复杂规划，直接返回回复动作
-        - 主要用于NORMAL模式下没有其他可用动作时的简化处理
-        """
-        return {
-            "action_result": {
-                "action_type": "reply",
-                "action_data": {"loop_start_time": loop_start_time},
-                "reasoning": "",
-                "timestamp": time.time(),
-                "is_parallel": False,
-            },
-            "action_prompt": "",
-        }
-
     def _build_final_loop_info(self, reply_loop_info, action_success, action_reply_text, action_command, plan_result):
         """
         构建最终的循环信息

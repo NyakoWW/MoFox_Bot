@@ -261,13 +261,7 @@ class HeartFChatting:
                 # 重置累积兴趣值，因为消息已经被成功处理
                 self.context.breaking_accumulated_interest = 0.0
                 logger.info(f"{self.context.log_prefix} 能量值增加，当前能量值：{self.context.energy_value:.1f}，重置累积兴趣值")
-                    
-            self._check_focus_exit()
-
-        else:
-            # 无新消息时，只进行模式检查，不进行思考循环
-            self._check_focus_exit()
-
+                  
 
         # 更新上一帧的睡眠状态
         self.context.was_sleeping = is_sleeping
@@ -288,62 +282,6 @@ class HeartFChatting:
 
         return has_new_messages
 
-    def _check_focus_exit(self):
-        """
-        检查是否应该退出FOCUS模式
-
-        功能说明:
-        - 区分私聊和群聊环境
-        - 在强制私聊focus模式下，能量值低于1时重置为5但不退出
-        - 在群聊focus模式下，如果配置为focus则不退出
-        - 其他情况下，能量值低于1时退出到NORMAL模式
-        """
-        is_private_chat = self.context.chat_stream.group_info is None if self.context.chat_stream else False
-        is_group_chat = not is_private_chat
-
-        if global_config.chat.force_focus_private and is_private_chat:
-            if self.context.energy_value <= 1:
-                self.context.energy_value = 5
-            return
-
-        if is_group_chat and global_config.chat.group_chat_mode == "focus":
-            return
-
-        if self.context.energy_value <= 1:  # 如果能量值小于等于1（非强制情况）
-            self.context.energy_value = 1  # 将能量值设置为1
-
-    def _check_focus_entry(self, new_message_count: int):
-        """
-        检查是否应该进入FOCUS模式
-
-        Args:
-            new_message_count: 新消息数量
-
-        功能说明:
-        - 区分私聊和群聊环境
-        - 强制私聊focus模式：直接进入FOCUS模式并设置能量值为10
-        - 群聊normal模式：不进入FOCUS模式
-        - 根据focus_value配置和消息数量决定是否进入FOCUS模式
-        - 当消息数量超过阈值或能量值达到30时进入FOCUS模式
-        """
-        is_private_chat = self.context.chat_stream.group_info is None if self.context.chat_stream else False
-        is_group_chat = not is_private_chat
-
-        if global_config.chat.force_focus_private and is_private_chat:
-            self.context.energy_value = 10
-            return
-
-        if is_group_chat and global_config.chat.group_chat_mode == "normal":
-            return
-
-        if global_config.chat.focus_value != 0:  # 如果专注值配置不为0（启用自动专注）
-            if new_message_count > 3 / pow(
-                global_config.chat.focus_value, 0.5
-            ):  # 如果新消息数超过阈值（基于专注值计算）
-                self.context.energy_value = (
-                    10 + (new_message_count / (3 / pow(global_config.chat.focus_value, 0.5))) * 10
-                )  # 根据消息数量计算能量值
-                return  # 返回，不再检查其他条件
 
     def _handle_wakeup_messages(self, messages):
         """
@@ -463,57 +401,3 @@ class HeartFChatting:
             await asyncio.sleep(0.5)
         
         return False,0.0
-    
-    async def _execute_no_reply(self, new_message: List[Dict[str, Any]]) -> bool:
-        """执行breaking形式的no_reply（原有逻辑）"""
-        new_message_count = len(new_message)
-        # 检查消息数量是否达到阈值
-        talk_frequency = global_config.chat.get_current_talk_frequency(self.context.stream_id)
-        modified_exit_count_threshold = self.context.focus_energy / talk_frequency
-        
-        if new_message_count >= modified_exit_count_threshold:
-            # 记录兴趣度到列表
-            total_interest = 0.0
-            for msg_dict in new_message:
-                interest_value = msg_dict.get("interest_value", 0.0)
-                if msg_dict.get("processed_plain_text", ""):
-                    total_interest += interest_value
-            
-            self.recent_interest_records.append(total_interest)
-            
-            logger.info(
-                f"{self.context.log_prefix} 累计消息数量达到{new_message_count}条(>{modified_exit_count_threshold})，结束等待"
-            )
-
-            return True
-
-        # 检查累计兴趣值
-        if new_message_count > 0:
-            accumulated_interest = 0.0
-            for msg_dict in new_message:
-                text = msg_dict.get("processed_plain_text", "")
-                interest_value = msg_dict.get("interest_value", 0.0)
-                if text:
-                    accumulated_interest += interest_value
-            
-            # 只在兴趣值变化时输出log
-            if not hasattr(self, "_last_accumulated_interest") or accumulated_interest != self._last_accumulated_interest:
-                logger.info(f"{self.context.log_prefix} breaking形式当前累计兴趣值: {accumulated_interest:.2f}, 当前聊天频率: {talk_frequency:.2f}")
-                self._last_accumulated_interest = accumulated_interest
-            
-            if accumulated_interest >= 3 / talk_frequency:
-                # 记录兴趣度到列表
-                self.recent_interest_records.append(accumulated_interest)
-                
-                logger.info(
-                    f"{self.context.log_prefix} 累计兴趣值达到{accumulated_interest:.2f}(>{3 / talk_frequency})，结束等待"
-                )
-                return True
-
-        # 每10秒输出一次等待状态
-        if int(time.time() - self.context.last_read_time) > 0 and int(time.time() - self.context.last_read_time) % 10 == 0:
-            logger.info(
-                f"{self.context.log_prefix} 已等待{time.time() - self.context.last_read_time:.0f}秒，累计{new_message_count}条消息，继续等待..."
-            )
-        
-        return False
