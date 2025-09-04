@@ -195,6 +195,7 @@ async def _send_to_target(
             )            
         else:
             anchor_message = None
+            reply_to_platform_id = None
 
         # 构建发送消息对象
         bot_message = MessageSending(
