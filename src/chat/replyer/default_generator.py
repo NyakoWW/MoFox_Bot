@@ -11,7 +11,6 @@ import re
 
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime
-from src.chat.utils.prompt_utils import PromptUtils
 from src.mais4u.mai_think import mai_thinking_manager
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
@@ -36,10 +35,9 @@ from src.person_info.relationship_fetcher import relationship_fetcher_manager
 from src.person_info.person_info import get_person_info_manager
 from src.plugin_system.base.component_types import ActionInfo, EventType
 from src.plugin_system.apis import llm_api
-from src.schedule.schedule_manager import schedule_manager
 
 # 导入新的统一Prompt系统
-from src.chat.utils.prompt import Prompt, PromptContext
+from src.chat.utils.prompt import Prompt, PromptParameters
 
 logger = get_logger("replyer")
 
@@ -599,7 +597,8 @@ class DefaultReplyer:
 
     def _parse_reply_target(self, target_message: str) -> Tuple[str, str]:
         """解析回复目标消息 - 使用共享工具"""
-        return PromptUtils.parse_reply_target(target_message)
+        from src.chat.utils.prompt import Prompt
+        return Prompt.parse_reply_target(target_message)
 
     async def build_keywords_reaction_prompt(self, target: Optional[str]) -> str:
         """构建关键词反应提示
@@ -874,7 +873,8 @@ class DefaultReplyer:
         target_user_info = None
         if sender:
             target_user_info = await person_info_manager.get_person_info_by_name(sender)
-
+            
+        from src.chat.utils.prompt import Prompt
         # 并行执行六个构建任务
         task_results = await asyncio.gather(
             self._time_and_run_task(
@@ -887,7 +887,7 @@ class DefaultReplyer:
             ),
             self._time_and_run_task(self.get_prompt_info(chat_talking_prompt_short, sender, target), "prompt_info"),
             self._time_and_run_task(
-                PromptUtils.build_cross_context(chat_id, target_user_info, global_config.personality.prompt_mode),
+                Prompt.build_cross_context(chat_id, global_config.personality.prompt_mode, target_user_info),
                 "cross_context",
             ),
         )
@@ -939,6 +939,7 @@ class DefaultReplyer:
 
         schedule_block = ""
         if global_config.schedule.enable:
+            from src.schedule.schedule_manager import schedule_manager
             current_activity = schedule_manager.get_current_activity()
             if current_activity:
                 schedule_block = f"你当前正在：{current_activity}。"
@@ -970,8 +971,8 @@ class DefaultReplyer:
         # 根据配置选择模板
         current_prompt_mode = global_config.personality.prompt_mode
 
-        # 使用新的统一Prompt系统
-        prompt_context = PromptContext(
+        # 使用新的统一Prompt系统 - 创建PromptParameters
+        prompt_parameters = PromptParameters(
             chat_id=chat_id,
             is_group_chat=is_group_chat,
             sender=sender,
@@ -1004,9 +1005,19 @@ class DefaultReplyer:
             action_descriptions=action_descriptions,
         )
 
-        # 使用新的统一Prompt系统
-        prompt = Prompt(template_name=None, context=prompt_context)  # 由current_prompt_mode自动选择
-        prompt_text = await prompt.build_prompt()
+        # 使用新的统一Prompt系统 - 使用正确的模板名称
+        template_name = None
+        if current_prompt_mode == "s4u":
+            template_name = "s4u_style_prompt"
+        elif current_prompt_mode == "normal":
+            template_name = "normal_style_prompt"
+        elif current_prompt_mode == "minimal":
+            template_name = "default_expressor_prompt"
+            
+        # 获取模板内容
+        template_prompt = await global_prompt_manager.get_prompt_async(template_name)
+        prompt = Prompt(template=template_prompt.template, parameters=prompt_parameters)
+        prompt_text = await prompt.build()
 
         return prompt_text
 
@@ -1107,8 +1118,8 @@ class DefaultReplyer:
 
         template_name = "default_expressor_prompt"
 
-        # 使用新的统一Prompt系统 - Expressor模式
-        prompt_context = PromptContext(
+        # 使用新的统一Prompt系统 - Expressor模式，创建PromptParameters
+        prompt_parameters = PromptParameters(
             chat_id=chat_id,
             is_group_chat=is_group_chat,
             sender=sender,
@@ -1128,8 +1139,10 @@ class DefaultReplyer:
             relation_info_block=relation_info,
         )
 
-        prompt = Prompt(template_name=template_name, context=prompt_context)
-        prompt_text = await prompt.build_prompt()
+        # 使用新的统一Prompt系统 - Expressor模式
+        template_prompt = await global_prompt_manager.get_prompt_async("default_expressor_prompt")
+        prompt = Prompt(template=template_prompt.template, parameters=prompt_parameters)
+        prompt_text = await prompt.build()
 
         return prompt_text
 
