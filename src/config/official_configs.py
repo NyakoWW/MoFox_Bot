@@ -259,7 +259,6 @@ class NormalChatConfig(ValidatedConfigBase):
     """普通聊天配置类"""
 
 
-
 class ExpressionRule(ValidatedConfigBase):
     """表达学习规则"""
 
@@ -652,7 +651,10 @@ class ContextGroup(ValidatedConfigBase):
     """上下文共享组配置"""
 
     name: str = Field(..., description="共享组的名称")
-    chat_ids: List[str] = Field(..., description="属于该组的聊天ID列表")
+    chat_ids: List[List[str]] = Field(
+        ...,
+        description='属于该组的聊天ID列表，格式为 [["type", "chat_id"], ...]，例如 [["group", "123456"], ["private", "789012"]]',
+    )
 
 
 class CrossContextConfig(ValidatedConfigBase):

@@ -12,7 +12,6 @@ import traceback
 from typing import Tuple, Any, Dict, List, Optional
 from rich.traceback import install
 from src.common.logger import get_logger
-from src.config.api_ada_configs import TaskConfig
 from src.chat.replyer.default_generator import DefaultReplyer
 from src.chat.message_receive.chat_stream import ChatStream
 from src.chat.utils.utils import process_llm_response
@@ -107,9 +106,7 @@ async def generate_reply(
     """
     try:
         # 获取回复器
-        replyer = get_replyer(
-            chat_stream, chat_id, request_type=request_type
-        )
+        replyer = get_replyer(chat_stream, chat_id, request_type=request_type)
         if not replyer:
             logger.error("[GeneratorAPI] 无法获取回复器")
             return False, [], None

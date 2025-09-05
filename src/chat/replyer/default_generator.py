@@ -15,7 +15,6 @@ from src.chat.utils.prompt_utils import PromptUtils
 from src.mais4u.mai_think import mai_thinking_manager
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
-from src.config.api_ada_configs import TaskConfig
 from src.individuality.individuality import get_individuality
 from src.llm_models.utils_model import LLMRequest
 from src.chat.message_receive.message import UserInfo, Seg, MessageRecv, MessageSending
@@ -706,16 +705,16 @@ class DefaultReplyer:
             # 检查最新五条消息中是否包含bot自己说的消息
             latest_5_messages = core_dialogue_list[-5:] if len(core_dialogue_list) >= 5 else core_dialogue_list
             has_bot_message = any(str(msg.get("user_id")) == bot_id for msg in latest_5_messages)
-            
+
             # logger.info(f"最新五条消息：{latest_5_messages}")
             # logger.info(f"最新五条消息中是否包含bot自己说的消息：{has_bot_message}")
-            
+
             # 如果最新五条消息中不包含bot的消息，则返回空字符串
             if not has_bot_message:
                 core_dialogue_prompt = ""
             else:
                 core_dialogue_list = core_dialogue_list[-int(global_config.chat.max_context_size * 2) :]  # 限制消息数量
-                
+
                 core_dialogue_prompt_str = build_readable_messages(
                     core_dialogue_list,
                     replace_bot_name=True,
@@ -819,7 +818,7 @@ class DefaultReplyer:
             mood_prompt = ""
 
         if reply_to:
-            #兼容旧的reply_to
+            # 兼容旧的reply_to
             sender, target = self._parse_reply_target(reply_to)
         else:
             # 获取 platform，如果不存在则从 chat_stream 获取，如果还是 None 则使用默认值
@@ -830,7 +829,7 @@ class DefaultReplyer:
             )
             person_name = await person_info_manager.get_value(person_id, "person_name")
             sender = person_name
-            target = reply_message.get('processed_plain_text')
+            target = reply_message.get("processed_plain_text")
 
         person_info_manager = get_person_info_manager()
         person_id = person_info_manager.get_person_id_by_person_name(sender)
@@ -1021,7 +1020,7 @@ class DefaultReplyer:
         chat_stream = self.chat_stream
         chat_id = chat_stream.stream_id
         is_group_chat = bool(chat_stream.group_info)
-            
+
         if reply_message:
             sender = reply_message.get("sender")
             target = reply_message.get("target")
@@ -1178,7 +1177,9 @@ class DefaultReplyer:
             else:
                 logger.debug(f"\n{prompt}\n")
 
-            content, (reasoning_content, model_name, tool_calls) = await self.express_model.generate_response_async(prompt)
+            content, (reasoning_content, model_name, tool_calls) = await self.express_model.generate_response_async(
+                prompt
+            )
 
             logger.debug(f"replyer生成内容: {content}")
         return content, reasoning_content, model_name, tool_calls
