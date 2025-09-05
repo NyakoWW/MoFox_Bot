@@ -64,7 +64,7 @@ class ResponseHandler:
         - 构建并返回完整的循环信息
         - 用于上级方法的状态跟踪
         """
-        reply_text = await self.send_response(response_set, reply_to_str, loop_start_time, action_message)
+        reply_text = await self.send_response(response_set, loop_start_time, action_message)
 
         person_info_manager = get_person_info_manager()
 
@@ -166,8 +166,8 @@ class ResponseHandler:
                 await send_api.text_to_stream(
                     text=data,
                     stream_id=self.context.stream_id,
-                    reply_to_message = message_data,
-                    set_reply=need_reply,
+                    reply_to_message=None,
+                    set_reply=False,
                     typing=True,
                 )
 
@@ -209,7 +209,7 @@ class ResponseHandler:
             )
 
             # 根据反注入结果处理消息数据
-            await anti_injector.handle_message_storage(result, modified_content, reason, message_data)
+            await anti_injector.handle_message_storage(result, modified_content, reason or "", message_data)
 
             if result == ProcessResult.BLOCKED_BAN:
                 # 用户被封禁 - 直接阻止回复生成
