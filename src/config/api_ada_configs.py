@@ -1,5 +1,6 @@
-from typing import List, Dict, Any, Literal
+from typing import List, Dict, Any, Literal, Union
 from pydantic import Field, field_validator
+from threading import Lock
 
 from src.config.config_base import ValidatedConfigBase
 
@@ -9,7 +10,7 @@ class APIProvider(ValidatedConfigBase):
 
     name: str = Field(..., min_length=1, description="API提供商名称")
     base_url: str = Field(..., description="API基础URL")
-    api_key: str = Field(..., min_length=1, description="API密钥")
+    api_key: Union[str, List[str]] = Field(..., min_length=1, description="API密钥，支持单个密钥或密钥列表轮询")
     client_type: Literal["openai", "gemini", "aiohttp_gemini"] = Field(
         default="openai", description="客户端类型（如openai/google等，默认为openai）"
     )
@@ -33,12 +34,33 @@ class APIProvider(ValidatedConfigBase):
     @classmethod
     def validate_api_key(cls, v):
         """验证API密钥不能为空"""
-        if not v or not v.strip():
-            raise ValueError("API密钥不能为空")
+        if isinstance(v, str):
+            if not v.strip():
+                raise ValueError("API密钥不能为空")
+        elif isinstance(v, list):
+            if not v:
+                raise ValueError("API密钥列表不能为空")
+            for key in v:
+                if not isinstance(key, str) or not key.strip():
+                    raise ValueError("API密钥列表中的密钥不能为空")
+        else:
+            raise ValueError("API密钥必须是字符串或字符串列表")
         return v
 
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._api_key_lock = Lock()
+        self._api_key_index = 0
+
     def get_api_key(self) -> str:
-        return self.api_key
+        with self._api_key_lock:
+            if isinstance(self.api_key, str):
+                return self.api_key
+            if not self.api_key:
+                raise ValueError("API密钥列表为空")
+            key = self.api_key[self._api_key_index]
+            self._api_key_index = (self._api_key_index + 1) % len(self.api_key)
+            return key
 
 
 class ModelInfo(ValidatedConfigBase):
