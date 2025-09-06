@@ -33,7 +33,7 @@ class SleepManager:
         # --- 统一睡眠状态管理 ---
         self._current_state: SleepState = SleepState.AWAKE  # 当前睡眠状态
         self._sleep_buffer_end_time: Optional[datetime] = None  # 睡眠缓冲结束时间，用于状态转换
-        self._total_delayed_minutes_today: int = 0  # 今天总共延迟入睡的分钟数
+        self._total_delayed_minutes_today: float = 0.0  # 今天总共延迟入睡的分钟数
         self._last_sleep_check_date: Optional[date] = None  # 上次检查睡眠状态的日期
         self._last_fully_slept_log_time: float = 0  # 上次完全进入睡眠状态的时间戳
         self._re_sleep_attempt_time: Optional[datetime] = None  # 被吵醒后，尝试重新入睡的时间点
@@ -103,16 +103,60 @@ class SleepManager:
         else:
             logger.info("进入理论休眠时间，开始进行睡眠决策...")
         
-        # 如果配置了睡前通知，则发送晚安通知
-        if wakeup_manager and global_config.sleep_system.enable_pre_sleep_notification:
-            asyncio.create_task(NotificationSender.send_goodnight_notification(wakeup_manager.context))
+        if global_config.sleep_system.enable_flexible_sleep:
+            # --- 新的弹性睡眠逻辑 ---
+            if wakeup_manager:
+                sleep_pressure = wakeup_manager.context.sleep_pressure
+                pressure_threshold = global_config.sleep_system.flexible_sleep_pressure_threshold
+                max_delay_minutes = global_config.sleep_system.max_sleep_delay_minutes
 
-        # 设置一个随机的缓冲时间，模拟入睡前的准备过程
-        buffer_seconds = random.randint(1 * 60, 3 * 60)
-        self._sleep_buffer_end_time = now + timedelta(seconds=buffer_seconds)
-        self._current_state = SleepState.PREPARING_SLEEP
-        logger.info(f"进入准备入睡状态，将在 {buffer_seconds / 60:.1f} 分钟内入睡。")
-        self._save_sleep_state()
+                buffer_seconds = 0
+                # 如果睡眠压力低于阈值，则计算延迟时间
+                if sleep_pressure <= pressure_threshold:
+                    # 压力差，归一化到 (0, 1]
+                    pressure_diff = (pressure_threshold - sleep_pressure) / pressure_threshold
+                    # 延迟分钟数，压力越低，延迟越长
+                    delay_minutes = int(pressure_diff * max_delay_minutes)
+                    
+                    # 确保总延迟不超过当日最大值
+                    remaining_delay = max_delay_minutes - self._total_delayed_minutes_today
+                    delay_minutes = min(delay_minutes, remaining_delay)
+
+                    if delay_minutes > 0:
+                        # 增加一些随机性
+                        buffer_seconds = random.randint(int(delay_minutes * 0.8 * 60), int(delay_minutes * 1.2 * 60))
+                        self._total_delayed_minutes_today += buffer_seconds / 60.0
+                        logger.info(f"睡眠压力 ({sleep_pressure:.1f}) 较低，延迟 {buffer_seconds / 60:.1f} 分钟入睡。")
+                    else:
+                        # 延迟额度已用完，设置一个较短的准备时间
+                        buffer_seconds = random.randint(1 * 60, 2 * 60)
+                        logger.info("今日延迟入睡额度已用完，进入短暂准备后入睡。")
+                else:
+                    # 睡眠压力较高，设置一个较短的准备时间
+                    buffer_seconds = random.randint(1 * 60, 2 * 60)
+                    logger.info(f"睡眠压力 ({sleep_pressure:.1f}) 较高，将在短暂准备后入睡。")
+
+                # 发送睡前通知
+                if global_config.sleep_system.enable_pre_sleep_notification:
+                    asyncio.create_task(NotificationSender.send_goodnight_notification(wakeup_manager.context))
+
+                self._sleep_buffer_end_time = now + timedelta(seconds=buffer_seconds)
+                self._current_state = SleepState.PREPARING_SLEEP
+                logger.info(f"进入准备入睡状态，将在 {buffer_seconds / 60:.1f} 分钟内入睡。")
+                self._save_sleep_state()
+            else:
+                # 无法获取 wakeup_manager，退回旧逻辑
+                buffer_seconds = random.randint(1 * 60, 3 * 60)
+                self._sleep_buffer_end_time = now + timedelta(seconds=buffer_seconds)
+                self._current_state = SleepState.PREPARING_SLEEP
+                logger.warning("无法获取 WakeUpManager，弹性睡眠采用默认1-3分钟延迟。")
+                self._save_sleep_state()
+        else:
+            # 非弹性睡眠模式
+            if wakeup_manager and global_config.sleep_system.enable_pre_sleep_notification:
+                asyncio.create_task(NotificationSender.send_goodnight_notification(wakeup_manager.context))
+            self._current_state = SleepState.SLEEPING
+       
 
     def _handle_preparing_sleep(self, now: datetime, is_in_theoretical_sleep: bool, wakeup_manager: Optional["WakeUpManager"]):
         """处理“准备入睡”状态下的逻辑。"""
