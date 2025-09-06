@@ -6,7 +6,7 @@ version = "1.3.1"
 [[api_providers]] # API服务提供商（可以配置多个）
 name = "DeepSeek"                       # API服务商名称（可随意命名，在models的api-provider中需使用这个命名）
 base_url = "https://api.deepseek.com/v1" # API服务商的BaseURL
-api_key = "your-api-key-here"           # API密钥（请替换为实际的API密钥）
+api_key = ["your-api-key-here-1", "your-api-key-here-2"] # API密钥（支持单个密钥或密钥列表轮询）
 client_type = "openai"                  # 请求客户端（可选，默认值为"openai"，使用gimini等Google系模型时请配置为"gemini"）
 max_retry = 2                           # 最大重试次数（单个模型API调用失败，最多重试的次数）
 timeout = 30                            # API请求超时时间（单位：秒）
@@ -24,7 +24,7 @@ retry_interval = 10
 [[api_providers]] # 特殊：Google的Gimini使用特殊API，与OpenAI格式不兼容，需要配置client为"aiohttp_gemini"
 name = "Google"
 base_url = "https://api.google.com/v1"
-api_key = "your-google-api-key-1"
+api_key = ["your-google-api-key-1", "your-google-api-key-2"]
 client_type = "aiohttp_gemini" # 官方的gemini客户端现在已经死了
 max_retry = 2
 timeout = 30
