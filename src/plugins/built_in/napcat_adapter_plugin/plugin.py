@@ -8,6 +8,7 @@ from typing import List
 
 from src.plugin_system import BasePlugin, BaseEventHandler, register_plugin, EventType, ConfigField
 from src.plugin_system.core.event_manager import event_manager
+from src.plugin_system.apis import config_api
 
 from src.common.logger import get_logger
 
@@ -17,8 +18,6 @@ from .src.recv_handler.meta_event_handler import meta_event_handler
 from .src.recv_handler.notice_handler import notice_handler
 from .src.recv_handler.message_sending import message_send_instance
 from .src.send_handler import send_handler
-from .src.config import global_config
-from .src.config.features_config import features_manager
 from .src.config.migrate_features import auto_migrate_features
 from .src.mmc_com_layer import mmc_start_com, router, mmc_stop_com
 from .src.response_pool import put_response, check_timeout_response
@@ -134,13 +133,14 @@ async def message_process():
             logger.debug(f"清理消息队列时出错: {e}")
 
 
-async def napcat_server():
+async def napcat_server(plugin_config: dict):
     """启动 Napcat WebSocket 连接（支持正向和反向连接）"""
-    mode = global_config.napcat_server.mode
+    # 使用插件系统配置API获取配置
+    mode = config_api.get_plugin_config(plugin_config, "napcat_server.mode")
     logger.info(f"正在启动 adapter，连接模式: {mode}")
 
     try:
-        await websocket_manager.start_connection(message_recv)
+        await websocket_manager.start_connection(message_recv, plugin_config)
     except Exception as e:
         logger.error(f"启动 WebSocket 连接失败: {e}")
         raise
@@ -157,11 +157,7 @@ async def graceful_shutdown():
         except Exception as e:
             logger.warning(f"停止消息重组器清理任务时出错: {e}")
 
-        # 停止功能管理器文件监控
-        try:
-            await features_manager.stop_file_watcher()
-        except Exception as e:
-            logger.warning(f"停止功能管理器文件监控时出错: {e}")
+        # 停止功能管理器文件监控（已迁移到插件系统配置，无需操作）
 
         # 关闭消息处理器（包括消息缓冲器）
         try:
@@ -233,16 +229,28 @@ class LauchNapcatAdapterHandler(BaseEventHandler):
         logger.info("启动消息重组器...")
         await reassembler.start_cleanup_task()
 
-        # 初始化功能管理器
-        logger.info("正在初始化功能管理器...")
-        features_manager.load_config()
-        await features_manager.start_file_watcher(check_interval=2.0)
-        logger.info("功能管理器初始化完成")
+        # 功能管理器已迁移到插件系统配置
+        logger.info("功能配置已迁移到插件系统")
         logger.info("开始启动Napcat Adapter")
         message_send_instance.maibot_router = router
+        # 设置插件配置
+        message_send_instance.set_plugin_config(self.plugin_config)
+        # 设置chunker的插件配置
+        chunker.set_plugin_config(self.plugin_config)
+        # 设置response_pool的插件配置
+        from .src.response_pool import set_plugin_config as set_response_pool_config
+        set_response_pool_config(self.plugin_config)
+        # 设置send_handler的插件配置
+        send_handler.set_plugin_config(self.plugin_config)
+        # 设置message_handler的插件配置
+        message_handler.set_plugin_config(self.plugin_config)
+        # 设置notice_handler的插件配置
+        notice_handler.set_plugin_config(self.plugin_config)
+        # 设置meta_event_handler的插件配置
+        meta_event_handler.set_plugin_config(self.plugin_config)
         # 创建单独的异步任务，防止阻塞主线程
-        asyncio.create_task(napcat_server())
-        asyncio.create_task(mmc_start_com())
+        asyncio.create_task(napcat_server(self.plugin_config))
+        asyncio.create_task(mmc_start_com(self.plugin_config))
         asyncio.create_task(message_process())
         asyncio.create_task(check_timeout_response())
 
@@ -277,8 +285,50 @@ class NapcatAdapterPlugin(BasePlugin):
         "plugin": {
             "name": ConfigField(type=str, default="napcat_adapter_plugin", description="插件名称"),
             "version": ConfigField(type=str, default="1.0.0", description="插件版本"),
+            "config_version": ConfigField(type=str, default="1.2.0", description="配置文件版本"),
             "enabled": ConfigField(type=bool, default=False, description="是否启用插件"),
+        },
+        "inner": {
+            "version": ConfigField(type=str, default="0.2.1", description="配置版本号，请勿修改"),
+        },
+        "nickname": {
+            "nickname": ConfigField(type=str, default="", description="昵称配置（目前未使用）"),
+        },
+        "napcat_server": {
+            "mode": ConfigField(type=str, default="reverse", description="连接模式：reverse=反向连接(作为服务器), forward=正向连接(作为客户端)", choices=["reverse", "forward"]),
+            "host": ConfigField(type=str, default="localhost", description="主机地址"),
+            "port": ConfigField(type=int, default=8095, description="端口号"),
+            "url": ConfigField(type=str, default="", description="正向连接时的完整WebSocket URL，如 ws://localhost:8080/ws (仅在forward模式下使用)"),
+            "access_token": ConfigField(type=str, default="", description="WebSocket 连接的访问令牌，用于身份验证（可选）"),
+            "heartbeat_interval": ConfigField(type=int, default=30, description="心跳间隔时间（按秒计）"),
+        },
+        "maibot_server": {
+            "host": ConfigField(type=str, default="localhost", description="麦麦在.env文件中设置的主机地址，即HOST字段"),
+            "port": ConfigField(type=int, default=8000, description="麦麦在.env文件中设置的端口，即PORT字段"),
+            "platform_name": ConfigField(type=str, default="napcat", description="平台名称，用于消息路由"),
+        },
+        "voice": {
+            "use_tts": ConfigField(type=bool, default=False, description="是否使用tts语音（请确保你配置了tts并有对应的adapter）"),
+        },
+        "slicing": {
+            "max_frame_size": ConfigField(type=int, default=64, description="WebSocket帧的最大大小，单位为字节，默认64KB"),
+            "delay_ms": ConfigField(type=int, default=10, description="切片发送间隔时间，单位为毫秒"),
+        },
+        "debug": {
+            "level": ConfigField(type=str, default="INFO", description="日志等级（DEBUG, INFO, WARNING, ERROR, CRITICAL）", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]),
         }
+    }
+
+    # 配置节描述
+    config_section_descriptions = {
+        "plugin": "插件基本信息",
+        "inner": "内部配置信息（请勿修改）",
+        "nickname": "昵称配置（目前未使用）",
+        "napcat_server": "Napcat连接的ws服务设置",
+        "maibot_server": "连接麦麦的ws服务设置",
+        "voice": "发送语音设置",
+        "slicing": "WebSocket消息切片设置",
+        "debug": "调试设置"
     }
 
     def register_events(self):

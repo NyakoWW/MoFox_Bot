@@ -12,9 +12,9 @@ from maim_message import (
     MessageBase,
 )
 from typing import Dict, Any, Tuple, Optional
+from src.plugin_system.apis import config_api
 
 from . import CommandType
-from .config import global_config
 from .response_pool import get_response
 from src.common.logger import get_logger
 
@@ -22,12 +22,16 @@ logger = get_logger("napcat_adapter")
 from .utils import get_image_format, convert_image_to_gif
 from .recv_handler.message_sending import message_send_instance
 from .websocket_manager import websocket_manager
-from .config.features_config import features_manager
 
 
 class SendHandler:
     def __init__(self):
         self.server_connection: Optional[Server.ServerConnection] = None
+        self.plugin_config = None
+
+    def set_plugin_config(self, plugin_config: dict):
+        """设置插件配置"""
+        self.plugin_config = plugin_config
 
     async def set_server_connection(self, server_connection: Server.ServerConnection) -> None:
         """设置Napcat连接"""
@@ -287,11 +291,8 @@ class SendHandler:
         """处理回复消息"""
         reply_seg = {"type": "reply", "data": {"id": id}}
 
-        # 获取功能配置
-        ft_config = features_manager.get_config()
-
         # 检查是否启用引用艾特功能
-        if not ft_config.enable_reply_at:
+        if not config_api.get_plugin_config(self.plugin_config, "features.enable_reply_at", False):
             return reply_seg
 
         try:
@@ -310,7 +311,7 @@ class SendHandler:
                 return reply_seg
 
             # 根据概率决定是否艾特用户
-            if random.random() < ft_config.reply_at_rate:
+            if random.random() < config_api.get_plugin_config(self.plugin_config, "features.reply_at_rate", 0.5):
                 at_seg = {"type": "at", "data": {"qq": str(replied_user_id)}}
                 # 在艾特后面添加一个空格
                 text_seg = {"type": "text", "data": {"text": " "}}
@@ -354,7 +355,11 @@ class SendHandler:
 
     def handle_voice_message(self, encoded_voice: str) -> dict:
         """处理语音消息"""
-        if not global_config.voice.use_tts:
+        use_tts = False
+        if self.plugin_config:
+            use_tts = config_api.get_plugin_config(self.plugin_config, "voice.use_tts", False)
+        
+        if not use_tts:
             logger.warning("未启用语音消息处理")
             return {}
         if not encoded_voice:
