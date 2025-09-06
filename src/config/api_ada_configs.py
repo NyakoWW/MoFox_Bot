@@ -113,6 +113,7 @@ class ModelTaskConfig(ValidatedConfigBase):
     voice: TaskConfig = Field(..., description="语音识别模型配置")
     tool_use: TaskConfig = Field(..., description="专注工具使用模型配置")
     planner: TaskConfig = Field(..., description="规划模型配置")
+    planner_small: TaskConfig = Field(..., description="小脑（sub-planner）规划模型配置")
     embedding: TaskConfig = Field(..., description="嵌入模型配置")
     lpmm_entity_extract: TaskConfig = Field(..., description="LPMM实体提取模型配置")
     lpmm_rdf_build: TaskConfig = Field(..., description="LPMM RDF构建模型配置")
@@ -147,9 +148,9 @@ class ModelTaskConfig(ValidatedConfigBase):
 class APIAdapterConfig(ValidatedConfigBase):
     """API Adapter配置类"""
 
-    models: List[ModelInfo] = Field(..., min_items=1, description="模型列表")
+    models: List[ModelInfo] = Field(..., min_length=1, description="模型列表")
     model_task_config: ModelTaskConfig = Field(..., description="模型任务配置")
-    api_providers: List[APIProvider] = Field(..., min_items=1, description="API提供商列表")
+    api_providers: List[APIProvider] = Field(..., min_length=1, description="API提供商列表")
 
     def __init__(self, **data):
         super().__init__(**data)

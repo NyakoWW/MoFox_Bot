@@ -160,9 +160,8 @@ class ActionPlanner:
             model_set=model_config.model_task_config.planner, request_type="planner"
         )
         # --- 小脑 (新增) ---
-        # TODO: 可以在 model_config.toml 中为 planner_small 单独配置一个轻量级模型
         self.planner_small_llm = LLMRequest(
-            model_set=model_config.model_task_config.planner, request_type="planner_small"
+            model_set=model_config.model_task_config.planner_small, request_type="planner_small"
         )
 
         self.last_obs_time_mark = 0.0
@@ -496,8 +495,7 @@ class ActionPlanner:
 
             if sub_planner_actions:
                 sub_planner_actions_num = len(sub_planner_actions)
-                # TODO: 您可以在 config.toml 的 [chat] 部分添加 planner_size = 5.0 来自定义此值
-                planner_size_config = getattr(global_config.chat, "planner_size", 5.0)
+                planner_size_config = global_config.chat.planner_size
                 sub_planner_size = int(planner_size_config) + (
                     1 if random.random() < planner_size_config - int(planner_size_config) else 0
                 )

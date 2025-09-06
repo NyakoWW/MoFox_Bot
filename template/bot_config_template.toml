@@ -173,6 +173,9 @@ delta_sigma = 120 # 正态分布的标准差，控制时间间隔的随机程度
 # 实验建议：试试 proactive_thinking_interval=0 + delta_sigma 非常大 的纯随机模式！
 # 结果保证：生成的间隔永远为正数（负数会取绝对值），最小1秒，最大24小时
 
+# --- 大脑/小脑 Planner 配置 ---
+planner_size = 5.0 # 小脑（sub-planner）的尺寸，决定每个小脑处理多少个action。数值越小，并行度越高，但单个小脑的上下文越少。建议范围：3.0-8.0
+
 [relationship]
 enable_relationship = true # 是否启用关系系统
 relation_frequency = 1 # 关系频率，MoFox-Bot构建关系的频率
