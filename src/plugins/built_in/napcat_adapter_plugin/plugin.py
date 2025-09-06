@@ -18,7 +18,6 @@ from .src.recv_handler.meta_event_handler import meta_event_handler
 from .src.recv_handler.notice_handler import notice_handler
 from .src.recv_handler.message_sending import message_send_instance
 from .src.send_handler import send_handler
-from .src.config.migrate_features import auto_migrate_features
 from .src.mmc_com_layer import mmc_start_com, router, mmc_stop_com
 from .src.response_pool import put_response, check_timeout_response
 from .src.websocket_manager import websocket_manager
@@ -221,16 +220,10 @@ class LauchNapcatAdapterHandler(BaseEventHandler):
     init_subscribe = [EventType.ON_START]
 
     async def execute(self, kwargs):
-        # 执行功能配置迁移（如果需要）
-        logger.info("检查功能配置迁移...")
-        auto_migrate_features()
-
         # 启动消息重组器的清理任务
         logger.info("启动消息重组器...")
         await reassembler.start_cleanup_task()
 
-        # 功能管理器已迁移到插件系统配置
-        logger.info("功能配置已迁移到插件系统")
         logger.info("开始启动Napcat Adapter")
         message_send_instance.maibot_router = router
         # 创建单独的异步任务，防止阻塞主线程
@@ -270,7 +263,7 @@ class NapcatAdapterPlugin(BasePlugin):
         "plugin": {
             "name": ConfigField(type=str, default="napcat_adapter_plugin", description="插件名称"),
             "version": ConfigField(type=str, default="1.0.0", description="插件版本"),
-            "config_version": ConfigField(type=str, default="1.2.0", description="配置文件版本"),
+            "config_version": ConfigField(type=str, default="1.3.0", description="配置文件版本"),
             "enabled": ConfigField(type=bool, default=False, description="是否启用插件"),
         },
         "inner": {
@@ -301,6 +294,37 @@ class NapcatAdapterPlugin(BasePlugin):
         },
         "debug": {
             "level": ConfigField(type=str, default="INFO", description="日志等级（DEBUG, INFO, WARNING, ERROR, CRITICAL）", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]),
+        },
+        "features": {
+            # 权限设置
+            "group_list_type": ConfigField(type=str, default="blacklist", description="群聊列表类型：whitelist（白名单）或 blacklist（黑名单）", choices=["whitelist", "blacklist"]),
+            "group_list": ConfigField(type=list, default=[], description="群聊ID列表"),
+            "private_list_type": ConfigField(type=str, default="blacklist", description="私聊列表类型：whitelist（白名单）或 blacklist（黑名单）", choices=["whitelist", "blacklist"]),
+            "private_list": ConfigField(type=list, default=[], description="用户ID列表"),
+            "ban_user_id": ConfigField(type=list, default=[], description="全局禁止用户ID列表，这些用户无法在任何地方使用机器人"),
+            "ban_qq_bot": ConfigField(type=bool, default=False, description="是否屏蔽QQ官方机器人消息"),
+            
+            # 聊天功能设置
+            "enable_poke": ConfigField(type=bool, default=True, description="是否启用戳一戳功能"),
+            "ignore_non_self_poke": ConfigField(type=bool, default=False, description="是否无视不是针对自己的戳一戳"),
+            "poke_debounce_seconds": ConfigField(type=int, default=3, description="戳一戳防抖时间（秒），在指定时间内第二次针对机器人的戳一戳将被忽略"),
+            "enable_reply_at": ConfigField(type=bool, default=True, description="是否启用引用回复时艾特用户的功能"),
+            "reply_at_rate": ConfigField(type=float, default=0.5, description="引用回复时艾特用户的几率 (0.0 ~ 1.0)"),
+            
+            # 视频处理设置
+            "enable_video_analysis": ConfigField(type=bool, default=True, description="是否启用视频识别功能"),
+            "max_video_size_mb": ConfigField(type=int, default=100, description="视频文件最大大小限制（MB）"),
+            "download_timeout": ConfigField(type=int, default=60, description="视频下载超时时间（秒）"),
+            "supported_formats": ConfigField(type=list, default=["mp4", "avi", "mov", "mkv", "flv", "wmv", "webm"], description="支持的视频格式"),
+            
+            # 消息缓冲设置
+            "enable_message_buffer": ConfigField(type=bool, default=True, description="是否启用消息缓冲合并功能"),
+            "message_buffer_enable_group": ConfigField(type=bool, default=True, description="是否启用群聊消息缓冲合并"),
+            "message_buffer_enable_private": ConfigField(type=bool, default=True, description="是否启用私聊消息缓冲合并"),
+            "message_buffer_interval": ConfigField(type=float, default=3.0, description="消息合并间隔时间（秒），在此时间内的连续消息将被合并"),
+            "message_buffer_initial_delay": ConfigField(type=float, default=0.5, description="消息缓冲初始延迟（秒），收到第一条消息后等待此时间开始合并"),
+            "message_buffer_max_components": ConfigField(type=int, default=50, description="单个会话最大缓冲消息组件数量，超过此数量将强制合并"),
+            "message_buffer_block_prefixes": ConfigField(type=list, default=["/", "!", "！", ".", "。", "#", "%"], description="消息缓冲屏蔽前缀，以这些前缀开头的消息不会被缓冲"),
         }
     }
 
@@ -313,7 +337,8 @@ class NapcatAdapterPlugin(BasePlugin):
         "maibot_server": "连接麦麦的ws服务设置",
         "voice": "发送语音设置",
         "slicing": "WebSocket消息切片设置",
-        "debug": "调试设置"
+        "debug": "调试设置",
+        "features": "功能设置（权限控制、聊天功能、视频处理、消息缓冲等）"
     }
 
     def register_events(self):

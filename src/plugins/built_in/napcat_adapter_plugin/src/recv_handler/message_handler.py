@@ -97,21 +97,41 @@ class MessageHandler:
 
         # 使用新的权限管理器检查权限
         if group_id:
-            if not config_api.get_plugin_config(self.plugin_config, f"features.group_allowed.{group_id}", True):
-                logger.warning("群聊不在聊天权限范围内，消息被丢弃")
-                return False
+            # 检查群聊黑白名单
+            group_list_type = config_api.get_plugin_config(self.plugin_config, "features.group_list_type", "blacklist")
+            group_list = config_api.get_plugin_config(self.plugin_config, "features.group_list", [])
+            
+            if group_list_type == "whitelist":
+                if group_id not in group_list:
+                    logger.warning("群聊不在白名单中，消息被丢弃")
+                    return False
+            else:  # blacklist
+                if group_id in group_list:
+                    logger.warning("群聊在黑名单中，消息被丢弃")
+                    return False
         else:
-            if not config_api.get_plugin_config(self.plugin_config, f"features.private_allowed.{user_id}", True):
-                logger.warning("私聊不在聊天权限范围内，消息被丢弃")
-                return False
+            # 检查私聊黑白名单
+            private_list_type = config_api.get_plugin_config(self.plugin_config, "features.private_list_type", "blacklist")
+            private_list = config_api.get_plugin_config(self.plugin_config, "features.private_list", [])
+            
+            if private_list_type == "whitelist":
+                if user_id not in private_list:
+                    logger.warning("私聊不在白名单中，消息被丢弃")
+                    return False
+            else:  # blacklist
+                if user_id in private_list:
+                    logger.warning("私聊在黑名单中，消息被丢弃")
+                    return False
 
         # 检查全局禁止名单
-        if not ignore_global_list and config_api.get_plugin_config(self.plugin_config, f"features.user_banned.{user_id}", False):
+        ban_user_id = config_api.get_plugin_config(self.plugin_config, "features.ban_user_id", [])
+        if not ignore_global_list and user_id in ban_user_id:
             logger.warning("用户在全局黑名单中，消息被丢弃")
             return False
 
         # 检查QQ官方机器人
-        if config_api.get_plugin_config(self.plugin_config, "features.qq_bot_banned", False) and group_id and not ignore_bot:
+        ban_qq_bot = config_api.get_plugin_config(self.plugin_config, "features.ban_qq_bot", False)
+        if ban_qq_bot and group_id and not ignore_bot:
             logger.debug("开始判断是否为机器人")
             member_info = await get_member_info(self.get_server_connection(), group_id, user_id)
             if member_info:
@@ -267,14 +287,15 @@ class MessageHandler:
             return None
 
         # 检查是否需要使用消息缓冲
-        if config_api.get_plugin_config(self.plugin_config, "features.message_buffer_enabled", False):
+        enable_message_buffer = config_api.get_plugin_config(self.plugin_config, "features.enable_message_buffer", True)
+        if enable_message_buffer:
             # 检查消息类型是否启用缓冲
             message_type = raw_message.get("message_type")
             should_use_buffer = False
 
-            if message_type == "group" and config_api.get_plugin_config(self.plugin_config, "features.message_buffer_group_enabled", False):
+            if message_type == "group" and config_api.get_plugin_config(self.plugin_config, "features.message_buffer_enable_group", True):
                 should_use_buffer = True
-            elif message_type == "private" and config_api.get_plugin_config(self.plugin_config, "features.message_buffer_private_enabled", False):
+            elif message_type == "private" and config_api.get_plugin_config(self.plugin_config, "features.message_buffer_enable_private", True):
                 should_use_buffer = True
 
             if should_use_buffer:
