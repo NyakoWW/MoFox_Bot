@@ -1,16 +1,16 @@
 from typing import List, Optional, TYPE_CHECKING
 import time
 from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
-from src.common.logger import get_logger
 from src.person_info.relationship_builder_manager import RelationshipBuilder
 from src.chat.express.expression_learner import ExpressionLearner
-from src.plugin_system.base.component_types import ChatMode
 from src.chat.planner_actions.action_manager import ActionManager
 from src.chat.chat_loop.hfc_utils import CycleDetail
 
 if TYPE_CHECKING:
-    from .wakeup_manager import WakeUpManager
+    from .sleep_manager.wakeup_manager import WakeUpManager
     from .energy_manager import EnergyManager
+    from .heartFC_chat import HeartFChatting
+    from .sleep_manager.sleep_manager import SleepManager
 
 
 class HfcContext:
@@ -43,13 +43,13 @@ class HfcContext:
 
         self.energy_value = self.chat_stream.energy_value
         self.sleep_pressure = self.chat_stream.sleep_pressure
-        self.was_sleeping = False # 用于检测睡眠状态的切换
-        
+        self.was_sleeping = False  # 用于检测睡眠状态的切换
+
         self.last_message_time = time.time()
         self.last_read_time = time.time() - 10
-        
+
         # 从聊天流恢复breaking累积兴趣值
-        self.breaking_accumulated_interest = getattr(self.chat_stream, 'breaking_accumulated_interest', 0.0)
+        self.breaking_accumulated_interest = getattr(self.chat_stream, "breaking_accumulated_interest", 0.0)
 
         self.action_manager = ActionManager()
 
@@ -62,6 +62,7 @@ class HfcContext:
         # 唤醒度管理器 - 延迟初始化以避免循环导入
         self.wakeup_manager: Optional["WakeUpManager"] = None
         self.energy_manager: Optional["EnergyManager"] = None
+        self.sleep_manager: Optional["SleepManager"] = None
 
         self.focus_energy = 1
         self.no_reply_consecutive = 0
@@ -69,7 +70,7 @@ class HfcContext:
         # breaking形式下的累积兴趣值
         self.breaking_accumulated_interest = 0.0
         # 引用HeartFChatting实例，以便其他组件可以调用其方法
-        self.chat_instance = None
+        self.chat_instance: "HeartFChatting"
 
     def save_context_state(self):
         """将当前状态保存到聊天流"""

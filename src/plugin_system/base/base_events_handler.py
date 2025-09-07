@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Tuple, Optional, Dict, List, Union
+from typing import Tuple, Optional, List, Union
 
 from src.common.logger import get_logger
 from .component_types import EventType, EventHandlerInfo, ComponentType
@@ -23,16 +23,25 @@ class BaseEventHandler(ABC):
     """是否拦截消息，默认为否"""
     init_subscribe: List[Union[EventType, str]] = [EventType.UNKNOWN]
     """初始化时订阅的事件名称"""
+    plugin_name = None
 
     def __init__(self):
         self.log_prefix = "[EventHandler]"
         """对应插件名"""
-        self.plugin_config: Optional[Dict] = None
-        """插件配置字典"""
+
         self.subscribed_events = []
         """订阅的事件列表"""
         if EventType.UNKNOWN in self.init_subscribe:
             raise NotImplementedError("事件处理器必须指定 event_type")
+
+        # 优先使用实例级别的 plugin_config，如果没有则使用类级别的配置
+        # 事件管理器会在注册时通过 set_plugin_config 设置实例级别的配置
+        instance_config = getattr(self, "plugin_config", None)
+        if instance_config is not None:
+            self.plugin_config = instance_config
+        else:
+            # 如果实例级别没有配置，则使用类级别的配置（向后兼容）
+            self.plugin_config = getattr(self.__class__, "plugin_config", {})
 
     @abstractmethod
     async def execute(self, kwargs: dict | None) -> Tuple[bool, bool, Optional[str]]:
@@ -89,15 +98,7 @@ class BaseEventHandler(ABC):
             weight=cls.weight,
             intercept_message=cls.intercept_message,
         )
-
-    def set_plugin_config(self, plugin_config: Dict) -> None:
-        """设置插件配置
-
-        Args:
-            plugin_config (dict): 插件配置字典
-        """
-        self.plugin_config = plugin_config
-
+    
     def set_plugin_name(self, plugin_name: str) -> None:
         """设置插件名称
 
@@ -106,6 +107,9 @@ class BaseEventHandler(ABC):
         """
         self.plugin_name = plugin_name
 
+    def set_plugin_config(self,plugin_config) -> None:
+        self.plugin_config = plugin_config
+        
     def get_config(self, key: str, default=None):
         """获取插件配置值，支持嵌套键访问
 

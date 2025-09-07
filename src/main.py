@@ -8,6 +8,7 @@ from maim_message import MessageServer
 from src.common.remote import TelemetryHeartBeatTask
 from src.manager.async_task_manager import async_task_manager
 from src.chat.utils.statistic import OnlineTimeRecordTask, StatisticOutputTask
+from src.common.remote import TelemetryHeartBeatTask
 from src.chat.emoji_system.emoji_manager import get_emoji_manager
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.config.config import global_config
@@ -29,36 +30,57 @@ from src.plugin_system.core.plugin_hot_reload import hot_reload_manager
 
 # 导入消息API和traceback模块
 from src.common.message import get_global_api
- 
+
 from src.chat.memory_system.Hippocampus import hippocampus_manager
+
 if not global_config.memory.enable_memory:
     import src.chat.memory_system.Hippocampus as hippocampus_module
- 
+
     class MockHippocampusManager:
         def initialize(self):
             pass
+
         def get_hippocampus(self):
             return None
+
         async def build_memory(self):
             pass
+
         async def forget_memory(self, percentage: float = 0.005):
             pass
+
         async def consolidate_memory(self):
             pass
-        async def get_memory_from_text(self, text: str, max_memory_num: int = 3, max_memory_length: int = 2, max_depth: int = 3, fast_retrieval: bool = False) -> list:
+
+        async def get_memory_from_text(
+            self,
+            text: str,
+            max_memory_num: int = 3,
+            max_memory_length: int = 2,
+            max_depth: int = 3,
+            fast_retrieval: bool = False,
+        ) -> list:
             return []
-        async def get_memory_from_topic(self, valid_keywords: list[str], max_memory_num: int = 3, max_memory_length: int = 2, max_depth: int = 3) -> list:
+
+        async def get_memory_from_topic(
+            self, valid_keywords: list[str], max_memory_num: int = 3, max_memory_length: int = 2, max_depth: int = 3
+        ) -> list:
             return []
-        async def get_activate_from_text(self, text: str, max_depth: int = 3, fast_retrieval: bool = False) -> tuple[float, list[str]]:
+
+        async def get_activate_from_text(
+            self, text: str, max_depth: int = 3, fast_retrieval: bool = False
+        ) -> tuple[float, list[str]]:
             return 0.0, []
+
         def get_memory_from_keyword(self, keyword: str, max_depth: int = 2) -> list:
             return []
+
         def get_all_node_names(self) -> list:
             return []
- 
+
     hippocampus_module.hippocampus_manager = MockHippocampusManager()
- 
- # 插件系统现在使用统一的插件加载器
+
+# 插件系统现在使用统一的插件加载器
 
 install(extra_lines=3)
 
@@ -68,7 +90,7 @@ logger = get_logger("main")
 class MainSystem:
     def __init__(self):
         self.hippocampus_manager = hippocampus_manager
- 
+
         self.individuality: Individuality = get_individuality()
 
         # 使用消息API替代直接的FastAPI实例
@@ -93,6 +115,9 @@ class MainSystem:
         """清理资源"""
         try:
             # 停止消息重组器
+            from src.plugin_system.core.event_manager import event_manager
+            from src.plugin_system import EventType
+            asyncio.run(event_manager.trigger_event(EventType.ON_STOP,plugin_name="SYSTEM"))
             from src.utils.message_chunker import reassembler
             import asyncio
 
@@ -211,7 +236,6 @@ MoFox_Bot(第三方修改版)
         get_emoji_manager().initialize()
         logger.info("表情包管理器初始化成功")
 
-
         # 启动情绪管理器
         await mood_manager.start()
         logger.info("情绪管理器初始化成功")
@@ -226,11 +250,11 @@ MoFox_Bot(第三方修改版)
         # 初始化记忆系统
         self.hippocampus_manager.initialize()
         logger.info("记忆系统初始化成功")
- 
+
         # 初始化异步记忆管理器
         try:
             from src.chat.memory_system.async_memory_optimizer import async_memory_manager
- 
+
             await async_memory_manager.initialize()
             logger.info("记忆管理器初始化成功")
         except Exception as e:
@@ -251,7 +275,7 @@ MoFox_Bot(第三方修改版)
         await self.individuality.initialize()
 
         # 初始化月度计划管理器
-        if global_config.monthly_plan_system.enable:
+        if global_config.planning_system.monthly_plan_enable:
             logger.info("正在初始化月度计划管理器...")
             try:
                 await monthly_plan_manager.start_monthly_plan_generation()
@@ -260,7 +284,7 @@ MoFox_Bot(第三方修改版)
                 logger.error(f"月度计划管理器初始化失败: {e}")
 
         # 初始化日程管理器
-        if global_config.schedule.enable:
+        if global_config.planning_system.schedule_enable:
             logger.info("日程表功能已启用，正在初始化管理器...")
             await schedule_manager.load_or_generate_today_schedule()
             await schedule_manager.start_daily_schedule_generation()

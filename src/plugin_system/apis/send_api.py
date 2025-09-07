@@ -30,7 +30,6 @@
 
 import traceback
 import time
-import difflib
 import asyncio
 from typing import Optional, Union, Dict, Any
 from src.common.logger import get_logger
@@ -41,15 +40,15 @@ from maim_message import UserInfo
 from src.chat.message_receive.chat_stream import ChatStream
 from src.chat.message_receive.uni_message_sender import HeartFCSender
 from src.chat.message_receive.message import MessageSending, MessageRecv
-from src.chat.utils.chat_message_builder import get_raw_msg_before_timestamp_with_chat, replace_user_references_async
-from src.person_info.person_info import get_person_info_manager
 from maim_message import Seg
 from src.config.config import global_config
 
+# 日志记录器
 logger = get_logger("send_api")
 
 # 适配器命令响应等待池
 _adapter_response_pool: Dict[str, asyncio.Future] = {}
+
 
 def message_dict_to_message_recv(message_dict: Dict[str, Any]) -> Optional[MessageRecv]:
     """查找要回复的消息
@@ -97,9 +96,10 @@ def message_dict_to_message_recv(message_dict: Dict[str, Any]) -> Optional[Messa
     }
 
     message_recv = MessageRecv(message_dict)
-    
+
     logger.info(f"[SendAPI] 找到匹配的回复消息，发送者: {message_dict.get('user_nickname', '')}")
     return message_recv
+
 
 def put_adapter_response(request_id: str, response_data: dict) -> None:
     """将适配器响应放入响应池"""
@@ -187,14 +187,16 @@ async def _send_to_target(
         # 创建消息段
         message_segment = Seg(type=message_type, data=content)  # type: ignore
 
+        # 处理回复消息
         if reply_to_message:
             anchor_message = message_dict_to_message_recv(message_dict=reply_to_message)
             anchor_message.update_chat_stream(target_stream)
             reply_to_platform_id = (
                 f"{anchor_message.message_info.platform}:{anchor_message.message_info.user_info.user_id}"
-            )            
+            )
         else:
             anchor_message = None
+            reply_to_platform_id = None
 
         # 构建发送消息对象
         bot_message = MessageSending(
@@ -231,7 +233,6 @@ async def _send_to_target(
         logger.error(f"[SendAPI] 发送消息时出错: {e}")
         traceback.print_exc()
         return False
-
 
 
 # =============================================================================
@@ -273,7 +274,9 @@ async def text_to_stream(
     )
 
 
-async def emoji_to_stream(emoji_base64: str, stream_id: str, storage_message: bool = True, set_reply: bool = False) -> bool:
+async def emoji_to_stream(
+    emoji_base64: str, stream_id: str, storage_message: bool = True, set_reply: bool = False
+) -> bool:
     """向指定流发送表情包
 
     Args:
@@ -284,10 +287,14 @@ async def emoji_to_stream(emoji_base64: str, stream_id: str, storage_message: bo
     Returns:
         bool: 是否发送成功
     """
-    return await _send_to_target("emoji", emoji_base64, stream_id, "", typing=False, storage_message=storage_message, set_reply=set_reply)
+    return await _send_to_target(
+        "emoji", emoji_base64, stream_id, "", typing=False, storage_message=storage_message, set_reply=set_reply
+    )
 
 
-async def image_to_stream(image_base64: str, stream_id: str, storage_message: bool = True, set_reply: bool = False) -> bool:
+async def image_to_stream(
+    image_base64: str, stream_id: str, storage_message: bool = True, set_reply: bool = False
+) -> bool:
     """向指定流发送图片
 
     Args:
@@ -298,11 +305,17 @@ async def image_to_stream(image_base64: str, stream_id: str, storage_message: bo
     Returns:
         bool: 是否发送成功
     """
-    return await _send_to_target("image", image_base64, stream_id, "", typing=False, storage_message=storage_message, set_reply=set_reply)
+    return await _send_to_target(
+        "image", image_base64, stream_id, "", typing=False, storage_message=storage_message, set_reply=set_reply
+    )
 
 
 async def command_to_stream(
-    command: Union[str, dict], stream_id: str, storage_message: bool = True, display_message: str = "", set_reply: bool = False
+    command: Union[str, dict],
+    stream_id: str,
+    storage_message: bool = True,
+    display_message: str = "",
+    set_reply: bool = False,
 ) -> bool:
     """向指定流发送命令
 

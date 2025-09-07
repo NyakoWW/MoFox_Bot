@@ -75,7 +75,7 @@ class ChatConfig(ValidatedConfigBase):
     at_bot_inevitable_reply: bool = Field(default=False, description="@机器人的必然回复")
     talk_frequency_adjust: list[list[str]] = Field(default_factory=lambda: [], description="聊天频率调整")
     focus_value: float = Field(default=1.0, description="专注值")
-    force_focus_private: bool = Field(default=False, description="强制专注私聊")
+    force_reply_private: bool = Field(default=False, description="强制回复私聊")
     group_chat_mode: Literal["auto", "normal", "focus"] = Field(default="auto", description="群聊模式")
     timestamp_display_mode: Literal["normal", "normal_no_YMD", "relative"] = Field(
         default="normal_no_YMD", description="时间戳显示模式"
@@ -92,6 +92,7 @@ class ChatConfig(ValidatedConfigBase):
         default_factory=list, description="启用主动思考的群聊范围，格式：platform:group_id，为空则不限制"
     )
     delta_sigma: int = Field(default=120, description="采用正态分布随机时间间隔")
+    planner_size: float = Field(default=5.0, ge=1.0, description="小脑（sub-planner）的尺寸，决定每个小脑处理多少个action")
 
     def get_current_talk_frequency(self, chat_stream_id: Optional[str] = None) -> float:
         """
@@ -257,7 +258,6 @@ class MessageReceiveConfig(ValidatedConfigBase):
 
 class NormalChatConfig(ValidatedConfigBase):
     """普通聊天配置类"""
-
 
 
 class ExpressionRule(ValidatedConfigBase):
@@ -519,11 +519,19 @@ class LPMMKnowledgeConfig(ValidatedConfigBase):
     embedding_dimension: int = Field(default=1024, description="嵌入维度")
 
 
-class ScheduleConfig(ValidatedConfigBase):
-    """日程配置类"""
+class PlanningSystemConfig(ValidatedConfigBase):
+    """规划系统配置 (日程与月度计划)"""
 
-    enable: bool = Field(default=True, description="启用")
-    guidelines: Optional[str] = Field(default=None, description="指导方针")
+    # --- 日程生成 (原 ScheduleConfig) ---
+    schedule_enable: bool = Field(True, description="是否启用每日日程生成功能")
+    schedule_guidelines: str = Field("", description="日程生成指导原则")
+
+    # --- 月度计划 (原 MonthlyPlanSystemConfig) ---
+    monthly_plan_enable: bool = Field(True, description="是否启用月度计划系统")
+    monthly_plan_guidelines: str = Field("", description="月度计划生成指导原则")
+    max_plans_per_month: int = Field(10, description="每月最多生成的计划数量")
+    avoid_repetition_days: int = Field(7, description="避免在多少天内重复使用同一个月度计划")
+    completion_threshold: int = Field(3, description="一个月度计划被使用多少次后算作完成")
 
 
 class DependencyManagementConfig(ValidatedConfigBase):
@@ -602,6 +610,11 @@ class SleepSystemConfig(ValidatedConfigBase):
     """睡眠系统配置类"""
 
     enable: bool = Field(default=True, description="是否启用睡眠系统")
+    sleep_by_schedule: bool = Field(default=True, description="是否根据日程表进行睡觉")
+    fixed_sleep_time: str = Field(default="23:00", description="固定的睡觉时间")
+    fixed_wake_up_time: str = Field(default="07:00", description="固定的起床时间")
+    sleep_time_offset_minutes: int = Field(default=15, ge=0, le=60, description="睡觉时间随机偏移量范围（分钟），实际睡觉时间会在±该值范围内随机")
+    wake_up_time_offset_minutes: int = Field(default=15, ge=0, le=60, description="起床时间随机偏移量范围（分钟），实际起床时间会在±该值范围内随机")
     wakeup_threshold: float = Field(default=15.0, ge=1.0, description="唤醒阈值，达到此值时会被唤醒")
     private_message_increment: float = Field(default=3.0, ge=0.1, description="私聊消息增加的唤醒度")
     group_mention_increment: float = Field(default=2.0, ge=0.1, description="群聊艾特增加的唤醒度")
@@ -615,7 +628,12 @@ class SleepSystemConfig(ValidatedConfigBase):
 
     # --- 失眠机制相关参数 ---
     enable_insomnia_system: bool = Field(default=True, description="是否启用失眠系统")
-    insomnia_duration_minutes: int = Field(default=30, ge=1, description="单次失眠状态的持续时间（分钟）")
+    insomnia_trigger_delay_minutes: List[int] = Field(
+        default_factory=lambda:[30, 60], description="入睡后触发失眠判定的延迟时间范围（分钟）"
+    )
+    insomnia_duration_minutes: List[int] = Field(
+        default_factory=lambda:[15, 45], description="单次失眠状态的持续时间范围（分钟）"
+    )
     sleep_pressure_threshold: float = Field(default=30.0, description="触发“压力不足型失眠”的睡眠压力阈值")
     deep_sleep_threshold: float = Field(default=80.0, description="进入“深度睡眠”的睡眠压力阈值")
     insomnia_chance_low_pressure: float = Field(default=0.6, ge=0.0, le=1.0, description="压力不足时的失眠基础概率")
@@ -638,22 +656,13 @@ class SleepSystemConfig(ValidatedConfigBase):
     )
 
 
-class MonthlyPlanSystemConfig(ValidatedConfigBase):
-    """月度计划系统配置类"""
-
-    enable: bool = Field(default=True, description="是否启用本功能")
-    max_plans_per_month: int = Field(default=20, ge=1, description="每个月允许存在的最大计划数量")
-    completion_threshold: int = Field(default=3, ge=1, description="计划使用多少次后自动标记为已完成")
-    avoid_repetition_days: int = Field(default=7, ge=1, description="多少天内不重复抽取同一个计划")
-    guidelines: Optional[str] = Field(default=None, description="月度计划生成的指导原则")
-
-
 class ContextGroup(ValidatedConfigBase):
     """上下文共享组配置"""
 
     name: str = Field(..., description="共享组的名称")
     chat_ids: List[List[str]] = Field(
-        ..., description='属于该组的聊天ID列表，格式为 [["type", "chat_id"], ...]，例如 [["group", "123456"], ["private", "789012"]]'
+        ...,
+        description='属于该组的聊天ID列表，格式为 [["type", "chat_id"], ...]，例如 [["group", "123456"], ["private", "789012"]]',
     )
 
 

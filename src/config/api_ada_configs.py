@@ -1,5 +1,6 @@
-from typing import List, Dict, Any, Literal
+from typing import List, Dict, Any, Literal, Union
 from pydantic import Field, field_validator
+from threading import Lock
 
 from src.config.config_base import ValidatedConfigBase
 
@@ -9,7 +10,7 @@ class APIProvider(ValidatedConfigBase):
 
     name: str = Field(..., min_length=1, description="API提供商名称")
     base_url: str = Field(..., description="API基础URL")
-    api_key: str = Field(..., min_length=1, description="API密钥")
+    api_key: Union[str, List[str]] = Field(..., min_length=1, description="API密钥，支持单个密钥或密钥列表轮询")
     client_type: Literal["openai", "gemini", "aiohttp_gemini"] = Field(
         default="openai", description="客户端类型（如openai/google等，默认为openai）"
     )
@@ -33,12 +34,33 @@ class APIProvider(ValidatedConfigBase):
     @classmethod
     def validate_api_key(cls, v):
         """验证API密钥不能为空"""
-        if not v or not v.strip():
-            raise ValueError("API密钥不能为空")
+        if isinstance(v, str):
+            if not v.strip():
+                raise ValueError("API密钥不能为空")
+        elif isinstance(v, list):
+            if not v:
+                raise ValueError("API密钥列表不能为空")
+            for key in v:
+                if not isinstance(key, str) or not key.strip():
+                    raise ValueError("API密钥列表中的密钥不能为空")
+        else:
+            raise ValueError("API密钥必须是字符串或字符串列表")
         return v
 
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._api_key_lock = Lock()
+        self._api_key_index = 0
+
     def get_api_key(self) -> str:
-        return self.api_key
+        with self._api_key_lock:
+            if isinstance(self.api_key, str):
+                return self.api_key
+            if not self.api_key:
+                raise ValueError("API密钥列表为空")
+            key = self.api_key[self._api_key_index]
+            self._api_key_index = (self._api_key_index + 1) % len(self.api_key)
+            return key
 
 
 class ModelInfo(ValidatedConfigBase):
@@ -113,6 +135,7 @@ class ModelTaskConfig(ValidatedConfigBase):
     voice: TaskConfig = Field(..., description="语音识别模型配置")
     tool_use: TaskConfig = Field(..., description="专注工具使用模型配置")
     planner: TaskConfig = Field(..., description="规划模型配置")
+    planner_small: TaskConfig = Field(..., description="小脑（sub-planner）规划模型配置")
     embedding: TaskConfig = Field(..., description="嵌入模型配置")
     lpmm_entity_extract: TaskConfig = Field(..., description="LPMM实体提取模型配置")
     lpmm_rdf_build: TaskConfig = Field(..., description="LPMM RDF构建模型配置")
@@ -147,9 +170,9 @@ class ModelTaskConfig(ValidatedConfigBase):
 class APIAdapterConfig(ValidatedConfigBase):
     """API Adapter配置类"""
 
-    models: List[ModelInfo] = Field(..., min_items=1, description="模型列表")
+    models: List[ModelInfo] = Field(..., min_length=1, description="模型列表")
     model_task_config: ModelTaskConfig = Field(..., description="模型任务配置")
-    api_providers: List[APIProvider] = Field(..., min_items=1, description="API提供商列表")
+    api_providers: List[APIProvider] = Field(..., min_length=1, description="API提供商列表")
 
     def __init__(self, **data):
         super().__init__(**data)

@@ -928,6 +928,7 @@ class EntorhinalCortex:
                             "concept": concept,
                             "memory_items": memory_items_json,
                             "hash": memory_hash,
+                            "weight": 1.0,  # 默认权重为1.0
                             "created_time": created_time,
                             "last_modified": last_modified,
                         }
@@ -1084,6 +1085,7 @@ class EntorhinalCortex:
                                 "concept": concept,
                                 "memory_items": memory_items_json,
                                 "hash": self.hippocampus.calculate_node_hash(concept, memory_items),
+                                "weight": 1.0,  # 默认权重为1.0
                                 "created_time": data.get("created_time", current_time),
                                 "last_modified": data.get("last_modified", current_time),
                             }

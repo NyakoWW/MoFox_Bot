@@ -93,6 +93,7 @@ class BaseAction(ABC):
         self.associated_types: list[str] = getattr(self.__class__, "associated_types", []).copy()
         self.chat_type_allow: ChatType = getattr(self.__class__, "chat_type_allow", ChatType.ALL)
 
+
         # =============================================================================
         # 便捷属性 - 直接在初始化时获取常用聊天信息（带类型注解）
         # =============================================================================

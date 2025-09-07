@@ -1,6 +1,6 @@
 """
-默认回复生成器 - 集成SmartPrompt系统
-使用重构后的SmartPrompt系统替换原有的复杂提示词构建逻辑
+默认回复生成器 - 集成统一Prompt系统
+使用重构后的统一Prompt系统替换原有的复杂提示词构建逻辑
 """
 
 import traceback
@@ -11,11 +11,9 @@ import re
 
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime
-from src.chat.utils.prompt_utils import PromptUtils
 from src.mais4u.mai_think import mai_thinking_manager
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
-from src.config.api_ada_configs import TaskConfig
 from src.individuality.individuality import get_individuality
 from src.llm_models.utils_model import LLMRequest
 from src.chat.message_receive.message import UserInfo, Seg, MessageRecv, MessageSending
@@ -23,7 +21,7 @@ from src.chat.message_receive.chat_stream import ChatStream
 from src.chat.message_receive.uni_message_sender import HeartFCSender
 from src.chat.utils.timer_calculator import Timer
 from src.chat.utils.utils import get_chat_type_and_target_info
-from src.chat.utils.prompt_builder import Prompt, global_prompt_manager
+from src.chat.utils.prompt import Prompt, global_prompt_manager
 from src.chat.utils.chat_message_builder import (
     build_readable_messages,
     get_raw_msg_before_timestamp_with_chat,
@@ -37,10 +35,9 @@ from src.person_info.relationship_fetcher import relationship_fetcher_manager
 from src.person_info.person_info import get_person_info_manager
 from src.plugin_system.base.component_types import ActionInfo, EventType
 from src.plugin_system.apis import llm_api
-from src.schedule.schedule_manager import schedule_manager
 
-# 导入新的智能Prompt系统
-from src.chat.utils.smart_prompt import SmartPrompt, SmartPromptParameters
+# 导入新的统一Prompt系统
+from src.chat.utils.prompt import PromptParameters
 
 logger = get_logger("replyer")
 
@@ -286,6 +283,7 @@ class DefaultReplyer:
                 return False, None, None
             from src.plugin_system.core.event_manager import event_manager
 
+            # 触发 POST_LLM 事件（请求 LLM 之前）
             if not from_plugin:
                 result = await event_manager.trigger_event(
                     EventType.POST_LLM, plugin_name="SYSTEM", prompt=prompt, stream_id=stream_id
@@ -307,6 +305,7 @@ class DefaultReplyer:
                     "model": model_name,
                     "tool_calls": tool_call,
                 }
+                
                 # 触发 AFTER_LLM 事件
                 if not from_plugin:
                     result = await event_manager.trigger_event(
@@ -600,7 +599,8 @@ class DefaultReplyer:
 
     def _parse_reply_target(self, target_message: str) -> Tuple[str, str]:
         """解析回复目标消息 - 使用共享工具"""
-        return PromptUtils.parse_reply_target(target_message)
+        from src.chat.utils.prompt import Prompt
+        return Prompt.parse_reply_target(target_message)
 
     async def build_keywords_reaction_prompt(self, target: Optional[str]) -> str:
         """构建关键词反应提示
@@ -706,16 +706,16 @@ class DefaultReplyer:
             # 检查最新五条消息中是否包含bot自己说的消息
             latest_5_messages = core_dialogue_list[-5:] if len(core_dialogue_list) >= 5 else core_dialogue_list
             has_bot_message = any(str(msg.get("user_id")) == bot_id for msg in latest_5_messages)
-            
+
             # logger.info(f"最新五条消息：{latest_5_messages}")
             # logger.info(f"最新五条消息中是否包含bot自己说的消息：{has_bot_message}")
-            
+
             # 如果最新五条消息中不包含bot的消息，则返回空字符串
             if not has_bot_message:
                 core_dialogue_prompt = ""
             else:
                 core_dialogue_list = core_dialogue_list[-int(global_config.chat.max_context_size * 2) :]  # 限制消息数量
-                
+
                 core_dialogue_prompt_str = build_readable_messages(
                     core_dialogue_list,
                     replace_bot_name=True,
@@ -819,7 +819,7 @@ class DefaultReplyer:
             mood_prompt = ""
 
         if reply_to:
-            #兼容旧的reply_to
+            # 兼容旧的reply_to
             sender, target = self._parse_reply_target(reply_to)
         else:
             # 获取 platform，如果不存在则从 chat_stream 获取，如果还是 None 则使用默认值
@@ -830,7 +830,7 @@ class DefaultReplyer:
             )
             person_name = await person_info_manager.get_value(person_id, "person_name")
             sender = person_name
-            target = reply_message.get('processed_plain_text')
+            target = reply_message.get("processed_plain_text")
 
         person_info_manager = get_person_info_manager()
         person_id = person_info_manager.get_person_id_by_person_name(sender)
@@ -875,7 +875,8 @@ class DefaultReplyer:
         target_user_info = None
         if sender:
             target_user_info = await person_info_manager.get_person_info_by_name(sender)
-
+            
+        from src.chat.utils.prompt import Prompt
         # 并行执行六个构建任务
         task_results = await asyncio.gather(
             self._time_and_run_task(
@@ -888,7 +889,7 @@ class DefaultReplyer:
             ),
             self._time_and_run_task(self.get_prompt_info(chat_talking_prompt_short, sender, target), "prompt_info"),
             self._time_and_run_task(
-                PromptUtils.build_cross_context(chat_id, target_user_info, global_config.personality.prompt_mode),
+                Prompt.build_cross_context(chat_id, global_config.personality.prompt_mode, target_user_info),
                 "cross_context",
             ),
         )
@@ -939,7 +940,8 @@ class DefaultReplyer:
         identity_block = await get_individuality().get_personality_block()
 
         schedule_block = ""
-        if global_config.schedule.enable:
+        if global_config.planning_system.schedule_enable:
+            from src.schedule.schedule_manager import schedule_manager
             current_activity = schedule_manager.get_current_activity()
             if current_activity:
                 schedule_block = f"你当前正在：{current_activity}。"
@@ -971,8 +973,8 @@ class DefaultReplyer:
         # 根据配置选择模板
         current_prompt_mode = global_config.personality.prompt_mode
 
-        # 使用重构后的SmartPrompt系统
-        prompt_params = SmartPromptParameters(
+        # 使用新的统一Prompt系统 - 创建PromptParameters
+        prompt_parameters = PromptParameters(
             chat_id=chat_id,
             is_group_chat=is_group_chat,
             sender=sender,
@@ -1005,12 +1007,19 @@ class DefaultReplyer:
             action_descriptions=action_descriptions,
         )
 
-        # 使用重构后的SmartPrompt系统
-        smart_prompt = SmartPrompt(
-            template_name=None,  # 由current_prompt_mode自动选择
-            parameters=prompt_params,
-        )
-        prompt_text = await smart_prompt.build_prompt()
+        # 使用新的统一Prompt系统 - 使用正确的模板名称
+        template_name = None
+        if current_prompt_mode == "s4u":
+            template_name = "s4u_style_prompt"
+        elif current_prompt_mode == "normal":
+            template_name = "normal_style_prompt"
+        elif current_prompt_mode == "minimal":
+            template_name = "default_expressor_prompt"
+            
+        # 获取模板内容
+        template_prompt = await global_prompt_manager.get_prompt_async(template_name)
+        prompt = Prompt(template=template_prompt.template, parameters=prompt_parameters)
+        prompt_text = await prompt.build()
 
         return prompt_text
 
@@ -1024,7 +1033,7 @@ class DefaultReplyer:
         chat_stream = self.chat_stream
         chat_id = chat_stream.stream_id
         is_group_chat = bool(chat_stream.group_info)
-            
+
         if reply_message:
             sender = reply_message.get("sender")
             target = reply_message.get("target")
@@ -1111,8 +1120,8 @@ class DefaultReplyer:
 
         template_name = "default_expressor_prompt"
 
-        # 使用重构后的SmartPrompt系统 - Expressor模式
-        prompt_params = SmartPromptParameters(
+        # 使用新的统一Prompt系统 - Expressor模式，创建PromptParameters
+        prompt_parameters = PromptParameters(
             chat_id=chat_id,
             is_group_chat=is_group_chat,
             sender=sender,
@@ -1132,8 +1141,10 @@ class DefaultReplyer:
             relation_info_block=relation_info,
         )
 
-        smart_prompt = SmartPrompt(parameters=prompt_params)
-        prompt_text = await smart_prompt.build_prompt()
+        # 使用新的统一Prompt系统 - Expressor模式
+        template_prompt = await global_prompt_manager.get_prompt_async("default_expressor_prompt")
+        prompt = Prompt(template=template_prompt.template, parameters=prompt_parameters)
+        prompt_text = await prompt.build()
 
         return prompt_text
 
@@ -1181,7 +1192,9 @@ class DefaultReplyer:
             else:
                 logger.debug(f"\n{prompt}\n")
 
-            content, (reasoning_content, model_name, tool_calls) = await self.express_model.generate_response_async(prompt)
+            content, (reasoning_content, model_name, tool_calls) = await self.express_model.generate_response_async(
+                prompt
+            )
 
             logger.debug(f"replyer生成内容: {content}")
         return content, reasoning_content, model_name, tool_calls

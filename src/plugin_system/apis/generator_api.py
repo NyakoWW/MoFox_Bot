@@ -12,7 +12,6 @@ import traceback
 from typing import Tuple, Any, Dict, List, Optional
 from rich.traceback import install
 from src.common.logger import get_logger
-from src.config.api_ada_configs import TaskConfig
 from src.chat.replyer.default_generator import DefaultReplyer
 from src.chat.message_receive.chat_stream import ChatStream
 from src.chat.utils.utils import process_llm_response
@@ -21,6 +20,7 @@ from src.plugin_system.base.component_types import ActionInfo
 
 install(extra_lines=3)
 
+# 日志记录器
 logger = get_logger("generator_api")
 
 
@@ -107,15 +107,14 @@ async def generate_reply(
     """
     try:
         # 获取回复器
-        replyer = get_replyer(
-            chat_stream, chat_id, request_type=request_type
-        )
+        replyer = get_replyer(chat_stream, chat_id, request_type=request_type)
         if not replyer:
             logger.error("[GeneratorAPI] 无法获取回复器")
             return False, [], None
 
         logger.debug("[GeneratorAPI] 开始生成回复")
 
+        # 向下兼容，从action_data中获取reply_to和extra_info
         if not reply_to and action_data:
             reply_to = action_data.get("reply_to", "")
         if not extra_info and action_data:
@@ -136,6 +135,7 @@ async def generate_reply(
             return False, [], None
         assert llm_response_dict is not None, "llm_response_dict不应为None"  # 虽然说不会出现llm_response为空的情况
         if content := llm_response_dict.get("content", ""):
+            # 处理为拟人化文本
             reply_set = process_human_text(content, enable_splitter, enable_chinese_typo)
         else:
             reply_set = []
@@ -211,6 +211,7 @@ async def rewrite_reply(
         )
         reply_set = []
         if content:
+            # 处理为拟人化文本
             reply_set = process_human_text(content, enable_splitter, enable_chinese_typo)
 
         if success:
@@ -236,9 +237,12 @@ def process_human_text(content: str, enable_splitter: bool, enable_chinese_typo:
         enable_splitter: 是否启用消息分割器
         enable_chinese_typo: 是否启用错字生成器
     """
+    if isinstance(content, list):
+        content = "".join(map(str, content))
     if not isinstance(content, str):
         raise ValueError("content 必须是字符串类型")
     try:
+        # 处理LLM响应
         processed_response = process_llm_response(content, enable_splitter, enable_chinese_typo)
 
         reply_set = []
@@ -259,6 +263,18 @@ async def generate_response_custom(
     request_type: str = "generator_api",
     prompt: str = "",
 ) -> Optional[str]:
+    """
+    使用自定义提示生成回复
+
+    Args:
+        chat_stream: 聊天流对象
+        chat_id: 聊天ID
+        request_type: 请求类型
+        prompt: 自定义提示
+
+    Returns:
+        Optional[str]: 生成的回复内容
+    """
     replyer = get_replyer(chat_stream, chat_id, request_type=request_type)
     if not replyer:
         logger.error("[GeneratorAPI] 无法获取回复器")

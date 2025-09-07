@@ -272,8 +272,10 @@ class QZoneService:
             # 检查是否已经在持久化记录中标记为已回复
             if not self.reply_tracker.has_replied(fid, comment_tid):
                 # 记录日志以便追踪
-                logger.debug(f"发现新评论需要回复 - 说说ID: {fid}, 评论ID: {comment_tid}, "
-                           f"评论人: {comment.get('nickname', '')}, 内容: {comment.get('content', '')}")
+                logger.debug(
+                    f"发现新评论需要回复 - 说说ID: {fid}, 评论ID: {comment_tid}, "
+                    f"评论人: {comment.get('nickname', '')}, 内容: {comment.get('content', '')}"
+                )
                 comments_to_reply.append(comment)
 
         if not comments_to_reply:
@@ -791,10 +793,11 @@ class QZoneService:
             try:
                 # 修复回复逻辑：确保能正确提醒被回复的人
                 data = {
-                    "topicId": f"{host_qq}_{fid}__1",  # 使用标准评论格式，而不是针对特定评论
+                    "topicId": f"{host_qq}_{fid}__1",
+                    "parent_tid": comment_tid,
                     "uin": uin,
                     "hostUin": host_qq,
-                    "content": f"回复@{target_name}：{content}",  # 内容中明确标示回复对象
+                    "content": content,
                     "format": "fs",
                     "plat": "qzone",
                     "source": "ic",
@@ -802,12 +805,14 @@ class QZoneService:
                     "ref": "feeds",
                     "richtype": "",
                     "richval": "",
-                    "paramstr": f"@{target_name}",  # 确保触发@提醒机制
+                    "paramstr": "",
                 }
-                
+
                 # 记录详细的请求参数用于调试
-                logger.info(f"子回复请求参数: topicId={data['topicId']}, parent_tid={data['parent_tid']}, content='{content[:50]}...'")
-                
+                logger.info(
+                    f"子回复请求参数: topicId={data['topicId']}, parent_tid={data['parent_tid']}, content='{content[:50]}...'"
+                )
+
                 await _request("POST", self.REPLY_URL, params={"g_tk": gtk}, data=data)
                 return True
             except Exception as e:

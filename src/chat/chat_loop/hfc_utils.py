@@ -1,13 +1,11 @@
 import time
 from typing import Optional, Dict, Any, Union
 
-from src.config.config import global_config
 from src.common.logger import get_logger
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.plugin_system.apis import send_api
 from maim_message.message_base import GroupInfo
 
-from src.common.message_repository import count_messages
 
 logger = get_logger("hfc")
 
@@ -123,43 +121,7 @@ class CycleDetail:
         self.loop_action_info = loop_info["loop_action_info"]
 
 
-def get_recent_message_stats(minutes: float = 30, chat_id: Optional[str] = None) -> dict:
-    """
-    获取最近消息统计信息
-
-    Args:
-        minutes: 检索的分钟数，默认30分钟
-        chat_id: 指定的chat_id，仅统计该chat下的消息。为None时统计全部
-
-    Returns:
-        dict: {"bot_reply_count": int, "total_message_count": int}
-
-    功能说明:
-    - 统计指定时间范围内的消息数量
-    - 区分机器人回复和总消息数
-    - 可以针对特定聊天或全局统计
-    - 用于分析聊天活跃度和机器人参与度
-    """
-
-    now = time.time()
-    start_time = now - minutes * 60
-    bot_id = global_config.bot.qq_account
-
-    filter_base: Dict[str, Any] = {"time": {"$gte": start_time}}
-    if chat_id is not None:
-        filter_base["chat_id"] = chat_id
-
-    # 总消息数
-    total_message_count = count_messages(filter_base)
-    # bot自身回复数
-    bot_filter = filter_base.copy()
-    bot_filter["user_id"] = bot_id
-    bot_reply_count = count_messages(bot_filter)
-
-    return {"bot_reply_count": bot_reply_count, "total_message_count": total_message_count}
-
-
-async def send_typing():
+async def send_typing(user_id):
     """
     发送打字状态指示
 
@@ -176,6 +138,11 @@ async def send_typing():
         user_info=None,
         group_info=group_info,
     )
+
+    from plugin_system.core.event_manager import event_manager
+    from src.plugins.built_in.napcat_adapter_plugin.event_types import NapcatEvent
+    # 设置正在输入状态
+    await event_manager.trigger_event(NapcatEvent.PERSONAL.SET_INPUT_STATUS,user_id=user_id,event_type=1)
 
     await send_api.custom_to_stream(
         message_type="state", content="typing", stream_id=chat.stream_id, storage_message=False
