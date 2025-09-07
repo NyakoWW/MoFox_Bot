@@ -7,7 +7,6 @@ from src.common.database.sqlalchemy_models import Schedule, get_db_session
 from src.config.config import global_config
 from src.common.logger import get_logger
 from src.manager.async_task_manager import AsyncTask, async_task_manager
-from ..chat.chat_loop.sleep_manager.sleep_manager import SleepManager
 from .database import update_plan_usage
 from .llm_generator import ScheduleLLMGenerator
 from .plan_manager import PlanManager
@@ -23,7 +22,6 @@ class ScheduleManager:
         self.plan_manager = PlanManager()
         self.daily_task_started = False
         self.schedule_generation_running = False
-        self.sleep_manager = SleepManager()
 
     async def start_daily_schedule_generation(self):
         if not self.daily_task_started:
@@ -45,7 +43,6 @@ class ScheduleManager:
             schedule_data = self._load_schedule_from_db(today_str)
             if schedule_data:
                 self.today_schedule = schedule_data
-                self.sleep_manager.update_today_schedule(self.today_schedule)
                 self._log_loaded_schedule(today_str)
                 return
 
@@ -100,7 +97,6 @@ class ScheduleManager:
             if schedule_data:
                 self._save_schedule_to_db(today_str, schedule_data)
                 self.today_schedule = schedule_data
-                self.sleep_manager.update_today_schedule(self.today_schedule)
                 self._log_generated_schedule(today_str, schedule_data)
 
                 if sampled_plans:

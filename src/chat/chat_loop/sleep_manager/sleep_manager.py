@@ -25,8 +25,7 @@ class SleepManager:
         """
         初始化睡眠管理器。
         """
-        self.time_checker = TimeChecker(self)  # 时间检查器，用于判断当前是否处于理论睡眠时间
-        self.today_schedule: Optional[List[Dict[str, Any]]] = None  # 当天的日程安排
+        self.time_checker = TimeChecker()  # 时间检查器，用于判断当前是否处于理论睡眠时间
         self.last_sleep_log_time = 0  # 上次记录睡眠日志的时间戳
         self.sleep_log_interval = 35  # 睡眠日志记录间隔（秒）
 
@@ -283,14 +282,6 @@ class SleepManager:
             self._re_sleep_attempt_time = datetime.now() + timedelta(minutes=re_sleep_delay_minutes)
             logger.info(f"将在 {re_sleep_delay_minutes} 分钟后尝试重新入睡。")
             self._save_sleep_state()
-
-    def get_today_schedule(self) -> Optional[List[Dict[str, Any]]]:
-        """获取今天的日程安排。"""
-        return self.today_schedule
-
-    def update_today_schedule(self, schedule: Optional[List[Dict[str, Any]]]):
-        """更新今天的日程安排。"""
-        self.today_schedule = schedule
 
     def _save_sleep_state(self):
         """将当前所有睡眠相关的状态打包并保存到本地存储。"""

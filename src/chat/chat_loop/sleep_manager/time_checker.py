@@ -1,19 +1,19 @@
 from datetime import datetime, time, timedelta
-from typing import Optional
+from typing import Optional, List, Dict, Any
 import random
 
 from src.common.logger import get_logger
 from src.config.config import global_config
+from src.schedule.schedule_manager import schedule_manager
 
 logger = get_logger("time_checker")
 
 
 class TimeChecker:
-    def __init__(self, schedule_source):
-        self.schedule_source = schedule_source
+    def __init__(self):
         # 缓存当天的偏移量，确保一天内使用相同的偏移量
-        self._daily_sleep_offset = None
-        self._daily_wake_offset = None
+        self._daily_sleep_offset: int = 0
+        self._daily_wake_offset: int = 0
         self._offset_date = None
     
     def _get_daily_offsets(self):
@@ -34,9 +34,13 @@ class TimeChecker:
         
         return self._daily_sleep_offset, self._daily_wake_offset
 
+    def get_today_schedule(self) -> Optional[List[Dict[str, Any]]]:
+        """从全局 ScheduleManager 获取今天的日程安排。"""
+        return schedule_manager.today_schedule
+
     def is_in_theoretical_sleep_time(self, now_time: time) -> tuple[bool, Optional[str]]:
         if global_config.sleep_system.sleep_by_schedule:
-            if self.schedule_source.get_today_schedule():
+            if self.get_today_schedule():
                 return self._is_in_schedule_sleep_time(now_time)
             else:
                 return self._is_in_sleep_time(now_time)
@@ -46,7 +50,7 @@ class TimeChecker:
     def _is_in_schedule_sleep_time(self, now_time: time) -> tuple[bool, Optional[str]]:
         """检查当前时间是否落在日程表的任何一个睡眠活动中"""
         sleep_keywords = ["休眠", "睡觉", "梦乡"]
-        today_schedule = self.schedule_source.get_today_schedule()
+        today_schedule = self.get_today_schedule()
         if today_schedule:
             for event in today_schedule:
                 try:
