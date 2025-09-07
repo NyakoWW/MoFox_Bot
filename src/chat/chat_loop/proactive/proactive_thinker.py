@@ -15,6 +15,7 @@ from src.plugin_system.base.component_types import ComponentType
 from src.config.config import global_config
 from src.chat.utils.chat_message_builder import get_raw_msg_before_timestamp_with_chat, build_readable_messages_with_id
 from src.mood.mood_manager import mood_manager
+from src.common.database.sqlalchemy_database_api import store_action_info
 
 if TYPE_CHECKING:
     from ..cycle_processor import CycleProcessor
@@ -236,6 +237,13 @@ class ProactiveThinker:
                 )
                 await self.cycle_processor.response_handler.send_response(
                     response_set, time.time(), action_result.get("action_message")
+                )
+                await store_action_info(
+                    chat_stream=self.context.chat_stream,
+                    action_name="proactive_reply",
+                    action_data={"topic": topic, "response": response_text},
+                    action_prompt_display=f"主动发起对话: {topic}",
+                    action_done=True,
                 )
             else:
                 logger.error(f"{self.context.log_prefix} 主动思考生成回复失败。")

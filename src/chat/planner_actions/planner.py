@@ -98,6 +98,9 @@ def init_prompt():
 ## 最近的聊天内容
 {chat_content_block}
 
+## 最近的动作历史
+{actions_before_now_block}
+
 ## 任务
 基于以上所有信息（特别是最近的聊天内容），分析当前情况，决定是否适合主动开启一个**新的、但又与当前氛围相关**的话题。
 
@@ -678,6 +681,15 @@ class ActionPlanner:
                 )
 
                 prompt_template = await global_prompt_manager.get_prompt_async("proactive_planner_prompt")
+                actions_before_now = get_actions_by_timestamp_with_chat(
+                    chat_id=self.chat_id,
+                    timestamp_start=time.time() - 3600,
+                    timestamp_end=time.time(),
+                    limit=5,
+                )
+                actions_before_now_block = build_readable_actions(actions=actions_before_now)
+                actions_before_now_block = f"你刚刚选择并执行过的action是：\n{actions_before_now_block}"
+
                 prompt = prompt_template.format(
                     time_block=time_block,
                     identity_block=identity_block,
@@ -685,6 +697,7 @@ class ActionPlanner:
                     mood_block=mood_block,
                     long_term_memory_block=long_term_memory_block,
                     chat_content_block=chat_content_block or "最近没有聊天内容。",
+                    actions_before_now_block=actions_before_now_block,
                 )
                 return prompt, []
 

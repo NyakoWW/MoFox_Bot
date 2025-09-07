@@ -24,7 +24,6 @@ class AtAction(BaseAction):
     activation_type = ActionActivationType.LLM_JUDGE  # 消息接收时激活(?)
     parallel_action = False
     chat_type_allow = ChatType.GROUP
-    planner_type = PlannerType.BIG_BRAIN
 
     # === 功能描述（必须填写）===
     action_parameters = {"user_name": "需要艾特用户的名字", "at_message": "艾特用户时要发送的消,注意消息里不要有@"}
