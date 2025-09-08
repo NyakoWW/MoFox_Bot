@@ -85,7 +85,7 @@ class AtAction(BaseAction):
                 reply_to=reply_to,
                 extra_info=extra_info,
                 enable_tool=False,  # 艾特回复通常不需要工具调用
-                from_plugin=True    # 标识来自插件
+                from_plugin=False
             )
             
             if success and llm_response:
