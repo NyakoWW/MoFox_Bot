@@ -151,9 +151,9 @@ class HeartFCMessageReceiver:
                             # 获取对应的subheartflow实例
                             from src.chat.heart_flow.heartflow import heartflow
                             
-                            subflow = await heartflow.get_or_create_subheartflow(chat.stream_id)
+                            subflow = await heartflow.get_or_create_subheartflow(metadata.get("chat_id"))
                             if not subflow:
-                                logger.error(f"无法获取subheartflow实例: {chat.stream_id}")
+                                logger.error(f"无法获取subheartflow实例: {metadata.get('chat_id')}")
                                 return
                                 
                             # 创建主动思考事件，触发完整的思考流程
@@ -163,11 +163,9 @@ class HeartFCMessageReceiver:
                             event = ProactiveTriggerEvent(
                                 source="reminder_system",
                                 reason=f"定时提醒：{reminder_content}",
-                                metadata={
-                                    "reminder_text": reminder_content,
-                                    "trigger_time": datetime.now().isoformat()
-                                }
-                            )
+                                metadata=metadata,
+                                related_message_id=metadata.get("original_message_id")
+                           )
                             
                             # 通过subflow的HeartFChatting实例触发主动思考
                             await subflow.heart_fc_instance.proactive_thinker.think(event)
@@ -181,10 +179,11 @@ class HeartFCMessageReceiver:
                             
                             # Fallback: 如果主动思考失败，直接发送提醒消息
                             try:
+                                from src.plugin_system.apis.send_api import text_to_stream
                                 reminder_content = metadata.get('content', '提醒时间到了')
                                 await text_to_stream(
                                     text=f"⏰ 提醒：{reminder_content}",
-                                    stream_id=chat.stream_id,
+                                    stream_id=metadata.get("chat_id"),
                                     typing=False
                                 )
                                 logger.info(f"Fallback提醒消息已发送: {reminder_content}")
@@ -196,6 +195,7 @@ class HeartFCMessageReceiver:
                     metadata = {
                         "type": "reminder",
                         "user_id": reminder_event.user_id,
+                        "platform": chat.platform,
                         "chat_id": chat.stream_id,
                         "content": reminder_event.content,
                         "confidence": reminder_event.confidence,

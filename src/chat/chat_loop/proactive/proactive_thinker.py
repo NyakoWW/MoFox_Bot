@@ -122,53 +122,67 @@ class ProactiveThinker:
         try:
             # 如果是提醒事件，跳过规划器，直接构建默认动作
             if trigger_event.source == "reminder_system":
-                # 1. 获取原始消息上下文
-                action_message = {}
-                if trigger_event.related_message_id:
-                    # 直接将从数据库获取的完整消息记录作为 action_message
-                    action_message = await db_get(
-                        Messages, {"message_id": trigger_event.related_message_id}, single_result=True
-                    ) or {}
+                # 1. 获取上下文信息
+                metadata = trigger_event.metadata or {}
+                action_message = metadata 
+                reminder_content = trigger_event.reason.replace("定时提醒：", "").strip()
 
-                # 2. 智能确定@对象
-                reason_text = trigger_event.reason.replace("定时提醒：", "").strip()
-                user_name_match = re.search(r"艾特一下(\S+)", reason_text)
-                
-                if user_name_match:
-                    user_name = user_name_match.group(1)
-                    at_message = reason_text.replace(f"艾特一下{user_name}", "").strip()
-                elif action_message.get("user_nickname"):
-                    user_name = action_message.get("user_nickname")
-                    at_message = reason_text
+                # 2. 确定目标用户名
+                target_user_name = None
+                match = re.search(r"艾特一下([^,，\s]+)", reminder_content)
+                if match:
+                    target_user_name = match.group(1)
                 else:
-                    user_name = "我"
-                    at_message = reason_text
+                    from src.person_info.person_info import get_person_info_manager
+                    user_id = metadata.get("user_id")
+                    platform = metadata.get("platform")
+                    if user_id and platform:
+                        person_id = get_person_info_manager().get_person_id(platform, user_id)
+                        target_user_name = await get_person_info_manager().get_value(person_id, "person_name")
+
+                if not target_user_name:
+                    logger.warning(f"无法从提醒 '{reminder_content}' 中确定目标用户，回退")
+                    raise Exception("无法确定目标用户")
 
                 # 3. 构建动作
                 action_result = {
                     "action_type": "at_user",
                     "reasoning": "执行定时提醒",
                     "action_data": {
-                        "user_name": user_name,
-                        "at_message": at_message or "时间到啦！"
+                        "user_name": target_user_name,
+                        "at_message": reminder_content
                     },
                     "action_message": action_message
                 }
 
                 # 4. 执行或回退
                 try:
-                    success, _, _ = await self.cycle_processor._handle_action(
+                    original_chat_id = metadata.get("chat_id")
+                    if not original_chat_id:
+                        if trigger_event.related_message_id:
+                            db_message = await db_get(Messages, {"message_id": trigger_event.related_message_id}, single_result=True) or {}
+                            original_chat_id = db_message.get("chat_id")
+
+                    if not original_chat_id:
+                        raise Exception("提醒事件中缺少chat_id")
+
+                    from src.chat.heart_flow.heartflow import heartflow
+                    subflow = await heartflow.get_or_create_subheartflow(original_chat_id)
+                    if not subflow:
+                        raise Exception(f"无法为chat_id {original_chat_id} 获取subflow")
+                    
+                    success, _, _ = await subflow.heart_fc_instance.cycle_processor._handle_action(
                         action=action_result["action_type"],
                         reasoning=action_result["reasoning"],
                         action_data=action_result["action_data"],
                         cycle_timers={},
                         thinking_id="",
-                        action_message=action_result["action_message"]
+                        action_message=action_result["action_message"],
                     )
                     if not success:
                         raise Exception("at_user action failed")
-                except Exception:
-                    logger.warning(f"{self.context.log_prefix} at_user动作执行失败，回退到proactive_reply")
+                except Exception as e:
+                    logger.warning(f"{self.context.log_prefix} at_user动作执行失败: {e}，回退到proactive_reply")
                     fallback_action = {
                         "action_type": "proactive_reply",
                         "action_data": {"topic": trigger_event.reason},

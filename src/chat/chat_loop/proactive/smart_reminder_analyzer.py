@@ -100,7 +100,7 @@ class SmartReminderAnalyzer:
 请判断用户是否想要设置提醒，如果是，请提取：
 1. 是否包含提醒请求 (has_reminder: true/false)
 2. 置信度 (confidence: 0.0-1.0)  
-3. 相对时间表达 (relative_time: 如"3分钟后", "2小时后")
+3. 相对时间表达 (relative_time: 标准化的时间表达，例如将'半小时后'转换为'30分钟后', '明天下午三点'转换为'明天15点')
 4. 提醒内容 (content: 提醒的具体内容)
 5. 分析原因 (reasoning: 判断理由)
 
@@ -108,7 +108,7 @@ class SmartReminderAnalyzer:
 {{
     "has_reminder": true/false,
     "confidence": 0.0-1.0,
-    "relative_time": "时间表达",
+    "relative_time": "标准化的时间表达 (例如 '30分钟后', '2小时后')",
     "content": "提醒内容", 
     "reasoning": "判断理由"
 }}"""
@@ -152,7 +152,7 @@ class SmartReminderAnalyzer:
                             logger.info(f"备用解析成功: {result}")
                             return result
                 except Exception as fallback_error:
-                    logger.error(f"备用JSON解析也失败: {fallback_error}")
+                    logger.error(f"备用JSON解析也失败了: {fallback_error}")
                 
         except Exception as e:
             logger.error(f"LLM分析失败: {e}")
