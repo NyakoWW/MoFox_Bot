@@ -8,7 +8,7 @@ from typing import Tuple, Optional, List
 import re
 
 from src.common.logger import get_logger
-from src.plugin_system.base.component_types import CommandInfo, PlusCommandInfo, ComponentType, ChatType
+from src.plugin_system.base.component_types import PlusCommandInfo, ComponentType, ChatType
 from src.chat.message_receive.message import MessageRecv
 from src.plugin_system.apis import send_api
 from src.plugin_system.base.command_args import CommandArgs
@@ -287,28 +287,6 @@ class PlusCommand(ABC):
             return False
 
         return await send_api.image_to_stream(image_base64, chat_stream.stream_id)
-
-    @classmethod
-    def get_command_info(cls) -> "CommandInfo":
-        """从类属性生成CommandInfo
-
-        Returns:
-            CommandInfo: 生成的命令信息对象
-        """
-        if "." in cls.command_name:
-            logger.error(f"命令名称 '{cls.command_name}' 包含非法字符 '.'，请使用下划线替代")
-            raise ValueError(f"命令名称 '{cls.command_name}' 包含非法字符 '.'，请使用下划线替代")
-
-        # 生成正则表达式模式来匹配命令
-        command_pattern = cls._generate_command_pattern()
-
-        return CommandInfo(
-            name=cls.command_name,
-            component_type=ComponentType.COMMAND,
-            description=cls.command_description,
-            command_pattern=command_pattern,
-            chat_type_allow=getattr(cls, "chat_type_allow", ChatType.ALL),
-        )
 
     @classmethod
     def get_plus_command_info(cls) -> "PlusCommandInfo":
