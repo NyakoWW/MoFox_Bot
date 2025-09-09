@@ -50,6 +50,7 @@ def init_prompt():
 {time_block}
 {identity_block}
 
+{users_in_chat}
 {custom_prompt_block}
 {chat_context_description}，以下是具体的聊天内容。
 {chat_content_block}
@@ -154,7 +155,6 @@ def init_prompt():
     )
 
 
-
 class ActionPlanner:
     def __init__(self, chat_id: str, action_manager: ActionManager):
         self.chat_id = chat_id
@@ -165,7 +165,6 @@ class ActionPlanner:
         self.planner_llm = LLMRequest(
             model_set=model_config.model_task_config.planner, request_type="planner"
         )
-
         self.last_obs_time_mark = 0.0
 
     async def _get_long_term_memory_context(self) -> str:
@@ -268,14 +267,14 @@ class ActionPlanner:
         # 假设消息列表是按时间顺序排列的，最后一个是最新的
         return message_id_list[-1].get("message")
 
-    def _parse_single_action(
+    async def _parse_single_action(
         self,
         action_json: dict,
         message_id_list: list,  # 使用 planner.py 的 list of dict
         current_available_actions: list,  # 使用 planner.py 的 list of tuple
     ) -> List[Dict[str, Any]]:
         """
-        [注释] 解析单个小脑LLM返回的action JSON，并将其转换为标准化的字典。
+        [注释] 解析单个LLM返回的action JSON，并将其转换为标准化的字典。
         """
         parsed_actions = []
         try:
@@ -312,6 +311,16 @@ class ActionPlanner:
                     "available_actions": available_actions_dict,
                 }
             )
+            # 如果是at_user动作且只有user_name，尝试转换为user_id
+            if action == "at_user" and "user_name" in action_data and "user_id" not in action_data:
+                user_name = action_data["user_name"]
+                from src.person_info.person_info import get_person_info_manager
+                user_info = await get_person_info_manager().get_person_info_by_name(user_name)
+                if user_info and user_info.get("user_id"):
+                    action_data["user_id"] = user_info["user_id"]
+                    logger.info(f"成功将用户名 '{user_name}' 解析为 user_id '{user_info['user_id']}'")
+                else:
+                    logger.warning(f"无法将用户名 '{user_name}' 解析为 user_id")
         except Exception as e:
             logger.error(f"{self.log_prefix}解析单个action时出错: {e}")
             parsed_actions.append(
@@ -349,22 +358,6 @@ class ActionPlanner:
         统一决策是否进行聊天回复(reply)以及执行哪些actions。
         """
         # --- 1. 准备上下文信息 ---
-        message_list_before_now = get_raw_msg_before_timestamp_with_chat(
-            chat_id=self.chat_id,
-            timestamp=time.time(),
-            limit=int(global_config.chat.max_context_size * 0.6),
-        )
-        chat_content_block, message_id_list = build_readable_messages_with_id(
-            messages=message_list_before_now,
-            timestamp_mode="normal",
-            read_mark=self.last_obs_time_mark,
-            truncate=True,
-            show_actions=True,
-        )
-        if pseudo_message:
-            chat_content_block += f"\n[m99] 刚刚, 用户: {pseudo_message}"
-        self.last_obs_time_mark = time.time()
-
         is_group_chat, chat_target_info, current_available_actions = self.get_necessary_info()
         if available_actions is None:
             available_actions = current_available_actions
@@ -377,8 +370,6 @@ class ActionPlanner:
                 chat_target_info=chat_target_info,
                 current_available_actions=available_actions,
                 mode=mode,
-                chat_content_block_override=chat_content_block,
-                message_id_list_override=message_id_list,
             )
             llm_content, _ = await self.planner_llm.generate_response_async(prompt=prompt)
 
@@ -392,7 +383,7 @@ class ActionPlanner:
                 if isinstance(parsed_json, list):
                     for item in parsed_json:
                         if isinstance(item, dict):
-                            final_actions.extend(self._parse_single_action(item, used_message_id_list, list(available_actions.items())))
+                            final_actions.extend(await self._parse_single_action(item, used_message_id_list, list(available_actions.items())))
 
             # 如果是私聊且开启了强制回复，并且没有任何回复性action，则强制添加reply
             if not is_group_chat and global_config.chat.force_reply_private:
@@ -402,7 +393,7 @@ class ActionPlanner:
                         "action_type": "reply",
                         "reasoning": "私聊强制回复",
                         "action_data": {},
-                        "action_message": self.get_latest_message(message_id_list),
+                        "action_message": self.get_latest_message(used_message_id_list),
                         "available_actions": available_actions,
                     })
                     logger.info(f"{self.log_prefix}私聊强制回复已触发，添加 'reply' 动作")
@@ -444,8 +435,6 @@ class ActionPlanner:
         chat_target_info: Optional[dict],
         current_available_actions: Dict[str, ActionInfo],
         mode: ChatMode = ChatMode.FOCUS,
-        chat_content_block_override: Optional[str] = None,
-        message_id_list_override: Optional[List] = None,
         refresh_time: bool = False,  # 添加缺失的参数
     ) -> tuple[str, list]:
         """构建 Planner LLM 的提示词 (获取模板并填充数据)"""
@@ -479,7 +468,7 @@ class ActionPlanner:
                     timestamp=time.time(),
                     limit=int(global_config.chat.max_context_size * 0.2), # 主动思考时只看少量最近消息
                 )
-                chat_content_block, _ = build_readable_messages_with_id(
+                chat_content_block, message_id_list = build_readable_messages_with_id(
                     messages=message_list_short,
                     timestamp_mode="normal",
                     truncate=False,
@@ -505,7 +494,7 @@ class ActionPlanner:
                     chat_content_block=chat_content_block or "最近没有聊天内容。",
                     actions_before_now_block=actions_before_now_block,
                 )
-                return prompt, []
+                return prompt, message_id_list
 
             # --- FOCUS 和 NORMAL 模式的逻辑 ---
             message_list_before_now = get_raw_msg_before_timestamp_with_chat(
@@ -513,7 +502,6 @@ class ActionPlanner:
                 timestamp=time.time(),
                 limit=int(global_config.chat.max_context_size * 0.6),
             )
-
             chat_content_block, message_id_list = build_readable_messages_with_id(
                 messages=message_list_before_now,
                 timestamp_mode="normal",
@@ -580,6 +568,14 @@ class ActionPlanner:
             custom_prompt_block = ""
             if global_config.custom_prompt.planner_custom_prompt_content:
                 custom_prompt_block = global_config.custom_prompt.planner_custom_prompt_content
+            
+            from src.person_info.person_info import get_person_info_manager
+            users_in_chat_str = ""
+            if is_group_chat and chat_target_info and chat_target_info.get("group_id"):
+                user_list = await get_person_info_manager().get_specific_value_list("person_name", lambda x: x is not None)
+                if user_list:
+                    users_in_chat_str = "当前聊天中的用户列表（用于@）：\n" + "\n".join([f"- {name} (ID: {pid})" for pid, name in user_list.items()]) + "\n"
+
 
             planner_prompt_template = await global_prompt_manager.get_prompt_async("planner_prompt")
             prompt = planner_prompt_template.format(
@@ -596,6 +592,7 @@ class ActionPlanner:
                 identity_block=identity_block,
                 custom_prompt_block=custom_prompt_block,
                 bot_name=bot_name,
+                users_in_chat=users_in_chat_str
             )
             return prompt, message_id_list
         except Exception as e:
