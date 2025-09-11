@@ -136,7 +136,7 @@ def init_prompt():
 4.  不要浮夸，不要夸张修辞，不要输出多余内容(包括前后缀，冒号和引号，括号()，表情包，at或 @等 )。
 最终请输出一条简短、完整且口语化的回复。
 
---------------------------------
+ --------------------------------
 {time_block}
 
 {reply_target_block}
@@ -823,6 +823,9 @@ class DefaultReplyer:
             sender, target = self._parse_reply_target(reply_to)
         else:
             # 获取 platform，如果不存在则从 chat_stream 获取，如果还是 None 则使用默认值
+            if reply_message is None:
+                logger.warning("reply_message 为 None，无法构建prompt")
+                return ""
             platform = reply_message.get("chat_info_platform")
             person_id = person_info_manager.get_person_id(
                 platform,  # type: ignore
@@ -1020,6 +1023,25 @@ class DefaultReplyer:
         template_prompt = await global_prompt_manager.get_prompt_async(template_name)
         prompt = Prompt(template=template_prompt.template, parameters=prompt_parameters)
         prompt_text = await prompt.build()
+
+        # --- 动态添加分割指令 ---
+        if global_config.response_splitter.enable and global_config.response_splitter.split_mode == "llm":
+            split_instruction = """
+## 消息分段艺术
+为了模仿真实人类的聊天节奏，你可以在需要时将一条回复分成几段发送。
+
+**核心原则**: 只有当分段能**增强表达效果**或**控制信息节奏**时，才在断句处使用 `[SPLIT]` 标记。
+
+**参考场景**:
+- 当你想表达一个转折或停顿时。
+- 当你想先说结论，再补充说明时。
+
+**任务**: 请结合你的智慧和人设，自然地决定是否需要分段。如果需要，请在最恰当的位置插入 `[SPLIT]` 标记。
+"""
+            # 在 "现在，你说：" 之前插入
+            parts = prompt_text.rsplit("现在，你说：", 1)
+            if len(parts) == 2:
+                prompt_text = f"{parts[0]}{split_instruction}\n现在，你说：{parts[1]}"
 
         return prompt_text
 

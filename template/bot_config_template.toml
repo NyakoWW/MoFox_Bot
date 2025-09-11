@@ -1,5 +1,5 @@
 [inner]
-version = "6.8.0"
+version = "6.8.4"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -111,11 +111,19 @@ talk_frequency = 1
 focus_value = 1
 # MoFox-Bot的专注思考能力，越高越容易持续连续对话
 
+# 在专注模式下，只在被艾特或提及时才回复的群组列表
+# 这可以让你在某些群里保持“高冷”，只在被需要时才发言
+# 格式为: ["platform:group_id1", "platform:group_id2"]
+# 例如: ["qq:123456789", "qq:987654321"]
+focus_mode_quiet_groups = []
+
 # breaking模式配置
 enable_breaking_mode = true # 是否启用自动进入breaking模式，关闭后不会自动进入breaking形式
 
 # 强制私聊回复
 force_reply_private = false # 是否强制私聊回复，开启后私聊将强制回复
+
+allow_reply_self = false # 是否允许回复自己说的话
 
 max_context_size = 25 # 上下文长度
 thinking_timeout = 40 # MoFox-Bot一次回复最长思考规划时间，超过这个时间的思考会放弃（往往是api反应太慢）
@@ -238,6 +246,7 @@ steal_emoji = true # 是否偷取表情包，让MoFox-Bot可以将一些表情�
 content_filtration = false  # 是否启用表情包过滤，只有符合该要求的表情包才会被保存
 filtration_prompt = "符合公序良俗" # 表情包过滤要求，只有符合该要求的表情包才会被保存
 enable_emotion_analysis = false # 是否启用表情包感情关键词二次识别，启用后表情包在第一次识别完毕后将送入第二次大模型识别来总结感情关键词，并构建进回复和决策器的上下文消息中
+max_context_emojis = 30 # 每次随机传递给LLM的表情包详细描述的最大数量，0为全部
 
 [memory]
 enable_memory = true # 是否启用记忆系统
@@ -313,6 +322,7 @@ word_replace_rate=0.006 # 整词替换概率
 
 [response_splitter]
 enable = true # 是否启用回复分割器
+split_mode = "punctuation" # 分割模式: "llm" - 由语言模型决定, "punctuation" - 基于标点符号
 max_length = 512 # 回复允许的最大长度
 max_sentence_num = 8 # 回复允许的最大句子数
 enable_kaomoji_protection = false # 是否启用颜文字保护

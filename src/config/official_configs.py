@@ -73,8 +73,12 @@ class ChatConfig(ValidatedConfigBase):
     talk_frequency: float = Field(default=1.0, description="聊天频率")
     mentioned_bot_inevitable_reply: bool = Field(default=False, description="提到机器人的必然回复")
     at_bot_inevitable_reply: bool = Field(default=False, description="@机器人的必然回复")
+    allow_reply_self: bool = Field(default=False, description="是否允许回复自己说的话")
     talk_frequency_adjust: list[list[str]] = Field(default_factory=lambda: [], description="聊天频率调整")
     focus_value: float = Field(default=1.0, description="专注值")
+    focus_mode_quiet_groups: List[str] = Field(
+        default_factory=list, description='专注模式下需要保持安静的群组列表, 格式: ["platform:group_id1", "platform:group_id2"]'
+    )
     force_reply_private: bool = Field(default=False, description="强制回复私聊")
     group_chat_mode: Literal["auto", "normal", "focus"] = Field(default="auto", description="群聊模式")
     timestamp_display_mode: Literal["normal", "normal_no_YMD", "relative"] = Field(
@@ -381,6 +385,7 @@ class EmojiConfig(ValidatedConfigBase):
     content_filtration: bool = Field(default=False, description="内容过滤")
     filtration_prompt: str = Field(default="符合公序良俗", description="过滤提示")
     enable_emotion_analysis: bool = Field(default=True, description="启用情感分析")
+    max_context_emojis: int = Field(default=30, description="每次随机传递给LLM的表情包最大数量，0为全部")
 
 
 class MemoryConfig(ValidatedConfigBase):
@@ -471,6 +476,7 @@ class ResponseSplitterConfig(ValidatedConfigBase):
     """回复分割器配置类"""
 
     enable: bool = Field(default=True, description="启用")
+    split_mode: str = Field(default="llm", description="分割模式: 'llm' 或 'punctuation'")
     max_length: int = Field(default=256, description="最大长度")
     max_sentence_num: int = Field(default=3, description="最大句子数")
     enable_kaomoji_protection: bool = Field(default=False, description="启用颜文字保护")
