@@ -8,9 +8,6 @@ from src.common.logger import get_logger
 from src.chat.message_receive.chat_stream import ChatStream
 from src.plugin_system.base.component_types import ActionActivationType, ChatMode, ActionInfo, ComponentType, ChatType
 from src.plugin_system.apis import send_api, database_api, message_api
-from src.plugin_system.core.component_registry import component_registry
-
-
 logger = get_logger("base_action")
 
 
@@ -398,6 +395,7 @@ class BaseAction(ABC):
 
         try:
             # 1. 从注册中心获取Action类
+            from src.plugin_system.core.component_registry import component_registry
             action_class = component_registry.get_component_class(action_name, ComponentType.ACTION)
             if not action_class:
                 logger.error(f"{log_prefix} 未找到Action: {action_name}")
