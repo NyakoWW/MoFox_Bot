@@ -385,6 +385,7 @@ class EmojiConfig(ValidatedConfigBase):
     content_filtration: bool = Field(default=False, description="内容过滤")
     filtration_prompt: str = Field(default="符合公序良俗", description="过滤提示")
     enable_emotion_analysis: bool = Field(default=True, description="启用情感分析")
+    max_context_emojis: int = Field(default=30, description="每次随机传递给LLM的表情包最大数量，0为全部")
 
 
 class MemoryConfig(ValidatedConfigBase):
@@ -475,6 +476,7 @@ class ResponseSplitterConfig(ValidatedConfigBase):
     """回复分割器配置类"""
 
     enable: bool = Field(default=True, description="启用")
+    split_mode: str = Field(default="llm", description="分割模式: 'llm' 或 'punctuation'")
     max_length: int = Field(default=256, description="最大长度")
     max_sentence_num: int = Field(default=3, description="最大句子数")
     enable_kaomoji_protection: bool = Field(default=False, description="启用颜文字保护")
@@ -490,6 +492,13 @@ class ExperimentalConfig(ValidatedConfigBase):
     """实验功能配置类"""
 
     pfc_chatting: bool = Field(default=False, description="启用PFC聊天")
+
+
+class ServerConfig(ValidatedConfigBase):
+    """主服务器配置类"""
+
+    host: str = Field(default="127.0.0.1", description="主服务器监听地址")
+    port: int = Field(default=8080, description="主服务器监听端口")
 
 
 class MaimMessageConfig(ValidatedConfigBase):
@@ -674,15 +683,6 @@ class CrossContextConfig(ValidatedConfigBase):
 
     enable: bool = Field(default=False, description="是否启用跨群聊上下文共享功能")
     groups: List[ContextGroup] = Field(default_factory=list, description="上下文共享组列表")
-
-
-class MaizoneIntercomConfig(ValidatedConfigBase):
-    """Maizone互通组配置"""
-
-    enable: bool = Field(default=False, description="是否启用Maizone互通组功能")
-    groups: List[ContextGroup] = Field(default_factory=list, description="Maizone互通组列表")
-
-
 class CommandConfig(ValidatedConfigBase):
     """命令系统配置类"""
 
