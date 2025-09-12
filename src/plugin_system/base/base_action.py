@@ -396,8 +396,8 @@ class BaseAction(ABC):
         logger.info(f"{log_prefix} 尝试调用Action: {action_name}")
 
         try:
-            from src.plugin_system.core.component_registry import component_registry
             # 1. 从注册中心获取Action类
+            from src.plugin_system.core.component_registry import component_registry
             action_class = component_registry.get_component_class(action_name, ComponentType.ACTION)
             if not action_class:
                 logger.error(f"{log_prefix} 未找到Action: {action_name}")
