@@ -71,6 +71,7 @@ class PromptParameters:
     identity_block: str = ""
     schedule_block: str = ""
     moderation_prompt_block: str = ""
+    safety_guidelines_block: str = ""
     reply_target_block: str = ""
     mood_prompt: str = ""
     action_descriptions: str = ""
@@ -641,7 +642,7 @@ class Prompt:
                 )
             
             # 创建工具执行器
-            tool_executor = ToolExecutor()
+            tool_executor = ToolExecutor(chat_id=self.parameters.chat_id)
             
             # 执行工具获取信息
             tool_results, _, _ = await tool_executor.execute_from_chat_message(
@@ -768,6 +769,7 @@ class Prompt:
             "reply_style": global_config.personality.reply_style,
             "keywords_reaction_prompt": self.parameters.keywords_reaction_prompt or context_data.get("keywords_reaction_prompt", ""),
             "moderation_prompt": self.parameters.moderation_prompt_block or context_data.get("moderation_prompt", ""),
+            "safety_guidelines_block": self.parameters.safety_guidelines_block or context_data.get("safety_guidelines_block", ""),
         }
     
     def _prepare_normal_params(self, context_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -791,6 +793,7 @@ class Prompt:
             "mood_state": self.parameters.mood_prompt or context_data.get("mood_state", ""),
             "keywords_reaction_prompt": self.parameters.keywords_reaction_prompt or context_data.get("keywords_reaction_prompt", ""),
             "moderation_prompt": self.parameters.moderation_prompt_block or context_data.get("moderation_prompt", ""),
+            "safety_guidelines_block": self.parameters.safety_guidelines_block or context_data.get("safety_guidelines_block", ""),
         }
     
     def _prepare_default_params(self, context_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -810,6 +813,7 @@ class Prompt:
             "reply_style": global_config.personality.reply_style,
             "keywords_reaction_prompt": self.parameters.keywords_reaction_prompt or context_data.get("keywords_reaction_prompt", ""),
             "moderation_prompt": self.parameters.moderation_prompt_block or context_data.get("moderation_prompt", ""),
+            "safety_guidelines_block": self.parameters.safety_guidelines_block or context_data.get("safety_guidelines_block", ""),
         }
     
     def format(self, *args, **kwargs) -> str:
