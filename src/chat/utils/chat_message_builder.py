@@ -35,6 +35,9 @@ def replace_user_references_sync(
     Returns:
         str: 处理后的内容字符串
     """
+    if not content:
+        return ""
+        
     if name_resolver is None:
         person_info_manager = get_person_info_manager()
 
@@ -817,8 +820,8 @@ def build_pic_mapping_info(pic_id_mapping: Dict[str, str]) -> str:
         description = "[图片内容未知]"  # 默认描述
         try:
             with get_db_session() as session:
-                image = session.execute(select(Images).where(Images.image_id == pic_id)).scalar()
-                if image and image.description:
+                image = session.execute(select(Images).where(Images.image_id == pic_id)).scalar_one_or_none()
+                if image and image.description: # type: ignore
                     description = image.description
         except Exception:
             # 如果查询失败，保持默认描述

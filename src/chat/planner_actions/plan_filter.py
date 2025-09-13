@@ -233,11 +233,13 @@ class PlanFilter:
             if action not in ["no_action", "no_reply", "do_nothing", "proactive_reply"]:
                 if target_message_id := action_json.get("target_message_id"):
                     target_message_dict = self._find_message_by_id(target_message_id, message_id_list)
-                    if target_message_dict is None:
-                        target_message_dict = self._get_latest_message(message_id_list)
-                    if target_message_dict:
-                        from src.common.data_models.database_data_model import DatabaseMessages
-                        target_message_obj = DatabaseMessages(**target_message_dict)
+                else:
+                    # 如果LLM没有指定target_message_id，我们就默认选择最新的一条消息
+                    target_message_dict = self._get_latest_message(message_id_list)
+
+                if target_message_dict:
+                    from src.common.data_models.database_data_model import DatabaseMessages
+                    target_message_obj = DatabaseMessages(**target_message_dict)
 
             available_action_names = list(plan.available_actions.keys())
             if action not in ["no_action", "no_reply", "reply", "do_nothing", "proactive_reply"] and action not in available_action_names:
