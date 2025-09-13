@@ -21,7 +21,7 @@ class AtAction(BaseAction):
     # === 基本信息（必须填写）===
     action_name = "at_user"
     action_description = "发送艾特消息"
-    activation_type = ActionActivationType.LLM_JUDGE 
+    activation_type = ActionActivationType.LLM_JUDGE  # 消息接收时激活(?)
     parallel_action = False
     chat_type_allow = ChatType.GROUP
 
@@ -48,136 +48,114 @@ class AtAction(BaseAction):
 
         if not user_name or not at_message:
             logger.warning("艾特用户的动作缺少必要参数。")
-            return False, "缺少必要参数"
-
-        from src.plugin_system.apis import send_api
-        from fuzzywuzzy import process
-
-        group_id = self.chat_stream.group_info.group_id
-        if not group_id:
-            return False, "无法获取群组ID"
-
-        response = await send_api.adapter_command_to_stream(
-            action="get_group_member_list",
-            params={"group_id": group_id},
-            stream_id=self.chat_id,
-        )
-
-        if response.get("status") != "ok":
-            return False, f"获取群成员列表失败: {response.get('message')}"
-
-        member_list = response.get("data", [])
-        if not member_list:
-            return False, "群成员列表为空"
-
-        # 优化用户匹配逻辑
-        best_match = None
-        user_id = None
-
-        # 1. 完全精确匹配
-        for member in member_list:
-            card = member.get("card", "")
-            nickname = member.get("nickname", "")
-            if user_name == card or user_name == nickname:
-                best_match = card if user_name == card else nickname
-                user_id = member["user_id"]
-                logger.info(f"找到完全精确匹配: '{user_name}' -> '{best_match}' (ID: {user_id})")
-                break
-        
-        # 2. 包含关系匹配
-        if not best_match:
-            containing_matches = []
-            for member in member_list:
-                card = member.get("card", "")
-                nickname = member.get("nickname", "")
-                if user_name in card:
-                    containing_matches.append((card, member["user_id"]))
-                elif user_name in nickname:
-                    containing_matches.append((nickname, member["user_id"]))
-            
-            if containing_matches:
-                # 选择最短的匹配项，因为通常更精确
-                best_match, user_id = min(containing_matches, key=lambda x: len(x[0]))
-                logger.info(f"找到包含关系匹配: '{user_name}' -> '{best_match}' (ID: {user_id})")
-
-        # 3. 模糊匹配作为兜底
-        if not best_match:
-            choices = {member["card"] or member["nickname"]: member["user_id"] for member in member_list}
-            fuzzy_match, score = process.extractOne(user_name, choices.keys())
-            if score >= 60: # 维持较高的阈值
-                best_match = fuzzy_match
-                user_id = choices[best_match]
-                logger.info(f"找到模糊匹配: '{user_name}' -> '{best_match}' (ID: {user_id}, Score: {score})")
-        
-        if not best_match:
-            logger.warning(f"所有匹配策略都未能找到用户: '{user_name}'")
-            return False, "用户不存在"
-        
-        user_info = {"user_id": user_id, "user_nickname": best_match}
-
-        try:
-            from src.chat.replyer.default_generator import DefaultReplyer
-            from src.chat.message_receive.chat_stream import get_chat_manager
-
-            chat_manager = get_chat_manager()
-            chat_stream = chat_manager.get_stream(self.chat_id)
-            
-            if not chat_stream:
-                logger.error(f"找不到聊天流: {self.stream_id}")
-                return False, "聊天流不存在"
-            
-            replyer = DefaultReplyer(chat_stream)
-            # 优化提示词，消除记忆割裂感
-            reminder_task = at_message.replace("定时提醒：", "").strip()
-            extra_info = f"""你之前记下了一个提醒任务：'{reminder_task}'
-现在时间到了，你需要去提醒用户 '{user_name}'。
-
-**重要规则**：
-- 你的任务**只**是生成提醒的**内容**。
-- **绝对不要**在你的回复中包含任何`@`符号或者目标用户的名字。真正的@操作会由系统自动完成。
-- 像一个朋友一样，自然地完成这个提醒，而不是生硬地复述任务。
-
-请直接输出提醒的**内容**。"""
-
-            success, llm_response, _ = await replyer.generate_reply_with_context(
-                reply_to=f"是时候提醒'{user_name}'了",  # 内部上下文，更符合执行任务的语境
-                extra_info=extra_info,
-                enable_tool=False,
-                from_plugin=True  # 标记为插件调用，以便LLM更好地理解上下文
-            )
-            
-            if not success or not llm_response:
-                logger.error("回复器生成回复失败")
-                return False, "回复生成失败"
-            
-            final_message_raw = llm_response.get("content", "")
-            if not final_message_raw:
-                logger.warning("回复器生成了空内容")
-                return False, "回复内容为空"
-
-            # 对LLM生成的内容进行后处理，解析[SPLIT]标记并将分段消息合并
-            from src.chat.utils.utils import process_llm_response
-            final_message_segments = process_llm_response(final_message_raw, enable_splitter=True, enable_chinese_typo=False)
-            final_message = " ".join(final_message_segments)
-
-            await self.send_command(
-                "SEND_AT_MESSAGE",
-                args={"group_id": self.chat_stream.group_info.group_id, "qq_id": user_id, "text": final_message},
-                display_message=f"艾特用户 {user_name} 并发送消息: {final_message}",
-            )
-            
             await self.store_action_info(
                 action_build_into_prompt=True,
-                action_prompt_display=f"执行了艾特用户动作：艾特用户 {user_name} 并发送消息: {final_message}",
-                action_done=True,
+                action_prompt_display=f"执行了艾特用户动作：艾特用户 {user_name} 并发送消息: {at_message},失败了,因为没有提供必要参数",
+                action_done=False,
+            )
+            return False, "缺少必要参数"
+
+        user_info = await get_person_info_manager().get_person_info_by_name(user_name)
+        if not user_info or not user_info.get("user_id"):
+            logger.info(f"找不到名为 '{user_name}' 的用户。")
+            return False, "用户不存在"
+
+        try:
+            # 使用回复器生成艾特回复，而不是直接发送命令
+            from src.chat.replyer.default_generator import DefaultReplyer
+            from src.chat.message_receive.chat_stream import get_chat_manager
+            
+            # 获取当前聊天流
+            chat_manager = get_chat_manager()
+            chat_stream = self.chat_stream or chat_manager.get_stream(self.chat_id)
+            
+            if not chat_stream:
+                logger.error(f"找不到聊天流: {self.chat_stream}")
+                return False, "聊天流不存在"
+            
+            # 创建回复器实例
+            replyer = DefaultReplyer(chat_stream)
+            
+            # 构建回复对象，将艾特消息作为回复目标
+            reply_to = f"{user_name}:{at_message}"
+            extra_info = f"你需要艾特用户 {user_name} 并回复他们说: {at_message}"
+            
+            # 使用回复器生成回复
+            success, llm_response, prompt = await replyer.generate_reply_with_context(
+                reply_to=reply_to,
+                extra_info=extra_info,
+                enable_tool=False,  # 艾特回复通常不需要工具调用
+                from_plugin=False
             )
             
-            logger.info(f"成功发送艾特消息给 {user_name}: {final_message}")
-            return True, "艾特消息发送成功"
+            if success and llm_response:
+                # 获取生成的回复内容
+                reply_content = llm_response.get("content", "")
+                if reply_content:
+                    # 获取用户QQ号，发送真正的艾特消息
+                    user_id = user_info.get("user_id")
+                    
+                    # 发送真正的艾特命令，使用回复器生成的智能内容
+                    await self.send_command(
+                        "SEND_AT_MESSAGE",
+                        args={"qq_id": user_id, "text": reply_content},
+                        display_message=f"艾特用户 {user_name} 并发送智能回复: {reply_content}",
+                    )
+                    
+                    await self.store_action_info(
+                        action_build_into_prompt=True,
+                        action_prompt_display=f"执行了艾特用户动作：艾特用户 {user_name} 并发送智能回复: {reply_content}",
+                        action_done=True,
+                    )
+                    
+                    logger.info(f"成功通过回复器生成智能内容并发送真正的艾特消息给 {user_name}: {reply_content}")
+                    return True, "智能艾特消息发送成功"
+                else:
+                    logger.warning("回复器生成了空内容")
+                    return False, "回复内容为空"
+            else:
+                logger.error("回复器生成回复失败")
+                return False, "回复生成失败"
                 
         except Exception as e:
             logger.error(f"执行艾特用户动作时发生异常: {e}", exc_info=True)
+            await self.store_action_info(
+                action_build_into_prompt=True,
+                action_prompt_display=f"执行艾特用户动作失败：{str(e)}",
+                action_done=False,
+            )
             return False, f"执行失败: {str(e)}"
+
+
+class AtCommand(BaseCommand):
+    command_name: str = "at_user"
+    description: str = "通过名字艾特用户"
+    command_pattern: str = r"/at\s+@?(?P<name>[\S]+)(?:\s+(?P<text>.*))?"
+
+    async def execute(self) -> Tuple[bool, str, bool]:
+        name = self.matched_groups.get("name")
+        text = self.matched_groups.get("text", "")
+
+        if not name:
+            await self.send_text("请指定要艾特的用户名称。")
+            return False, "缺少用户名称", True
+
+        person_info_manager = get_person_info_manager()
+        user_info = await person_info_manager.get_person_info_by_name(name)
+
+        if not user_info or not user_info.get("user_id"):
+            await self.send_text(f"找不到名为 '{name}' 的用户。")
+            return False, "用户不存在", True
+
+        user_id = user_info.get("user_id")
+
+        await self.send_command(
+            "SEND_AT_MESSAGE",
+            args={"qq_id": user_id, "text": text},
+            display_message=f"艾特用户 {name} 并发送消息: {text}",
+        )
+
+        return True, "艾特消息已发送", True
 
 
 @register_plugin
@@ -185,7 +163,7 @@ class AtUserPlugin(BasePlugin):
     plugin_name: str = "at_user_plugin"
     enable_plugin: bool = True
     dependencies: list[str] = []
-    python_dependencies: list[str] = ["fuzzywuzzy", "python-Levenshtein"]
+    python_dependencies: list[str] = []
     config_file_name: str = "config.toml"
     config_schema: dict = {}
 

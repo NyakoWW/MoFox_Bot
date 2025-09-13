@@ -71,6 +71,7 @@ class PromptParameters:
     identity_block: str = ""
     schedule_block: str = ""
     moderation_prompt_block: str = ""
+    safety_guidelines_block: str = ""
     reply_target_block: str = ""
     mood_prompt: str = ""
     action_descriptions: str = ""
@@ -312,16 +313,15 @@ class Prompt:
             
         except asyncio.TimeoutError as e:
             logger.error(f"构建Prompt超时: {e}")
-            raise TimeoutError(f"构建Prompt超时: {e}")
+            raise TimeoutError(f"构建Prompt超时: {e}") from e
         except Exception as e:
             logger.error(f"构建Prompt失败: {e}")
-            raise RuntimeError(f"构建Prompt失败: {e}")
+            raise RuntimeError(f"构建Prompt失败: {e}") from e
     
     async def _build_context_data(self) -> Dict[str, Any]:
         """构建智能上下文数据"""
         # 并行执行所有构建任务
         start_time = time.time()
-        timing_logs = {}
         
         try:
             # 准备构建任务
@@ -381,7 +381,6 @@ class Prompt:
                 results = []
                 for i in range(0, len(tasks), max_concurrent_tasks):
                     batch_tasks = tasks[i : i + max_concurrent_tasks]
-                    batch_names = task_names[i : i + max_concurrent_tasks]
                     
                     batch_results = await asyncio.wait_for(
                         asyncio.gather(*batch_tasks, return_exceptions=True), timeout=timeout_seconds
@@ -520,13 +519,96 @@ class Prompt:
     
     async def _build_expression_habits(self) -> Dict[str, Any]:
         """构建表达习惯"""
-        # 简化的实现，完整实现需要导入相关模块
-        return {"expression_habits_block": ""}
+        if not global_config.expression.enable_expression:
+            return {"expression_habits_block": ""}
+        
+        try:
+            from src.chat.express.expression_selector import ExpressionSelector
+            
+            # 获取聊天历史用于表情选择
+            chat_history = ""
+            if self.parameters.message_list_before_now_long:
+                recent_messages = self.parameters.message_list_before_now_long[-10:]
+                chat_history = build_readable_messages(
+                    recent_messages,
+                    replace_bot_name=True,
+                    timestamp_mode="normal",
+                    truncate=True
+                )
+            
+            # 创建表情选择器
+            expression_selector = ExpressionSelector(self.parameters.chat_id)
+            
+            # 选择合适的表情
+            selected_expressions = await expression_selector.select_suitable_expressions_llm(
+                chat_history=chat_history,
+                current_message=self.parameters.target,
+                emotional_tone="neutral",
+                topic_type="general"
+            )
+            
+            # 构建表达习惯块
+            if selected_expressions:
+                style_habits_str = "\n".join([f"- {expr}" for expr in selected_expressions])
+                expression_habits_block = f"- 你可以参考以下的语言习惯，当情景合适就使用，但不要生硬使用，以合理的方式结合到你的回复中：\n{style_habits_str}"
+            else:
+                expression_habits_block = ""
+            
+            return {"expression_habits_block": expression_habits_block}
+            
+        except Exception as e:
+            logger.error(f"构建表达习惯失败: {e}")
+            return {"expression_habits_block": ""}
     
     async def _build_memory_block(self) -> Dict[str, Any]:
         """构建记忆块"""
-        # 简化的实现
-        return {"memory_block": ""}
+        if not global_config.memory.enable_memory:
+            return {"memory_block": ""}
+        
+        try:
+            from src.chat.memory_system.memory_activator import MemoryActivator
+            from src.chat.memory_system.async_instant_memory_wrapper import get_async_instant_memory
+            
+            # 获取聊天历史
+            chat_history = ""
+            if self.parameters.message_list_before_now_long:
+                recent_messages = self.parameters.message_list_before_now_long[-20:]
+                chat_history = build_readable_messages(
+                    recent_messages,
+                    replace_bot_name=True,
+                    timestamp_mode="normal",
+                    truncate=True
+                )
+            
+            # 激活长期记忆
+            memory_activator = MemoryActivator()
+            running_memories = await memory_activator.activate_memory_with_chat_history(
+                target_message=self.parameters.target,
+                chat_history_prompt=chat_history
+            )
+            
+            # 获取即时记忆
+            async_memory_wrapper = get_async_instant_memory(self.parameters.chat_id)
+            instant_memory = await async_memory_wrapper.get_memory_with_fallback(self.parameters.target)
+            
+            # 构建记忆块
+            memory_parts = []
+            
+            if running_memories:
+                memory_parts.append("以下是当前在聊天中，你回忆起的记忆：")
+                for memory in running_memories:
+                    memory_parts.append(f"- {memory['content']}")
+            
+            if instant_memory:
+                memory_parts.append(f"- {instant_memory}")
+            
+            memory_block = "\n".join(memory_parts) if memory_parts else ""
+            
+            return {"memory_block": memory_block}
+            
+        except Exception as e:
+            logger.error(f"构建记忆块失败: {e}")
+            return {"memory_block": ""}
     
     async def _build_relation_info(self) -> Dict[str, Any]:
         """构建关系信息"""
@@ -539,13 +621,106 @@ class Prompt:
     
     async def _build_tool_info(self) -> Dict[str, Any]:
         """构建工具信息"""
-        # 简化的实现
-        return {"tool_info_block": ""}
+        if not global_config.tool.enable_tool:
+            return {"tool_info_block": ""}
+        
+        try:
+            from src.plugin_system.core.tool_use import ToolExecutor
+            
+            # 获取聊天历史
+            chat_history = ""
+            if self.parameters.message_list_before_now_long:
+                recent_messages = self.parameters.message_list_before_now_long[-15:]
+                chat_history = build_readable_messages(
+                    recent_messages,
+                    replace_bot_name=True,
+                    timestamp_mode="normal",
+                    truncate=True
+                )
+            
+            # 创建工具执行器
+            tool_executor = ToolExecutor(chat_id=self.parameters.chat_id)
+            
+            # 执行工具获取信息
+            tool_results, _, _ = await tool_executor.execute_from_chat_message(
+                sender=self.parameters.sender,
+                target_message=self.parameters.target,
+                chat_history=chat_history,
+                return_details=False
+            )
+            
+            # 构建工具信息块
+            if tool_results:
+                tool_info_parts = ["## 工具信息","以下是你通过工具获取到的实时信息："]
+                for tool_result in tool_results:
+                    tool_name = tool_result.get("tool_name", "unknown")
+                    content = tool_result.get("content", "")
+                    result_type = tool_result.get("type", "tool_result")
+                    
+                    tool_info_parts.append(f"- 【{tool_name}】{result_type}: {content}")
+                
+                tool_info_parts.append("以上是你获取到的实时信息，请在回复时参考这些信息。")
+                tool_info_block = "\n".join(tool_info_parts)
+            else:
+                tool_info_block = ""
+            
+            return {"tool_info_block": tool_info_block}
+            
+        except Exception as e:
+            logger.error(f"构建工具信息失败: {e}")
+            return {"tool_info_block": ""}
     
     async def _build_knowledge_info(self) -> Dict[str, Any]:
         """构建知识信息"""
-        # 简化的实现
-        return {"knowledge_prompt": ""}
+        if not global_config.lpmm_knowledge.enable:
+            return {"knowledge_prompt": ""}
+        
+        try:
+            from src.chat.knowledge.knowledge_lib import QAManager
+            
+            # 获取问题文本（当前消息）
+            question = self.parameters.target or ""
+            if not question:
+                return {"knowledge_prompt": ""}
+            
+            # 创建QA管理器
+            qa_manager = QAManager()
+            
+            # 搜索相关知识
+            knowledge_results = await qa_manager.get_knowledge(
+                question=question,
+                chat_id=self.parameters.chat_id,
+                max_results=5,
+                min_similarity=0.5
+            )
+            
+            # 构建知识块
+            if knowledge_results and knowledge_results.get("knowledge_items"):
+                knowledge_parts = ["## 知识库信息","以下是与你当前对话相关的知识信息："]
+                
+                for item in knowledge_results["knowledge_items"]:
+                    content = item.get("content", "")
+                    source = item.get("source", "")
+                    relevance = item.get("relevance", 0.0)
+                    
+                    if content:
+                        if source:
+                            knowledge_parts.append(f"- [{relevance:.2f}] {content} (来源: {source})")
+                        else:
+                            knowledge_parts.append(f"- [{relevance:.2f}] {content}")
+                
+                if knowledge_results.get("summary"):
+                    knowledge_parts.append(f"\n知识总结: {knowledge_results['summary']}")
+                
+                knowledge_prompt = "\n".join(knowledge_parts)
+            else:
+                knowledge_prompt = ""
+            
+            return {"knowledge_prompt": knowledge_prompt}
+            
+        except Exception as e:
+            logger.error(f"构建知识信息失败: {e}")
+            return {"knowledge_prompt": ""}
     
     async def _build_cross_context(self) -> Dict[str, Any]:
         """构建跨群上下文"""
@@ -591,6 +766,7 @@ class Prompt:
             "reply_style": global_config.personality.reply_style,
             "keywords_reaction_prompt": self.parameters.keywords_reaction_prompt or context_data.get("keywords_reaction_prompt", ""),
             "moderation_prompt": self.parameters.moderation_prompt_block or context_data.get("moderation_prompt", ""),
+            "safety_guidelines_block": self.parameters.safety_guidelines_block or context_data.get("safety_guidelines_block", ""),
         }
     
     def _prepare_normal_params(self, context_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -614,6 +790,7 @@ class Prompt:
             "mood_state": self.parameters.mood_prompt or context_data.get("mood_state", ""),
             "keywords_reaction_prompt": self.parameters.keywords_reaction_prompt or context_data.get("keywords_reaction_prompt", ""),
             "moderation_prompt": self.parameters.moderation_prompt_block or context_data.get("moderation_prompt", ""),
+            "safety_guidelines_block": self.parameters.safety_guidelines_block or context_data.get("safety_guidelines_block", ""),
         }
     
     def _prepare_default_params(self, context_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -633,6 +810,7 @@ class Prompt:
             "reply_style": global_config.personality.reply_style,
             "keywords_reaction_prompt": self.parameters.keywords_reaction_prompt or context_data.get("keywords_reaction_prompt", ""),
             "moderation_prompt": self.parameters.moderation_prompt_block or context_data.get("moderation_prompt", ""),
+            "safety_guidelines_block": self.parameters.safety_guidelines_block or context_data.get("safety_guidelines_block", ""),
         }
     
     def format(self, *args, **kwargs) -> str:

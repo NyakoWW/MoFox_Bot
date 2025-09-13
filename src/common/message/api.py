@@ -1,5 +1,4 @@
 from src.common.server import get_global_server
-import os
 import importlib.metadata
 from maim_message import MessageServer
 from src.common.logger import get_logger
@@ -24,8 +23,8 @@ def get_global_api() -> MessageServer:  # sourcery skip: extract-method
 
         # 设置基本参数
         kwargs = {
-            "host": os.environ["HOST"],
-            "port": int(os.environ["PORT"]),
+            "host": global_config.server.host,
+            "port": int(global_config.server.port),
             "app": get_global_server().get_app(),
         }
 

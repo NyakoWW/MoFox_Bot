@@ -84,7 +84,7 @@ class CycleProcessor:
         # 获取用户信息并生成回复提示
         person_id = person_info_manager.get_person_id(
             platform,
-            action_message.get("user_id", ""),
+            action_message.get("chat_info_user_id", ""),
         )
         person_name = await person_info_manager.get_value(person_id, "person_name")
         action_prompt_display = f"你对{person_name}进行了回复：{reply_text}"
@@ -180,7 +180,7 @@ class CycleProcessor:
         cycle_timers, thinking_id = self.cycle_tracker.start_cycle()
         logger.info(f"{self.log_prefix} 开始第{self.context.cycle_counter}次思考")
 
-        if ENABLE_S4U:
+        if ENABLE_S4U and self.context.chat_stream and self.context.chat_stream.user_info:
             await send_typing(self.context.chat_stream.user_info.user_id)
 
         loop_start_time = time.time()
@@ -194,30 +194,17 @@ class CycleProcessor:
                 logger.error(f"{self.context.log_prefix} 动作修改失败: {e}")
                 available_actions = {}
 
-            # 执行planner
-            planner_info = self.action_planner.get_necessary_info()
-            prompt_info = await self.action_planner.build_planner_prompt(
-                is_group_chat=planner_info[0],
-                chat_target_info=planner_info[1],
-                current_available_actions=planner_info[2],
-            )
-            from src.plugin_system.core.event_manager import event_manager
-            from src.plugin_system import EventType
-
-            # 触发规划前事件
-            result = await event_manager.trigger_event(
-                EventType.ON_PLAN, permission_group="SYSTEM", stream_id=self.context.chat_stream
-            )
-            if not result.all_continue_process():
-                raise UserWarning(f"插件{result.get_summary().get('stopped_handlers', '')}于规划前中断了内容生成")
-
             # 规划动作
-            with Timer("规划器", cycle_timers):
-                actions, _ = await self.action_planner.plan(
-                    mode=mode,
-                    loop_start_time=loop_start_time,
-                    available_actions=available_actions,
-                )
+        from src.plugin_system.core.event_manager import event_manager
+        from src.plugin_system import EventType
+        
+        result = await event_manager.trigger_event(
+                        EventType.ON_PLAN, permission_group="SYSTEM", stream_id=self.context.chat_stream
+                    )
+        if not result.all_continue_process():
+            raise UserWarning(f"插件{result.get_summary().get('stopped_handlers', '')}于规划前中断了内容生成")
+        with Timer("规划器", cycle_timers):
+            actions, _ = await self.action_planner.plan(mode=mode)
 
         async def execute_action(action_info):
             """执行单个动作的通用函数"""
@@ -312,6 +299,8 @@ class CycleProcessor:
             logger.info(f"{self.log_prefix} 正在执行文本回复...")
             for action in reply_actions:
                 target_user_id = action.get("action_message",{}).get("chat_info_user_id","")
+                action_message_test =action.get("action_message",{})
+                logger.info(f"如果你探到这条日志请把它复制下来发到Q群里,如果你探到这条日志请把它复制下来发到Q群里,如果你探到这条日志请把它复制下来发到Q群里,调试内容:{action_message_test}")
                 if target_user_id == global_config.bot.qq_account and not global_config.chat.allow_reply_self:
                     logger.warning("选取的reply的目标为bot自己，跳过reply action")
                     continue

@@ -51,6 +51,8 @@ class PersonalityConfig(ValidatedConfigBase):
     personality_core: str = Field(..., description="核心人格")
     personality_side: str = Field(..., description="人格侧写")
     identity: str = Field(default="", description="身份特征")
+    background_story: str = Field(default="", description="世界观背景故事，这部分内容会作为背景知识，LLM被指导不应主动复述")
+    safety_guidelines: List[str] = Field(default_factory=list, description="安全与互动底线，Bot在任何情况下都必须遵守的原则")
     reply_style: str = Field(default="", description="表达风格")
     prompt_mode: Literal["s4u", "normal"] = Field(default="s4u", description="Prompt模式")
     compress_personality: bool = Field(default=True, description="是否压缩人格")
@@ -341,30 +343,10 @@ class ExpressionConfig(ValidatedConfigBase):
         # 如果都没有匹配，返回默认值
         return True, True, 1.0
 
-
-class ToolHistoryConfig(ValidatedConfigBase):
-    """工具历史记录配置类"""
-
-    enable_history: bool = True
-    """是否启用工具历史记录"""
-
-    enable_prompt_history: bool = True
-    """是否在提示词中加入工具历史记录"""
-
-    max_history: int = 5
-    """注入到提示词中的最大工具历史记录数量"""
-
-    data_dir: str = "data/tool_history"
-    """历史记录保存目录"""
-
-
 class ToolConfig(ValidatedConfigBase):
     """工具配置类"""
 
     enable_tool: bool = Field(default=False, description="启用工具")
-
-    history: ToolHistoryConfig = Field(default_factory=ToolHistoryConfig)
-    """工具历史记录配置"""
 
 
 class VoiceConfig(ValidatedConfigBase):
@@ -385,6 +367,7 @@ class EmojiConfig(ValidatedConfigBase):
     content_filtration: bool = Field(default=False, description="内容过滤")
     filtration_prompt: str = Field(default="符合公序良俗", description="过滤提示")
     enable_emotion_analysis: bool = Field(default=True, description="启用情感分析")
+    emoji_selection_mode: Literal["emotion", "description"] = Field(default="emotion", description="表情选择模式")
     max_context_emojis: int = Field(default=30, description="每次随机传递给LLM的表情包最大数量，0为全部")
 
 
@@ -492,6 +475,13 @@ class ExperimentalConfig(ValidatedConfigBase):
     """实验功能配置类"""
 
     pfc_chatting: bool = Field(default=False, description="启用PFC聊天")
+
+
+class ServerConfig(ValidatedConfigBase):
+    """主服务器配置类"""
+
+    host: str = Field(default="127.0.0.1", description="主服务器监听地址")
+    port: int = Field(default=8080, description="主服务器监听端口")
 
 
 class MaimMessageConfig(ValidatedConfigBase):
@@ -653,9 +643,6 @@ class SleepSystemConfig(ValidatedConfigBase):
     )
     max_sleep_delay_minutes: int = Field(default=60, description="单日最大延迟入睡分钟数")
     enable_pre_sleep_notification: bool = Field(default=True, description="是否启用睡前消息")
-    pre_sleep_notification_groups: List[str] = Field(
-        default_factory=list, description='接收睡前消息的群号列表, 格式: ["platform:group_id1", "platform:group_id2"]'
-    )
     pre_sleep_prompt: str = Field(
         default="我准备睡觉了，请生成一句简短自然的晚安问候。", description="用于生成睡前消息的提示"
     )
@@ -676,15 +663,6 @@ class CrossContextConfig(ValidatedConfigBase):
 
     enable: bool = Field(default=False, description="是否启用跨群聊上下文共享功能")
     groups: List[ContextGroup] = Field(default_factory=list, description="上下文共享组列表")
-
-
-class MaizoneIntercomConfig(ValidatedConfigBase):
-    """Maizone互通组配置"""
-
-    enable: bool = Field(default=False, description="是否启用Maizone互通组功能")
-    groups: List[ContextGroup] = Field(default_factory=list, description="Maizone互通组列表")
-
-
 class CommandConfig(ValidatedConfigBase):
     """命令系统配置类"""
 

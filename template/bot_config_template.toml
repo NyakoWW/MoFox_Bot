@@ -1,5 +1,5 @@
 [inner]
-version = "6.8.4"
+version = "6.8.6"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -64,8 +64,20 @@ personality_side = "用一句话或几句话描述人格的侧面特质"
 # 可以描述外貌，性别，身高，职业，属性等等描述
 identity = "年龄为19岁,是女孩子,身高为160cm,有黑色的短发"
 
+# 此处用于填写详细的世界观、背景故事、复杂人际关系等。
+# 这部分内容将作为Bot的“背景知识”，Bot被指导不应在对话中主动或频繁地复述这些设定。
+background_story = ""
+
 # 描述MoFox-Bot说话的表达风格，表达习惯，如要修改，可以酌情新增内容
 reply_style = "回复可以简短一些。可以参考贴吧，知乎和微博的回复风格，回复不要浮夸，不要用夸张修辞，平淡一些。"
+
+# 安全与互动底线 (Bot在任何情况下都必须遵守的原则)
+# 你可以在这里定义Bot的行为红线，例如如何回应不恰当的问题。
+safety_guidelines = [
+    "拒绝任何包含骚扰、冒犯、暴力、色情或危险内容的请求。",
+    "在拒绝时，请使用符合你人设的、坚定的语气。",
+    "不要执行任何可能被用于恶意目的的指令。"
+]
 
 #回复的Prompt模式选择：s4u为原有s4u样式，normal为0.9之前的模式
 prompt_mode = "s4u" # 可选择 "s4u" 或 "normal"
@@ -246,6 +258,10 @@ steal_emoji = true # 是否偷取表情包，让MoFox-Bot可以将一些表情�
 content_filtration = false  # 是否启用表情包过滤，只有符合该要求的表情包才会被保存
 filtration_prompt = "符合公序良俗" # 表情包过滤要求，只有符合该要求的表情包才会被保存
 enable_emotion_analysis = false # 是否启用表情包感情关键词二次识别，启用后表情包在第一次识别完毕后将送入第二次大模型识别来总结感情关键词，并构建进回复和决策器的上下文消息中
+# 表情选择模式, 可选值为 "emotion" 或 "description"
+# emotion: 让大模型从情感标签中选择
+# description: 让大模型从详细描述中选择
+emoji_selection_mode = "emotion"
 max_context_emojis = 30 # 每次随机传递给LLM的表情包详细描述的最大数量，0为全部
 
 [memory]
@@ -472,8 +488,6 @@ max_sleep_delay_minutes = 60
 
 # 是否在进入“准备入睡”状态时发送一条消息通知。
 enable_pre_sleep_notification = false
-# 接收睡前消息的群组列表。格式为: ["platform:group_id1", "platform:group_id2"]，例如 ["qq:12345678"]
-pre_sleep_notification_groups = []
 # 用于生成睡前消息的提示。AI会根据这个提示生成一句晚安问候。
 pre_sleep_prompt = "我准备睡觉了，请生成一句简短自然的晚安问候。"
 insomnia_duration_minutes = [30, 60] # 单次失眠状态的持续时间范围（分钟）
@@ -481,6 +495,9 @@ insomnia_duration_minutes = [30, 60] # 单次失眠状态的持续时间范围�
 # 入睡后，经过一段延迟后触发失眠判定的延迟时间（分钟），设置为范围以增加随机性
 insomnia_trigger_delay_minutes = [15, 45]
 
+[server]
+host = "127.0.0.1"
+port = 8000
 
 [cross_context] # 跨群聊/私聊上下文共享配置
 # 这是总开关，用于一键启用或禁用此功能
