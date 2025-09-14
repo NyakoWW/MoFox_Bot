@@ -43,8 +43,7 @@ from src.config.official_configs import (
     CrossContextConfig,
     PermissionConfig,
     CommandConfig,
-    PlanningSystemConfig,
-    ServerConfig,
+    PlanningSystemConfig
 )
 
 from .api_ada_configs import (
@@ -399,7 +398,6 @@ class Config(ValidatedConfigBase):
     cross_context: CrossContextConfig = Field(
         default_factory=lambda: CrossContextConfig(), description="跨群聊上下文共享配置"
     )
-    server: ServerConfig = Field(default_factory=lambda: ServerConfig(), description="主服务器配置")
 
 
 class APIAdapterConfig(ValidatedConfigBase):

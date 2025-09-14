@@ -5,6 +5,7 @@ import signal
 import sys
 from maim_message import MessageServer
 
+from src.common.remote import TelemetryHeartBeatTask
 from src.manager.async_task_manager import async_task_manager
 from src.chat.utils.statistic import OnlineTimeRecordTask, StatisticOutputTask
 from src.common.remote import TelemetryHeartBeatTask
