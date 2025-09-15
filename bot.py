@@ -1,6 +1,5 @@
 # import asyncio
 import asyncio
-import hashlib
 import os
 import sys
 import time
@@ -9,6 +8,7 @@ import traceback
 from pathlib import Path
 from rich.traceback import install
 from colorama import init, Fore
+from dotenv import load_dotenv  # 处理.env文件
 
 # maim_message imports for console input
 
@@ -34,6 +34,28 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 os.chdir(script_dir)
 logger.info(f"已设置工作目录为: {script_dir}")
 
+# 检查并创建.env文件
+def ensure_env_file():
+    """确保.env文件存在，如果不存在则从模板创建"""
+    env_file = Path(".env")
+    template_env = Path("template/template.env")
+    
+    if not env_file.exists():
+        if template_env.exists():
+            logger.info("未找到.env文件，正在从模板创建...")
+            import shutil
+            shutil.copy(template_env, env_file)
+            logger.info("已从template/template.env创建.env文件")
+            logger.warning("请编辑.env文件，将EULA_CONFIRMED设置为true并配置其他必要参数")
+        else:
+            logger.error("未找到.env文件和template.env模板文件")
+            sys.exit(1)
+
+# 确保环境文件存在
+ensure_env_file()
+
+# 加载环境变量
+load_dotenv()
 
 confirm_logger = get_logger("confirm")
 # 获取没有加载env时的环境变量
@@ -105,82 +127,41 @@ async def graceful_shutdown():
         logger.error(f"麦麦关闭失败: {e}", exc_info=True)
 
 
-def _calculate_file_hash(file_path: Path, file_type: str) -> str:
-    """计算文件的MD5哈希值"""
-    if not file_path.exists():
-        logger.error(f"{file_type} 文件不存在")
-        raise FileNotFoundError(f"{file_type} 文件不存在")
-
-    with open(file_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    return hashlib.md5(content.encode("utf-8")).hexdigest()
-
-
-def _check_agreement_status(file_hash: str, confirm_file: Path, env_var: str) -> tuple[bool, bool]:
-    """检查协议确认状态
-
-    Returns:
-        tuple[bool, bool]: (已确认, 未更新)
-    """
-    # 检查环境变量确认
-    if file_hash == os.getenv(env_var):
-        return True, False
-
-    # 检查确认文件
-    if confirm_file.exists():
-        with open(confirm_file, "r", encoding="utf-8") as f:
-            confirmed_content = f.read()
-        if file_hash == confirmed_content:
-            return True, False
-
-    return False, True
-
-
-def _prompt_user_confirmation(eula_hash: str, privacy_hash: str) -> None:
-    """提示用户确认协议"""
-    confirm_logger.critical("EULA或隐私条款内容已更新，请在阅读后重新确认，继续运行视为同意更新后的以上两款协议")
-    confirm_logger.critical(
-        f'输入"同意"或"confirmed"或设置环境变量"EULA_AGREE={eula_hash}"和"PRIVACY_AGREE={privacy_hash}"继续运行'
-    )
-
-    while True:
-        user_input = input().strip().lower()
-        if user_input in ["同意", "confirmed"]:
-            return
-        confirm_logger.critical('请输入"同意"或"confirmed"以继续运行')
-
-
-def _save_confirmations(eula_updated: bool, privacy_updated: bool, eula_hash: str, privacy_hash: str) -> None:
-    """保存用户确认结果"""
-    if eula_updated:
-        logger.info(f"更新EULA确认文件{eula_hash}")
-        Path("eula.confirmed").write_text(eula_hash, encoding="utf-8")
-
-    if privacy_updated:
-        logger.info(f"更新隐私条款确认文件{privacy_hash}")
-        Path("privacy.confirmed").write_text(privacy_hash, encoding="utf-8")
-
-
 def check_eula():
-    """检查EULA和隐私条款确认状态"""
-    # 计算文件哈希值
-    eula_hash = _calculate_file_hash(Path("EULA.md"), "EULA.md")
-    privacy_hash = _calculate_file_hash(Path("PRIVACY.md"), "PRIVACY.md")
-
-    # 检查确认状态
-    eula_confirmed, eula_updated = _check_agreement_status(eula_hash, Path("eula.confirmed"), "EULA_AGREE")
-    privacy_confirmed, privacy_updated = _check_agreement_status(
-        privacy_hash, Path("privacy.confirmed"), "PRIVACY_AGREE"
-    )
-
-    # 早期返回：如果都已确认且未更新
-    if eula_confirmed and privacy_confirmed:
+    """检查EULA和隐私条款确认状态 - 环境变量版（类似Minecraft）"""
+    # 检查环境变量中的EULA确认
+    eula_confirmed = os.getenv('EULA_CONFIRMED', '').lower()
+    
+    if eula_confirmed == 'true':
+        logger.info("EULA已通过环境变量确认")
         return
-
-    # 如果有更新，需要重新确认
-    if eula_updated or privacy_updated:
-        _prompt_user_confirmation(eula_hash, privacy_hash)
-        _save_confirmations(eula_updated, privacy_updated, eula_hash, privacy_hash)
+    
+    # 如果没有确认，提示用户
+    confirm_logger.critical("您需要同意EULA和隐私条款才能使用MoFox_Bot")
+    confirm_logger.critical("请阅读以下文件：")
+    confirm_logger.critical("  - EULA.md (用户许可协议)")
+    confirm_logger.critical("  - PRIVACY.md (隐私条款)")
+    confirm_logger.critical("然后编辑 .env 文件，将 'EULA_CONFIRMED=false' 改为 'EULA_CONFIRMED=true'")
+    
+    # 等待用户确认
+    while True:
+        try:
+            load_dotenv(override=True)  # 重新加载.env文件
+                
+            eula_confirmed = os.getenv('EULA_CONFIRMED', '').lower()
+            if eula_confirmed == 'true':
+                confirm_logger.info("EULA确认成功，感谢您的同意")
+                return
+                
+            confirm_logger.critical("请修改 .env 文件中的 EULA_CONFIRMED=true 后重新启动程序")
+            input("按Enter键检查.env文件状态...")
+            
+        except KeyboardInterrupt:
+            confirm_logger.info("用户取消，程序退出")
+            sys.exit(0)
+        except Exception as e:
+            confirm_logger.error(f"检查EULA状态失败: {e}")
+            sys.exit(1)
 
 
 class MaiBotMain(BaseMain):

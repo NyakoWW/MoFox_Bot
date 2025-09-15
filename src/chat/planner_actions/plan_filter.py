@@ -42,15 +42,18 @@ class PlanFilter:
         """
         执行筛选逻辑，并填充 Plan 对象的 decided_actions 字段。
         """
+        logger.debug(f"墨墨在这里加了日志 -> filter 入口 plan: {plan}")
         try:
             prompt, used_message_id_list = await self._build_prompt(plan)
             plan.llm_prompt = prompt
+            logger.debug(f"墨墨在这里加了日志 -> LLM prompt: {prompt}")
 
             llm_content, _ = await self.planner_llm.generate_response_async(prompt=prompt)
 
             if llm_content:
-                logger.debug(f"LLM a原始返回: {llm_content}")
+                logger.debug(f"墨墨在这里加了日志 -> LLM a原始返回: {llm_content}")
                 parsed_json = orjson.loads(repair_json(llm_content))
+                logger.debug(f"墨墨在这里加了日志 -> 解析后的 JSON: {parsed_json}")
                 
                 if isinstance(parsed_json, dict):
                     parsed_json = [parsed_json]
@@ -91,7 +94,8 @@ class PlanFilter:
             plan.decided_actions = [
                 ActionPlannerInfo(action_type="no_action", reasoning=f"筛选时出错: {e}")
             ]
-
+        
+        logger.debug(f"墨墨在这里加了日志 -> filter 出口 decided_actions: {plan.decided_actions}")
         return plan
 
     async def _build_prompt(self, plan: Plan) -> tuple[str, list]:
@@ -259,8 +263,15 @@ class PlanFilter:
                     target_message_dict = self._get_latest_message(message_id_list)
 
                 if target_message_dict:
-                    from src.common.data_models.database_data_model import DatabaseMessages
-                    target_message_obj = DatabaseMessages(**target_message_dict)
+                    # 直接使用字典作为action_message，避免DatabaseMessages对象创建失败
+                    target_message_obj = target_message_dict
+                else:
+                    # 如果找不到目标消息，对于reply动作来说这是必需的，应该记录警告
+                    if action == "reply":
+                        logger.warning(f"reply动作找不到目标消息，target_message_id: {action_json.get('target_message_id')}")
+                        # 将reply动作改为no_action，避免后续执行时出错
+                        action = "no_action"
+                        reasoning = f"找不到目标消息进行回复。原始理由: {reasoning}"
 
             available_action_names = list(plan.available_actions.keys())
             if action not in ["no_action", "no_reply", "reply", "do_nothing", "proactive_reply"] and action not in available_action_names:
