@@ -786,7 +786,8 @@ class ModuleColoredConsoleRenderer:
                 # 重新组合
                 # parts.append(prefix_colored + thought_colored)
                 # 将前缀和思考内容作为独立的part添加，避免它们之间出现多余的空格
-                parts.append(prefix_colored)
+                if prefix_colored:
+                    parts.append(prefix_colored)
                 parts.append(thought_colored)
                 
             elif module_color:
