@@ -182,8 +182,6 @@ class MessageStorage:
                     session.execute(
                         update(Messages).where(Messages.id == matched_message.id).values(message_id=qq_message_id)
                     )
-                    session.commit()
-                    #  会在上下文管理器中自动调用
                     logger.debug(f"更新消息ID成功: {matched_message.message_id} -> {qq_message_id}")
                 else:
                     logger.warning(f"未找到匹配的消息记录: {mmc_message_id}")
@@ -215,7 +213,6 @@ class MessageStorage:
                     image_record = session.execute(
                         select(Images).where(Images.description == description).order_by(desc(Images.timestamp))
                     ).scalar()
-                    session.commit()
                     return f"[picid:{image_record.image_id}]" if image_record else match.group(0)
             except Exception:
                 return match.group(0)

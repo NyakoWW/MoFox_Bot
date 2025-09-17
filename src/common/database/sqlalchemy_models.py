@@ -696,7 +696,7 @@ def get_db_session() -> Iterator[Session]:
             raise RuntimeError("Database session not initialized")
         session = SessionLocal()
         yield session
-        # session.commit()
+        #session.commit()
     except Exception:
         if session:
             session.rollback()

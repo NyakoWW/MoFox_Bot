@@ -22,7 +22,12 @@ def _model_to_dict(instance: Base) -> Dict[str, Any]:
     """
     将 SQLAlchemy 模型实例转换为字典。
     """
-    return {col.name: getattr(instance, col.name) for col in instance.__table__.columns}
+    try:
+        return {col.name: getattr(instance, col.name) for col in instance.__table__.columns}
+    except Exception as e:
+        # 如果对象已经脱离会话，尝试从instance.__dict__中获取数据
+        logger.warning(f"从数据库对象获取属性失败，尝试使用__dict__: {e}")
+        return {col.name: instance.__dict__.get(col.name) for col in instance.__table__.columns}
 
 
 def find_messages(
@@ -133,7 +138,8 @@ def find_messages(
                     logger.error(f"执行无限制查询失败: {e}")
                     results = []
 
-        return [_model_to_dict(msg) for msg in results]
+            # 在会话内将结果转换为字典，避免会话分离错误
+            return [_model_to_dict(msg) for msg in results]
     except Exception as e:
         log_message = (
             f"使用 SQLAlchemy 查找消息失败 (filter={message_filter}, sort={sort}, limit={limit}, limit_mode={limit_mode}): {e}\n"
