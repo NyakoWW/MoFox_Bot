@@ -433,9 +433,9 @@ class BotInterestManager:
         low_similarity_count = 0
 
         # 分级相似度阈值
-        high_threshold = 0.5
-        medium_threshold = 0.3
-        low_threshold = 0.15
+        high_threshold = 0.55
+        medium_threshold = 0.47
+        low_threshold = 0.3
 
         logger.debug(f"🔍 使用分级相似度阈值: 高={high_threshold}, 中={medium_threshold}, 低={low_threshold}")
 
@@ -449,7 +449,7 @@ class BotInterestManager:
                 # 根据相似度等级应用不同的加成
                 if similarity > high_threshold:
                     # 高相似度：强加成
-                    enhanced_score = weighted_score * 1.5
+                    enhanced_score = weighted_score * 1.8
                     match_count += 1
                     high_similarity_count += 1
                     result.add_match(tag.tag_name, enhanced_score, [tag.tag_name])
@@ -457,7 +457,7 @@ class BotInterestManager:
 
                 elif similarity > medium_threshold:
                     # 中相似度：中等加成
-                    enhanced_score = weighted_score * 1.2
+                    enhanced_score = weighted_score * 1.4
                     match_count += 1
                     medium_similarity_count += 1
                     result.add_match(tag.tag_name, enhanced_score, [tag.tag_name])
@@ -465,7 +465,7 @@ class BotInterestManager:
 
                 elif similarity > low_threshold:
                     # 低相似度：轻微加成
-                    enhanced_score = weighted_score * 1.05
+                    enhanced_score = weighted_score * 1.15
                     match_count += 1
                     low_similarity_count += 1
                     result.add_match(tag.tag_name, enhanced_score, [tag.tag_name])

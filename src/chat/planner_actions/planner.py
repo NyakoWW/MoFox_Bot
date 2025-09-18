@@ -64,13 +64,15 @@ class ActionPlanner:
             "other_actions_executed": 0,
         }
 
-    async def plan(self, mode: ChatMode = ChatMode.FOCUS, unread_messages: List[Dict] = None) -> Tuple[List[Dict], Optional[Dict]]:
+    async def plan(self, mode: ChatMode = ChatMode.FOCUS, message_data: dict = None) -> Tuple[List[Dict], Optional[Dict]]:
         """
         执行完整的增强版规划流程。
 
         Args:
             mode (ChatMode): 当前的聊天模式，默认为 FOCUS。
-            unread_messages (List[Dict]): 未读消息列表，用于兴趣度计算。
+            message_data (dict): 消息数据字典，包含：
+                - unread_messages: 未读消息列表
+                - history_messages: 历史消息列表（可选）
 
         Returns:
             Tuple[List[Dict], Optional[Dict]]: 一个元组，包含：
@@ -78,6 +80,8 @@ class ActionPlanner:
                 - final_target_message_dict (Optional[Dict]): 最终的目标消息（字典格式）。
         """
         try:
+            # 提取未读消息用于兴趣度计算
+            unread_messages = message_data.get("unread_messages", []) if message_data else []
             self.planner_stats["total_plans"] += 1
 
             return await self._enhanced_plan_flow(mode, unread_messages or [])
@@ -118,12 +122,13 @@ class ActionPlanner:
                 logger.info(f"❌ 兴趣度不足阈值的80%: {score:.3f} < {threshold_requirement:.3f}，直接返回no_action")
                 logger.info(f"📊 最低要求: 阈值({base_threshold:.3f}) × 0.8 = {threshold_requirement:.3f}")
                 # 直接返回 no_action
-                no_action = {
-                    "action_type": "no_action",
-                    "reason": f"兴趣度评分 {score:.3f} 未达阈值80% {threshold_requirement:.3f}",
-                    "action_data": {},
-                    "action_message": None,
-                }
+                from src.common.data_models.info_data_model import ActionPlannerInfo
+                no_action = ActionPlannerInfo(
+                    action_type="no_action",
+                    reasoning=f"兴趣度评分 {score:.3f} 未达阈值80% {threshold_requirement:.3f}",
+                    action_data={},
+                    action_message=None,
+                )
                 filtered_plan = initial_plan
                 filtered_plan.decided_actions = [no_action]
             else:

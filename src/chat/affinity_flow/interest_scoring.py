@@ -30,13 +30,13 @@ class InterestScoringSystem:
         }
 
         # 评分阈值
-        self.reply_threshold = 0.55    # 默认回复阈值
+        self.reply_threshold = 0.56    # 默认回复阈值
         self.mention_threshold = 0.3   # 提及阈值
 
         # 连续不回复概率提升
         self.no_reply_count = 0
-        self.max_no_reply_count = 15
-        self.probability_boost_per_no_reply = 0.01  # 每次不回复增加15%概率
+        self.max_no_reply_count = 20
+        self.probability_boost_per_no_reply = 0.02  # 每次不回复增加5%概率
 
         # 用户关系数据
         self.user_relationships: Dict[str, float] = {}  # user_id -> relationship_score
@@ -149,7 +149,7 @@ class InterestScoringSystem:
 
                 # 返回匹配分数，考虑置信度和匹配标签数量
                 match_count_bonus = min(len(match_result.matched_tags) * 0.05, 0.3)  # 每多匹配一个标签+0.05，最高+0.3
-                final_score = match_result.overall_score * 1.3 * match_result.confidence + match_count_bonus
+                final_score = match_result.overall_score * 1.15 * match_result.confidence + match_count_bonus
                 logger.debug(f"⚖️  最终分数计算: 总分({match_result.overall_score:.3f}) × 1.3 × 置信度({match_result.confidence:.3f}) + 标签数量奖励({match_count_bonus:.3f}) = {final_score:.3f}")
                 return final_score
             else:
@@ -227,7 +227,7 @@ class InterestScoringSystem:
             return 0.0
 
         if msg.is_mentioned or (bot_nickname and bot_nickname in msg.processed_plain_text):
-            return 3.0
+            return 1.0
         
         return 0.0
     
@@ -273,7 +273,7 @@ class InterestScoringSystem:
         old_count = self.no_reply_count
 
         if did_reply:
-            self.no_reply_count = max(0, self.no_reply_count - 1)
+            self.no_reply_count = max(0, self.no_reply_count - 3)
             action = "✅ reply动作可用"
         else:
             self.no_reply_count += 1

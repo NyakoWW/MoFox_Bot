@@ -1,6 +1,7 @@
 """
 PlanFilter: 接收 Plan 对象，根据不同模式的逻辑进行筛选，决定最终要执行的动作。
 """
+
 import orjson
 import time
 import traceback
@@ -33,9 +34,7 @@ class PlanFilter:
     """
 
     def __init__(self):
-        self.planner_llm = LLMRequest(
-            model_set=model_config.model_task_config.planner, request_type="planner"
-        )
+        self.planner_llm = LLMRequest(model_set=model_config.model_task_config.planner, request_type="planner")
         self.last_obs_time_mark = 0.0
 
     async def filter(self, reply_not_available: bool, plan: Plan) -> Plan:
@@ -55,9 +54,9 @@ class PlanFilter:
                 try:
                     parsed_json = orjson.loads(repair_json(llm_content))
                 except orjson.JSONDecodeError:
-                    prased_json = {"action": "no_action", "reason": "返回内容无法解析为JSON"}
+                    parsed_json = {"action": "no_action", "reason": "返回内容无法解析为JSON"}
                 logger.debug(f"墨墨在这里加了日志 -> 解析后的 JSON: {parsed_json}")
-                
+
                 if "reply" in plan.available_actions and reply_not_available:
                     # 如果reply动作不可用，但llm返回的仍然有reply，则改为no_reply
                     if isinstance(parsed_json, dict) and parsed_json.get("action") == "reply":
@@ -86,28 +85,18 @@ class PlanFilter:
 
                         if action_type in reply_action_types:
                             if not reply_action_added:
-                                final_actions.extend(
-                                    await self._parse_single_action(
-                                        item, used_message_id_list, plan
-                                    )
-                                )
+                                final_actions.extend(await self._parse_single_action(item, used_message_id_list, plan))
                                 reply_action_added = True
                         else:
                             # 非回复类动作直接添加
-                            final_actions.extend(
-                                await self._parse_single_action(
-                                    item, used_message_id_list, plan
-                                )
-                            )
-                    
+                            final_actions.extend(await self._parse_single_action(item, used_message_id_list, plan))
+
                     plan.decided_actions = self._filter_no_actions(final_actions)
 
         except Exception as e:
             logger.error(f"筛选 Plan 时出错: {e}\n{traceback.format_exc()}")
-            plan.decided_actions = [
-                ActionPlannerInfo(action_type="no_action", reasoning=f"筛选时出错: {e}")
-            ]
-        
+            plan.decided_actions = [ActionPlannerInfo(action_type="no_action", reasoning=f"筛选时出错: {e}")]
+
         logger.debug(f"墨墨在这里加了日志 -> filter 出口 decided_actions: {plan.decided_actions}")
         return plan
 
@@ -136,7 +125,7 @@ class PlanFilter:
 
             if plan.mode == ChatMode.PROACTIVE:
                 long_term_memory_block = await self._get_long_term_memory_context()
-                
+
                 chat_content_block, message_id_list = build_readable_messages_with_id(
                     messages=[msg.flatten() for msg in plan.chat_history],
                     timestamp_mode="normal",
@@ -165,7 +154,13 @@ class PlanFilter:
                 )
                 return prompt, message_id_list
 
-            chat_content_block, message_id_list = build_readable_messages_with_id(
+            # 构建已读/未读历史消息
+            read_history_block, unread_history_block, message_id_list = await self._build_read_unread_history_blocks(
+                plan
+            )
+
+            # 为了兼容性，保留原有的chat_content_block
+            chat_content_block, _ = build_readable_messages_with_id(
                 messages=[msg.flatten() for msg in plan.chat_history],
                 timestamp_mode="normal",
                 read_mark=self.last_obs_time_mark,
@@ -232,8 +227,8 @@ class PlanFilter:
             custom_prompt_block = ""
             if global_config.custom_prompt.planner_custom_prompt_content:
                 custom_prompt_block = global_config.custom_prompt.planner_custom_prompt_content
-            
-            users_in_chat_str = "" # TODO: Re-implement user list fetching if needed
+
+            users_in_chat_str = ""  # TODO: Re-implement user list fetching if needed
 
             planner_prompt_template = await global_prompt_manager.get_prompt_async("planner_prompt")
             prompt = planner_prompt_template.format(
@@ -241,7 +236,8 @@ class PlanFilter:
                 mood_block=mood_block,
                 time_block=time_block,
                 chat_context_description=chat_context_description,
-                chat_content_block=chat_content_block,
+                read_history_block=read_history_block,
+                unread_history_block=unread_history_block,
                 actions_before_now_block=actions_before_now_block,
                 mentioned_bonus=mentioned_bonus,
                 no_action_block=no_action_block,
@@ -250,13 +246,121 @@ class PlanFilter:
                 identity_block=identity_block,
                 custom_prompt_block=custom_prompt_block,
                 bot_name=bot_name,
-                users_in_chat=users_in_chat_str
+                users_in_chat=users_in_chat_str,
             )
             return prompt, message_id_list
         except Exception as e:
             logger.error(f"构建 Planner 提示词时出错: {e}")
             logger.error(traceback.format_exc())
             return "构建 Planner Prompt 时出错", []
+
+    async def _build_read_unread_history_blocks(self, plan: Plan) -> tuple[str, str, list]:
+        """构建已读/未读历史消息块"""
+        try:
+            # 从message_manager获取真实的已读/未读消息
+            from src.chat.message_manager.message_manager import message_manager
+            from src.chat.utils.utils import assign_message_ids
+
+            # 获取聊天流的上下文
+            stream_context = message_manager.stream_contexts.get(plan.chat_id)
+            if not stream_context:
+                # 如果没有找到对应的上下文，使用兼容性处理
+                return await self._fallback_build_history_blocks(plan)
+
+            # 获取真正的已读和未读消息
+            read_messages = stream_context.history_messages  # 已读消息存储在history_messages中
+            unread_messages = stream_context.get_unread_messages()  # 获取未读消息
+
+            # 构建已读历史消息块
+            if read_messages:
+                read_content, read_ids = build_readable_messages_with_id(
+                    messages=[msg.flatten() for msg in read_messages[-50:]],  # 限制数量
+                    timestamp_mode="normal_no_YMD",
+                    truncate=False,
+                    show_actions=False,
+                )
+                read_history_block = f"{read_content}"
+            else:
+                read_history_block = "暂无已读历史消息"
+
+            # 构建未读历史消息块（包含兴趣度）
+            if unread_messages:
+                # 扁平化未读消息用于计算兴趣度和格式化
+                flattened_unread = [msg.flatten() for msg in unread_messages]
+
+                # 尝试获取兴趣度评分（返回以真实 message_id 为键的字典）
+                interest_scores = await self._get_interest_scores_for_messages(flattened_unread)
+
+                # 为未读消息分配短 id（保持与 build_readable_messages_with_id 的一致结构）
+                message_id_list = assign_message_ids(flattened_unread)
+
+                unread_lines = []
+                for idx, msg in enumerate(flattened_unread):
+                    mapped = message_id_list[idx]
+                    synthetic_id = mapped.get("id")
+                    original_msg_id = msg.get("message_id") or msg.get("id")
+                    msg_time = time.strftime("%H:%M:%S", time.localtime(msg.get("time", time.time())))
+                    msg_content = msg.get("processed_plain_text", "")
+
+                    # 添加兴趣度信息
+                    interest_score = interest_scores.get(original_msg_id, 0.0)
+                    interest_text = f" [兴趣度: {interest_score:.3f}]" if interest_score > 0 else ""
+
+                    # 在未读行中显示合成id，方便 planner 返回时使用
+                    unread_lines.append(f"{msg_time} {synthetic_id}: {msg_content}{interest_text}")
+
+                unread_history_block = "\n".join(unread_lines)
+            else:
+                unread_history_block = "暂无未读历史消息"
+
+            return read_history_block, unread_history_block, message_id_list
+
+        except Exception as e:
+            logger.error(f"构建已读/未读历史消息块时出错: {e}")
+            return "构建已读历史消息时出错", "构建未读历史消息时出错", []
+
+    async def _get_interest_scores_for_messages(self, messages: List[dict]) -> dict[str, float]:
+        """为消息获取兴趣度评分"""
+        interest_scores = {}
+
+        try:
+            from src.chat.affinity_flow.interest_scoring import interest_scoring_system
+            from src.common.data_models.database_data_model import DatabaseMessages
+
+            # 转换消息格式
+            db_messages = []
+            for msg_dict in messages:
+                try:
+                    db_msg = DatabaseMessages(
+                        message_id=msg_dict.get("message_id", ""),
+                        time=msg_dict.get("time", time.time()),
+                        chat_id=msg_dict.get("chat_id", ""),
+                        processed_plain_text=msg_dict.get("processed_plain_text", ""),
+                        user_id=msg_dict.get("user_id", ""),
+                        user_nickname=msg_dict.get("user_nickname", ""),
+                        user_platform=msg_dict.get("platform", "qq"),
+                        chat_info_group_id=msg_dict.get("group_id", ""),
+                        chat_info_group_name=msg_dict.get("group_name", ""),
+                        chat_info_group_platform=msg_dict.get("platform", "qq"),
+                    )
+                    db_messages.append(db_msg)
+                except Exception as e:
+                    logger.warning(f"转换消息格式失败: {e}")
+                    continue
+
+            # 计算兴趣度评分
+            if db_messages:
+                bot_nickname = global_config.bot.nickname or "麦麦"
+                scores = await interest_scoring_system.calculate_interest_scores(db_messages, bot_nickname)
+
+                # 构建兴趣度字典
+                for score in scores:
+                    interest_scores[score.message_id] = score.total_score
+
+        except Exception as e:
+            logger.warning(f"获取兴趣度评分失败: {e}")
+
+        return interest_scores
 
     async def _parse_single_action(
         self, action_json: dict, message_id_list: list, plan: Plan
@@ -281,13 +385,18 @@ class PlanFilter:
                 else:
                     # 如果找不到目标消息，对于reply动作来说这是必需的，应该记录警告
                     if action == "reply":
-                        logger.warning(f"reply动作找不到目标消息，target_message_id: {action_json.get('target_message_id')}")
+                        logger.warning(
+                            f"reply动作找不到目标消息，target_message_id: {action_json.get('target_message_id')}"
+                        )
                         # 将reply动作改为no_action，避免后续执行时出错
                         action = "no_action"
                         reasoning = f"找不到目标消息进行回复。原始理由: {reasoning}"
 
             available_action_names = list(plan.available_actions.keys())
-            if action not in ["no_action", "no_reply", "reply", "do_nothing", "proactive_reply"] and action not in available_action_names:
+            if (
+                action not in ["no_action", "no_reply", "reply", "do_nothing", "proactive_reply"]
+                and action not in available_action_names
+            ):
                 reasoning = f"LLM 返回了当前不可用的动作 '{action}'。原始理由: {reasoning}"
                 action = "no_action"
 
@@ -310,9 +419,7 @@ class PlanFilter:
             )
         return parsed_actions
 
-    def _filter_no_actions(
-        self, action_list: List[ActionPlannerInfo]
-    ) -> List[ActionPlannerInfo]:
+    def _filter_no_actions(self, action_list: List[ActionPlannerInfo]) -> List[ActionPlannerInfo]:
         non_no_actions = [a for a in action_list if a.action_type not in ["no_action", "no_reply"]]
         if non_no_actions:
             return non_no_actions
@@ -361,11 +468,47 @@ class PlanFilter:
         return action_options_block
 
     def _find_message_by_id(self, message_id: str, message_id_list: list) -> Optional[Dict[str, Any]]:
+        # 兼容多种 message_id 格式：数字、m123、buffered-xxxx
+        # 如果是纯数字，补上 m 前缀以兼容旧格式
+        candidate_ids = {message_id}
         if message_id.isdigit():
-            message_id = f"m{message_id}"
+            candidate_ids.add(f"m{message_id}")
+
+        # 如果是 m 开头且后面是数字，尝试去掉 m 前缀的数字形式
+        if message_id.startswith("m") and message_id[1:].isdigit():
+            candidate_ids.add(message_id[1:])
+
+        # 逐项匹配 message_id_list（每项可能为 {'id':..., 'message':...}）
         for item in message_id_list:
-            if item.get("id") == message_id:
+            # 支持 message_id_list 中直接是字符串/ID 的情形
+            if isinstance(item, str):
+                if item in candidate_ids:
+                    # 没有 message 对象，返回None
+                    return None
+                continue
+
+            if not isinstance(item, dict):
+                continue
+
+            item_id = item.get("id")
+            # 直接匹配分配的短 id
+            if item_id and item_id in candidate_ids:
                 return item.get("message")
+
+            # 有时 message 存储里会有原始的 message_id 字段（如 buffered-xxxx）
+            message_obj = item.get("message")
+            if isinstance(message_obj, dict):
+                orig_mid = message_obj.get("message_id") or message_obj.get("id")
+                if orig_mid and orig_mid in candidate_ids:
+                    return message_obj
+
+        # 作为兜底，尝试在 message_id_list 中找到 message.message_id 匹配
+        for item in message_id_list:
+            if isinstance(item, dict) and isinstance(item.get("message"), dict):
+                mid = item["message"].get("message_id") or item["message"].get("id")
+                if mid == message_id:
+                    return item["message"]
+
         return None
 
     def _get_latest_message(self, message_id_list: list) -> Optional[Dict[str, Any]]:

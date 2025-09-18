@@ -49,14 +49,14 @@ class AFCManager:
 
         return self.affinity_flow_chatters[stream_id]
 
-    async def process_message(self, stream_id: str, message_data: dict) -> Dict[str, any]:
-        """处理消息"""
+    async def process_stream_context(self, stream_id: str, context) -> Dict[str, any]:
+        """处理StreamContext对象"""
         try:
             # 获取或创建聊天处理器
             chatter = self.get_or_create_chatter(stream_id)
 
-            # 处理消息
-            result = await chatter.process_message(message_data)
+            # 处理StreamContext
+            result = await chatter.process_stream_context(context)
 
             # 更新统计
             self.manager_stats["total_messages_processed"] += 1
@@ -66,20 +66,13 @@ class AFCManager:
             return result
 
         except Exception as e:
-            logger.error(f"处理消息时出错: {e}\n{traceback.format_exc()}")
+            logger.error(f"处理StreamContext时出错: {e}\n{traceback.format_exc()}")
             return {
                 "success": False,
                 "error_message": str(e),
                 "executed_count": 0,
             }
 
-    async def process_messages_batch(self, stream_id: str, messages_data: List[dict]) -> List[Dict[str, any]]:
-        """批量处理消息"""
-        results = []
-        for message_data in messages_data:
-            result = await self.process_message(stream_id, message_data)
-            results.append(result)
-        return results
 
     def get_chatter_stats(self, stream_id: str) -> Optional[Dict[str, any]]:
         """获取聊天处理器统计"""

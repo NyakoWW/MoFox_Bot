@@ -441,15 +441,16 @@ class Prompt:
         """构建S4U模式的聊天上下文"""
         if not self.parameters.message_list_before_now_long:
             return
-        
-        core_dialogue, background_dialogue = await self._build_s4u_chat_history_prompts(
+
+        read_history_prompt, unread_history_prompt = await self._build_s4u_chat_history_prompts(
             self.parameters.message_list_before_now_long,
             self.parameters.target_user_info.get("user_id") if self.parameters.target_user_info else "",
-            self.parameters.sender
+            self.parameters.sender,
+            self.parameters.chat_id
         )
-        
-        context_data["core_dialogue_prompt"] = core_dialogue
-        context_data["background_dialogue_prompt"] = background_dialogue
+
+        context_data["read_history_prompt"] = read_history_prompt
+        context_data["unread_history_prompt"] = unread_history_prompt
     
     async def _build_normal_chat_context(self, context_data: Dict[str, Any]) -> None:
         """构建normal模式的聊天上下文"""
@@ -460,62 +461,22 @@ class Prompt:
 {self.parameters.chat_talking_prompt_short}"""
     
     async def _build_s4u_chat_history_prompts(
-        self, message_list_before_now: List[Dict[str, Any]], target_user_id: str, sender: str
+        self, message_list_before_now: List[Dict[str, Any]], target_user_id: str, sender: str, chat_id: str
     ) -> Tuple[str, str]:
-        """构建S4U风格的分离对话prompt"""
-        # 实现逻辑与原有SmartPromptBuilder相同
-        core_dialogue_list = []
-        bot_id = str(global_config.bot.qq_account)
-        
-        for msg_dict in message_list_before_now:
-            try:
-                msg_user_id = str(msg_dict.get("user_id"))
-                reply_to = msg_dict.get("reply_to", "")
-                platform, reply_to_user_id = Prompt.parse_reply_target(reply_to)
-                if (msg_user_id == bot_id and reply_to_user_id == target_user_id) or msg_user_id == target_user_id:
-                    core_dialogue_list.append(msg_dict)
-            except Exception as e:
-                logger.error(f"处理消息记录时出错: {msg_dict}, 错误: {e}")
-        
-        # 构建背景对话 prompt
-        all_dialogue_prompt = ""
-        if message_list_before_now:
-            latest_25_msgs = message_list_before_now[-int(global_config.chat.max_context_size) :]
-            all_dialogue_prompt_str = build_readable_messages(
-                latest_25_msgs,
-                replace_bot_name=True,
-                timestamp_mode="normal",
-                truncate=True,
+        """构建S4U风格的已读/未读历史消息prompt"""
+        try:
+            # 动态导入default_generator以避免循环导入
+            from src.plugin_system.apis.generator_api import get_replyer
+
+            # 创建临时生成器实例来使用其方法
+            temp_generator = get_replyer(None, chat_id, request_type="prompt_building")
+            return await temp_generator.build_s4u_chat_history_prompts(
+                message_list_before_now, target_user_id, sender, chat_id
             )
-            all_dialogue_prompt = f"所有用户的发言：\n{all_dialogue_prompt_str}"
-        
-        # 构建核心对话 prompt
-        core_dialogue_prompt = ""
-        if core_dialogue_list:
-            latest_5_messages = core_dialogue_list[-5:] if len(core_dialogue_list) >= 5 else core_dialogue_list
-            has_bot_message = any(str(msg.get("user_id")) == bot_id for msg in latest_5_messages)
-            
-            if not has_bot_message:
-                core_dialogue_prompt = ""
-            else:
-                core_dialogue_list = core_dialogue_list[-int(global_config.chat.max_context_size * 2) :]
-                
-                core_dialogue_prompt_str = build_readable_messages(
-                    core_dialogue_list,
-                    replace_bot_name=True,
-                    merge_messages=False,
-                    timestamp_mode="normal_no_YMD",
-                    read_mark=0.0,
-                    truncate=True,
-                    show_actions=True,
-                )
-                core_dialogue_prompt = f"""--------------------------------
-这是你和{sender}的对话，你们正在交流中：
-{core_dialogue_prompt_str}
---------------------------------
-"""
-        
-        return core_dialogue_prompt, all_dialogue_prompt
+        except Exception as e:
+            logger.error(f"构建S4U历史消息prompt失败: {e}")
+
+
     
     async def _build_expression_habits(self) -> Dict[str, Any]:
         """构建表达习惯"""
@@ -759,9 +720,9 @@ class Prompt:
             "action_descriptions": self.parameters.action_descriptions or context_data.get("action_descriptions", ""),
             "sender_name": self.parameters.sender or "未知用户",
             "mood_state": self.parameters.mood_prompt or context_data.get("mood_state", ""),
-            "background_dialogue_prompt": context_data.get("background_dialogue_prompt", ""),
+            "read_history_prompt": context_data.get("read_history_prompt", ""),
+            "unread_history_prompt": context_data.get("unread_history_prompt", ""),
             "time_block": context_data.get("time_block", ""),
-            "core_dialogue_prompt": context_data.get("core_dialogue_prompt", ""),
             "reply_target_block": context_data.get("reply_target_block", ""),
             "reply_style": global_config.personality.reply_style,
             "keywords_reaction_prompt": self.parameters.keywords_reaction_prompt or context_data.get("keywords_reaction_prompt", ""),

@@ -42,28 +42,31 @@ class AffinityFlowChatter:
         }
         self.last_activity_time = time.time()
 
-    async def process_message(self, message_data: dict) -> Dict[str, any]:
+    async def process_stream_context(self, context) -> Dict[str, any]:
         """
-        处理单个消息
+        处理StreamContext对象
 
         Args:
-            message_data: 消息数据字典，包含：
-            - message_info: 消息基本信息
-            - processed_plain_text: 处理后的纯文本
-            - context_messages: 上下文消息（历史+未读）
-            - unread_messages: 未读消息列表
+            context: StreamContext对象，包含聊天流的所有消息信息
 
         Returns:
             处理结果字典
         """
         try:
-            # 提取未读消息用于兴趣度计算
-            unread_messages = message_data.get("unread_messages", [])
+            # 获取未读消息和历史消息
+            unread_messages = context.get_unread_messages()
+            history_messages = context.get_history_messages()
 
-            # 使用增强版规划器处理消息，传递未读消息用于兴趣度计算
+            # 准备消息数据
+            message_data = {
+                "unread_messages": unread_messages,
+                "history_messages": history_messages
+            }
+
+            # 使用增强版规划器处理消息
             actions, target_message = await self.planner.plan(
                 mode=ChatMode.FOCUS,
-                unread_messages=unread_messages
+                message_data=message_data
             )
             self.stats["plans_created"] += 1
 
@@ -76,7 +79,7 @@ class AffinityFlowChatter:
             # 更新统计
             self.stats["messages_processed"] += 1
             self.stats["actions_executed"] += execution_result.get("executed_count", 0)
-            self.stats["successful_executions"] += 1  # TODO:假设成功
+            self.stats["successful_executions"] += 1
             self.last_activity_time = time.time()
 
             result = {
@@ -89,12 +92,12 @@ class AffinityFlowChatter:
                 **execution_result,
             }
 
-            logger.info(f"聊天流 {self.stream_id} 消息处理成功: 动作数={result['actions_count']}, 未读消息={result['unread_messages_processed']}")
+            logger.info(f"聊天流 {self.stream_id} StreamContext处理成功: 动作数={result['actions_count']}, 未读消息={result['unread_messages_processed']}")
 
             return result
 
         except Exception as e:
-            logger.error(f"亲和力聊天处理器 {self.stream_id} 处理消息时出错: {e}\n{traceback.format_exc()}")
+            logger.error(f"亲和力聊天处理器 {self.stream_id} 处理StreamContext时出错: {e}\n{traceback.format_exc()}")
             self.stats["failed_executions"] += 1
             self.last_activity_time = time.time()
 

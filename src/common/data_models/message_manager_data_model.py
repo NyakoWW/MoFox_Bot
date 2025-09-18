@@ -49,11 +49,11 @@ class StreamContext(BaseDataModel):
                 self.unread_messages.remove(msg)
                 break
 
-    def get_context_messages(self, limit: int = 20) -> List["DatabaseMessages"]:
-        """获取上下文消息（历史消息+未读消息）"""
+    def get_history_messages(self, limit: int = 20) -> List["DatabaseMessages"]:
+        """获取历史消息"""
         # 优先返回最近的历史消息和所有未读消息
         recent_history = self.history_messages[-limit:] if len(self.history_messages) > limit else self.history_messages
-        return recent_history + self.unread_messages
+        return recent_history
 
 
 @dataclass

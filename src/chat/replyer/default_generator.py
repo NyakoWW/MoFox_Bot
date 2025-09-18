@@ -83,13 +83,13 @@ def init_prompt():
 - {schedule_block}
 
 ## 历史记录
-### 当前群聊中的所有人的聊天记录：
-{background_dialogue_prompt}
+### 📜 已读历史消息（仅供参考）
+{read_history_prompt}
 
 {cross_context_block}
 
-### 当前群聊中正在与你对话的聊天记录
-{core_dialogue_prompt}
+### 📬 未读历史消息（动作执行对象）
+{unread_history_prompt}
 
 ## 表达方式
 - *你需要参考你的回复风格：*
@@ -119,6 +119,11 @@ def init_prompt():
 
 ## 规则
 {safety_guidelines_block}
+**重要提醒：**
+- **已读历史消息仅作为当前聊天情景的参考**
+- **动作执行对象只能是未读历史消息中的消息**
+- **请优先对兴趣值高的消息做出回复**（兴趣度标注在未读消息末尾）
+
 在回应之前，首先分析消息的针对性：
 1. **直接针对你**：@你、回复你、明确询问你 → 必须回应
 2. **间接相关**：涉及你感兴趣的话题但未直接问你 → 谨慎参与
@@ -657,78 +662,195 @@ class DefaultReplyer:
         duration = end_time - start_time
         return name, result, duration
 
-    def build_s4u_chat_history_prompts(
-        self, message_list_before_now: List[Dict[str, Any]], target_user_id: str, sender: str
+    async def build_s4u_chat_history_prompts(
+        self, message_list_before_now: List[Dict[str, Any]], target_user_id: str, sender: str, chat_id: str
     ) -> Tuple[str, str]:
         """
-        构建 s4u 风格的分离对话 prompt
+        构建 s4u 风格的已读/未读历史消息 prompt
 
         Args:
             message_list_before_now: 历史消息列表
             target_user_id: 目标用户ID（当前对话对象）
+            sender: 发送者名称
+            chat_id: 聊天ID
 
         Returns:
-            Tuple[str, str]: (核心对话prompt, 背景对话prompt)
+            Tuple[str, str]: (已读历史消息prompt, 未读历史消息prompt)
         """
-        core_dialogue_list = []
+        try:
+            # 从message_manager获取真实的已读/未读消息
+            from src.chat.message_manager.message_manager import message_manager
+
+            # 获取聊天流的上下文
+            stream_context = message_manager.stream_contexts.get(chat_id)
+            if stream_context:
+                # 使用真正的已读和未读消息
+                read_messages = stream_context.history_messages  # 已读消息
+                unread_messages = stream_context.get_unread_messages()  # 未读消息
+
+                # 构建已读历史消息 prompt
+                read_history_prompt = ""
+                if read_messages:
+                    read_content = build_readable_messages(
+                        [msg.flatten() for msg in read_messages[-50:]],  # 限制数量
+                        replace_bot_name=True,
+                        timestamp_mode="normal_no_YMD",
+                        truncate=True,
+                    )
+                    read_history_prompt = f"这是已读历史消息，仅作为当前聊天情景的参考：\n{read_content}"
+                else:
+                    read_history_prompt = "暂无已读历史消息"
+
+                # 构建未读历史消息 prompt（包含兴趣度）
+                unread_history_prompt = ""
+                if unread_messages:
+                    # 尝试获取兴趣度评分
+                    interest_scores = await self._get_interest_scores_for_messages([msg.flatten() for msg in unread_messages])
+
+                    unread_lines = []
+                    for msg in unread_messages:
+                        msg_id = msg.message_id
+                        msg_time = time.strftime('%H:%M:%S', time.localtime(msg.time))
+                        msg_content = msg.processed_plain_text
+
+                        # 添加兴趣度信息
+                        interest_score = interest_scores.get(msg_id, 0.0)
+                        interest_text = f" [兴趣度: {interest_score:.3f}]" if interest_score > 0 else ""
+
+                        unread_lines.append(f"{msg_time}: {msg_content}{interest_text}")
+
+                    unread_history_prompt_str = "\n".join(unread_lines)
+                    unread_history_prompt = f"这是未读历史消息，包含兴趣度评分，请优先对兴趣值高的消息做出动作：\n{unread_history_prompt_str}"
+                else:
+                    unread_history_prompt = "暂无未读历史消息"
+
+                return read_history_prompt, unread_history_prompt
+            else:
+                # 回退到传统方法
+                return await self._fallback_build_chat_history_prompts(message_list_before_now, target_user_id, sender)
+
+        except Exception as e:
+            logger.warning(f"获取已读/未读历史消息失败，使用回退方法: {e}")
+            return await self._fallback_build_chat_history_prompts(message_list_before_now, target_user_id, sender)
+
+    async def _fallback_build_chat_history_prompts(
+        self, message_list_before_now: List[Dict[str, Any]], target_user_id: str, sender: str
+    ) -> Tuple[str, str]:
+        """
+        回退的已读/未读历史消息构建方法
+        """
+        # 通过is_read字段分离已读和未读消息
+        read_messages = []
+        unread_messages = []
         bot_id = str(global_config.bot.qq_account)
 
-        # 过滤消息：分离bot和目标用户的对话 vs 其他用户的对话
         for msg_dict in message_list_before_now:
             try:
                 msg_user_id = str(msg_dict.get("user_id"))
-                reply_to = msg_dict.get("reply_to", "")
-                _platform, reply_to_user_id = self._parse_reply_target(reply_to)
-                if (msg_user_id == bot_id and reply_to_user_id == target_user_id) or msg_user_id == target_user_id:
-                    # bot 和目标用户的对话
-                    core_dialogue_list.append(msg_dict)
+                if msg_dict.get("is_read", False):
+                    read_messages.append(msg_dict)
+                else:
+                    unread_messages.append(msg_dict)
             except Exception as e:
                 logger.error(f"处理消息记录时出错: {msg_dict}, 错误: {e}")
 
-        # 构建背景对话 prompt
-        all_dialogue_prompt = ""
-        if message_list_before_now:
-            latest_25_msgs = message_list_before_now[-int(global_config.chat.max_context_size) :]
-            all_dialogue_prompt_str = build_readable_messages(
-                latest_25_msgs,
+        # 如果没有is_read字段，使用原有的逻辑
+        if not read_messages and not unread_messages:
+            # 使用原有的核心对话逻辑
+            core_dialogue_list = []
+            for msg_dict in message_list_before_now:
+                try:
+                    msg_user_id = str(msg_dict.get("user_id"))
+                    reply_to = msg_dict.get("reply_to", "")
+                    _platform, reply_to_user_id = self._parse_reply_target(reply_to)
+                    if (msg_user_id == bot_id and reply_to_user_id == target_user_id) or msg_user_id == target_user_id:
+                        core_dialogue_list.append(msg_dict)
+                except Exception as e:
+                    logger.error(f"处理消息记录时出错: {msg_dict}, 错误: {e}")
+
+            read_messages = [msg for msg in message_list_before_now if msg not in core_dialogue_list]
+            unread_messages = core_dialogue_list
+
+        # 构建已读历史消息 prompt
+        read_history_prompt = ""
+        if read_messages:
+            read_content = build_readable_messages(
+                read_messages[-50:],
                 replace_bot_name=True,
-                timestamp_mode="normal",
+                timestamp_mode="normal_no_YMD",
                 truncate=True,
             )
-            all_dialogue_prompt = f"所有用户的发言：\n{all_dialogue_prompt_str}"
+            read_history_prompt = f"这是已读历史消息，仅作为当前聊天情景的参考：\n{read_content}"
+        else:
+            read_history_prompt = "暂无已读历史消息"
 
-        # 构建核心对话 prompt
-        core_dialogue_prompt = ""
-        if core_dialogue_list:
-            # 检查最新五条消息中是否包含bot自己说的消息
-            latest_5_messages = core_dialogue_list[-5:] if len(core_dialogue_list) >= 5 else core_dialogue_list
-            has_bot_message = any(str(msg.get("user_id")) == bot_id for msg in latest_5_messages)
+        # 构建未读历史消息 prompt
+        unread_history_prompt = ""
+        if unread_messages:
+            # 尝试获取兴趣度评分
+            interest_scores = await self._get_interest_scores_for_messages(unread_messages)
 
-            # logger.info(f"最新五条消息：{latest_5_messages}")
-            # logger.info(f"最新五条消息中是否包含bot自己说的消息：{has_bot_message}")
+            unread_lines = []
+            for msg in unread_messages:
+                msg_id = msg.get("message_id", "")
+                msg_time = time.strftime('%H:%M:%S', time.localtime(msg.get("time", time.time())))
+                msg_content = msg.get("processed_plain_text", "")
 
-            # 如果最新五条消息中不包含bot的消息，则返回空字符串
-            if not has_bot_message:
-                core_dialogue_prompt = ""
-            else:
-                core_dialogue_list = core_dialogue_list[-int(global_config.chat.max_context_size * 2) :]  # 限制消息数量
+                # 添加兴趣度信息
+                interest_score = interest_scores.get(msg_id, 0.0)
+                interest_text = f" [兴趣度: {interest_score:.3f}]" if interest_score > 0 else ""
 
-                core_dialogue_prompt_str = build_readable_messages(
-                    core_dialogue_list,
-                    replace_bot_name=True,
-                    merge_messages=False,
-                    timestamp_mode="normal_no_YMD",
-                    read_mark=0.0,
-                    truncate=True,
-                    show_actions=True,
-                )
-                core_dialogue_prompt = f"""--------------------------------
-这是你和{sender}的对话，你们正在交流中：
-{core_dialogue_prompt_str}
---------------------------------
-"""
+                unread_lines.append(f"{msg_time}: {msg_content}{interest_text}")
 
-        return core_dialogue_prompt, all_dialogue_prompt
+            unread_history_prompt_str = "\n".join(unread_lines)
+            unread_history_prompt = f"这是未读历史消息，包含兴趣度评分，请优先对兴趣值高的消息做出动作：\n{unread_history_prompt_str}"
+        else:
+            unread_history_prompt = "暂无未读历史消息"
+
+        return read_history_prompt, unread_history_prompt
+
+    async def _get_interest_scores_for_messages(self, messages: List[dict]) -> dict[str, float]:
+        """为消息获取兴趣度评分"""
+        interest_scores = {}
+
+        try:
+            from src.chat.affinity_flow.interest_scoring import interest_scoring_system
+            from src.common.data_models.database_data_model import DatabaseMessages
+
+            # 转换消息格式
+            db_messages = []
+            for msg_dict in messages:
+                try:
+                    db_msg = DatabaseMessages(
+                        message_id=msg_dict.get("message_id", ""),
+                        time=msg_dict.get("time", time.time()),
+                        chat_id=msg_dict.get("chat_id", ""),
+                        processed_plain_text=msg_dict.get("processed_plain_text", ""),
+                        user_id=msg_dict.get("user_id", ""),
+                        user_nickname=msg_dict.get("user_nickname", ""),
+                        user_platform=msg_dict.get("platform", "qq"),
+                        chat_info_group_id=msg_dict.get("group_id", ""),
+                        chat_info_group_name=msg_dict.get("group_name", ""),
+                        chat_info_group_platform=msg_dict.get("platform", "qq"),
+                    )
+                    db_messages.append(db_msg)
+                except Exception as e:
+                    logger.warning(f"转换消息格式失败: {e}")
+                    continue
+
+            # 计算兴趣度评分
+            if db_messages:
+                bot_nickname = global_config.bot.nickname or "麦麦"
+                scores = await interest_scoring_system.calculate_interest_scores(db_messages, bot_nickname)
+
+                # 构建兴趣度字典
+                for score in scores:
+                    interest_scores[score.message_id] = score.total_score
+
+        except Exception as e:
+            logger.warning(f"获取兴趣度评分失败: {e}")
+
+        return interest_scores
 
     def build_mai_think_context(
         self,
