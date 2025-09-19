@@ -205,6 +205,13 @@ class CycleProcessor:
             raise UserWarning(f"插件{result.get_summary().get('stopped_handlers', '')}于规划前中断了内容生成")
         with Timer("规划器", cycle_timers):
             actions, _ = await self.action_planner.plan(mode=mode)
+            
+        # 在这里添加日志，清晰地显示最终选择的动作
+        if actions:
+            chosen_actions = [a.get("action_type", "unknown") for a in actions]
+            logger.info(f"{self.log_prefix} LLM最终选择的动作: {chosen_actions}")
+        else:
+            logger.info(f"{self.log_prefix} LLM最终没有选择任何动作")
         
         async def execute_action(action_info):
             """执行单个动作的通用函数"""
@@ -229,11 +236,13 @@ class CycleProcessor:
 
                     return {"action_type": "no_reply", "success": True, "reply_text": "", "command": ""}
                 elif action_info["action_type"] != "reply" and action_info["action_type"] != "no_action":
-                    # 执行普通动作
+                    # 记录并执行普通动作
+                    reason = action_info.get("reasoning", f"执行动作 {action_info['action_type']}")
+                    logger.info(f"{self.log_prefix} 决定执行动作 '{action_info['action_type']}'，内心思考: {reason}")
                     with Timer("动作执行", cycle_timers):
                         success, reply_text, command = await self._handle_action(
                             action_info["action_type"],
-                            action_info["reasoning"],
+                            reason, # 使用已获取的reason
                             action_info["action_data"],
                             cycle_timers,
                             thinking_id,
@@ -248,6 +257,8 @@ class CycleProcessor:
                 else:
                     # 生成回复
                     try:
+                        reason = action_info.get("reasoning", "决定进行回复")
+                        logger.info(f"{self.log_prefix} 决定进行回复，内心思考: {reason}")
                         success, response_set, _ = await generator_api.generate_reply(
                             chat_stream=self.context.chat_stream,
                             reply_message=action_info["action_message"],
@@ -302,8 +313,18 @@ class CycleProcessor:
                 if not action_message:
                     logger.warning(f"{self.log_prefix} reply 动作缺少 action_message，跳过")
                     continue
+                
+                # 检查是否是空的DatabaseMessages对象
+                if hasattr(action_message, 'chat_info') and hasattr(action_message.chat_info, 'user_info'):
+                    target_user_id = action_message.chat_info.user_info.user_id
+                else:
+                    # 如果是字典格式，使用原来的方式
+                    target_user_id = action_message.get("chat_info_user_id", "")
+                
+                if not target_user_id:
+                    logger.warning(f"{self.log_prefix} reply 动作的 action_message 缺少用户ID，跳过")
+                    continue
 
-                target_user_id = action_message.get("chat_info_user_id","")
                 if target_user_id == global_config.bot.qq_account and not global_config.chat.allow_reply_self:
                     logger.warning("选取的reply的目标为bot自己，跳过reply action")
                     continue

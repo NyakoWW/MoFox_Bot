@@ -15,41 +15,67 @@ logger = get_logger("maibot_statistic")
 
 
 # 同步包装器函数，用于在非异步环境中调用异步数据库API
+# 全局存储主事件循环引用
+_main_event_loop = None
+
+def _get_main_loop():
+    """获取主事件循环的引用"""
+    global _main_event_loop
+    if _main_event_loop is None:
+        try:
+            _main_event_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # 如果没有运行的循环，尝试获取默认循环
+            try:
+                _main_event_loop = asyncio.get_event_loop_policy().get_event_loop()
+            except Exception:
+                pass
+    return _main_event_loop
+
 def _sync_db_get(model_class, filters=None, order_by=None, limit=None, single_result=False):
     """同步版本的db_get，用于在线程池中调用"""
     import asyncio
-
+    import threading
+    
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # 如果事件循环正在运行，创建新的事件循环
-            import threading
-
-            result = None
-            exception = None
-
-            def run_in_thread():
-                nonlocal result, exception
-                try:
-                    new_loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(new_loop)
-                    result = new_loop.run_until_complete(db_get(model_class, filters, limit, order_by, single_result))
-                    new_loop.close()
-                except Exception as e:
-                    exception = e
-
-            thread = threading.Thread(target=run_in_thread)
-            thread.start()
-            thread.join()
-
-            if exception:
-                raise exception
-            return result
-        else:
-            return loop.run_until_complete(db_get(model_class, filters, limit, order_by, single_result))
-    except RuntimeError:
-        # 没有事件循环，创建一个新的
+        # 优先尝试获取预存的主事件循环
+        main_loop = _get_main_loop()
+        
+        # 如果在子线程中且有主循环可用
+        if threading.current_thread() is not threading.main_thread() and main_loop:
+            try:
+                if not main_loop.is_closed():
+                    future = asyncio.run_coroutine_threadsafe(
+                        db_get(model_class, filters, limit, order_by, single_result), main_loop
+                    )
+                    return future.result(timeout=30)
+            except Exception as e:
+                # 如果使用主循环失败，才在子线程创建新循环
+                logger.debug(f"使用主事件循环失败({e})，在子线程中创建新循环")
+                return asyncio.run(db_get(model_class, filters, limit, order_by, single_result))
+        
+        # 如果在主线程中，直接运行
+        if threading.current_thread() is threading.main_thread():
+            try:
+                # 检查是否有当前运行的循环
+                current_loop = asyncio.get_running_loop()
+                if current_loop.is_running():
+                    # 主循环正在运行，返回空结果避免阻塞
+                    logger.debug("在运行中的主事件循环中跳过同步数据库查询")
+                    return []
+            except RuntimeError:
+                # 没有运行的循环，可以安全创建
+                pass
+            
+            # 创建新循环运行查询
+            return asyncio.run(db_get(model_class, filters, limit, order_by, single_result))
+        
+        # 最后的兜底方案：在子线程创建新循环
         return asyncio.run(db_get(model_class, filters, limit, order_by, single_result))
+        
+    except Exception as e:
+        logger.error(f"_sync_db_get 执行过程中发生错误: {e}")
+        return []
 
 
 # 统计数据的键
