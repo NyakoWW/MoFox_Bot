@@ -303,7 +303,7 @@ class DefaultReplyer:
                     "model": model_name,
                     "tool_calls": tool_call,
                 }
-                
+
                 # 触发 AFTER_LLM 事件
                 if not from_plugin:
                     result = await event_manager.trigger_event(
@@ -598,6 +598,7 @@ class DefaultReplyer:
     def _parse_reply_target(self, target_message: str) -> Tuple[str, str]:
         """解析回复目标消息 - 使用共享工具"""
         from src.chat.utils.prompt import Prompt
+
         if target_message is None:
             logger.warning("target_message为None，返回默认值")
             return "未知用户", "(无消息内容)"
@@ -704,22 +705,24 @@ class DefaultReplyer:
                 unread_history_prompt = ""
                 if unread_messages:
                     # 尝试获取兴趣度评分
-                    interest_scores = await self._get_interest_scores_for_messages([msg.flatten() for msg in unread_messages])
+                    interest_scores = await self._get_interest_scores_for_messages(
+                        [msg.flatten() for msg in unread_messages]
+                    )
 
                     unread_lines = []
                     for msg in unread_messages:
                         msg_id = msg.message_id
-                        msg_time = time.strftime('%H:%M:%S', time.localtime(msg.time))
+                        msg_time = time.strftime("%H:%M:%S", time.localtime(msg.time))
                         msg_content = msg.processed_plain_text
-                        
+
                         # 使用与已读历史消息相同的方法获取用户名
                         from src.person_info.person_info import PersonInfoManager, get_person_info_manager
-                        
+
                         # 获取用户信息
-                        user_info = getattr(msg, 'user_info', {})
-                        platform = getattr(user_info, 'platform', '') or getattr(msg, 'platform', '')
-                        user_id = getattr(user_info, 'user_id', '') or getattr(msg, 'user_id', '')
-                        
+                        user_info = getattr(msg, "user_info", {})
+                        platform = getattr(user_info, "platform", "") or getattr(msg, "platform", "")
+                        user_id = getattr(user_info, "user_id", "") or getattr(msg, "user_id", "")
+
                         # 获取用户名
                         if platform and user_id:
                             person_id = PersonInfoManager.get_person_id(platform, user_id)
@@ -727,11 +730,11 @@ class DefaultReplyer:
                             sender_name = person_info_manager.get_value_sync(person_id, "person_name") or "未知用户"
                         else:
                             sender_name = "未知用户"
-    
+
                         # 添加兴趣度信息
                         interest_score = interest_scores.get(msg_id, 0.0)
                         interest_text = f" [兴趣度: {interest_score:.3f}]" if interest_score > 0 else ""
-    
+
                         unread_lines.append(f"{msg_time} {sender_name}: {msg_content}{interest_text}")
 
                     unread_history_prompt_str = "\n".join(unread_lines)
@@ -808,17 +811,17 @@ class DefaultReplyer:
             unread_lines = []
             for msg in unread_messages:
                 msg_id = msg.get("message_id", "")
-                msg_time = time.strftime('%H:%M:%S', time.localtime(msg.get("time", time.time())))
+                msg_time = time.strftime("%H:%M:%S", time.localtime(msg.get("time", time.time())))
                 msg_content = msg.get("processed_plain_text", "")
-                
+
                 # 使用与已读历史消息相同的方法获取用户名
                 from src.person_info.person_info import PersonInfoManager, get_person_info_manager
-                
+
                 # 获取用户信息
                 user_info = msg.get("user_info", {})
                 platform = user_info.get("platform") or msg.get("platform", "")
                 user_id = user_info.get("user_id") or msg.get("user_id", "")
-                
+
                 # 获取用户名
                 if platform and user_id:
                     person_id = PersonInfoManager.get_person_id(platform, user_id)
@@ -834,7 +837,9 @@ class DefaultReplyer:
                 unread_lines.append(f"{msg_time} {sender_name}: {msg_content}{interest_text}")
 
             unread_history_prompt_str = "\n".join(unread_lines)
-            unread_history_prompt = f"这是未读历史消息，包含兴趣度评分，请优先对兴趣值高的消息做出动作：\n{unread_history_prompt_str}"
+            unread_history_prompt = (
+                f"这是未读历史消息，包含兴趣度评分，请优先对兴趣值高的消息做出动作：\n{unread_history_prompt_str}"
+            )
         else:
             unread_history_prompt = "暂无未读历史消息"
 
@@ -982,7 +987,7 @@ class DefaultReplyer:
                 reply_message.get("user_id"),  # type: ignore
             )
             person_name = await person_info_manager.get_value(person_id, "person_name")
-            
+
             # 如果person_name为None，使用fallback值
             if person_name is None:
                 # 尝试从reply_message获取用户名
@@ -990,12 +995,12 @@ class DefaultReplyer:
                 logger.warning(f"未知用户，将存储用户信息:{fallback_name}")
                 person_name = str(fallback_name)
                 person_info_manager.set_value(person_id, "person_name", fallback_name)
-            
+
             # 检查是否是bot自己的名字，如果是则替换为"(你)"
             bot_user_id = str(global_config.bot.qq_account)
             current_user_id = person_info_manager.get_value_sync(person_id, "user_id")
             current_platform = reply_message.get("chat_info_platform")
-            
+
             if current_user_id == bot_user_id and current_platform == global_config.bot.platform:
                 sender = f"{person_name}(你)"
             else:
@@ -1050,8 +1055,9 @@ class DefaultReplyer:
         target_user_info = None
         if sender:
             target_user_info = await person_info_manager.get_person_info_by_name(sender)
-            
+
         from src.chat.utils.prompt import Prompt
+
         # 并行执行六个构建任务
         task_results = await asyncio.gather(
             self._time_and_run_task(
@@ -1127,6 +1133,7 @@ class DefaultReplyer:
         schedule_block = ""
         if global_config.planning_system.schedule_enable:
             from src.schedule.schedule_manager import schedule_manager
+
             current_activity = schedule_manager.get_current_activity()
             if current_activity:
                 schedule_block = f"你当前正在：{current_activity}。"
@@ -1139,7 +1146,7 @@ class DefaultReplyer:
         safety_guidelines = global_config.personality.safety_guidelines
         safety_guidelines_block = ""
         if safety_guidelines:
-            guidelines_text = "\n".join(f"{i+1}. {line}" for i, line in enumerate(safety_guidelines))
+            guidelines_text = "\n".join(f"{i + 1}. {line}" for i, line in enumerate(safety_guidelines))
             safety_guidelines_block = f"""### 安全与互动底线
 在任何情况下，你都必须遵守以下由你的设定者为你定义的原则：
 {guidelines_text}
@@ -1212,7 +1219,7 @@ class DefaultReplyer:
             template_name = "normal_style_prompt"
         elif current_prompt_mode == "minimal":
             template_name = "default_expressor_prompt"
-            
+
         # 获取模板内容
         template_prompt = await global_prompt_manager.get_prompt_async(template_name)
         prompt = Prompt(template=template_prompt.template, parameters=prompt_parameters)
@@ -1488,19 +1495,19 @@ class DefaultReplyer:
         # 使用AFC关系追踪器获取关系信息
         try:
             from src.chat.affinity_flow.relationship_integration import get_relationship_tracker
-            
+
             relationship_tracker = get_relationship_tracker()
             if relationship_tracker:
                 # 获取用户信息以获取真实的user_id
                 user_info = await person_info_manager.get_values(person_id, ["user_id", "platform"])
                 user_id = user_info.get("user_id", "unknown")
-                
+
                 # 从数据库获取关系数据
                 relationship_data = relationship_tracker._get_user_relationship_from_db(user_id)
                 if relationship_data:
                     relationship_text = relationship_data.get("relationship_text", "")
                     relationship_score = relationship_data.get("relationship_score", 0.3)
-                    
+
                     # 构建丰富的关系信息描述
                     if relationship_text:
                         # 转换关系分数为描述性文本
@@ -1514,7 +1521,7 @@ class DefaultReplyer:
                             relationship_level = "认识的人"
                         else:
                             relationship_level = "陌生人"
-                        
+
                         return f"你与{sender}的关系：{relationship_level}（关系分：{relationship_score:.2f}/1.0）。{relationship_text}"
                     else:
                         return f"你与{sender}是初次见面，关系分：{relationship_score:.2f}/1.0。"
@@ -1523,7 +1530,7 @@ class DefaultReplyer:
             else:
                 logger.warning("AFC关系追踪器未初始化，使用默认关系信息")
                 return f"你与{sender}是普通朋友关系。"
-                
+
         except Exception as e:
             logger.error(f"获取AFC关系信息失败: {e}")
             return f"你与{sender}是普通朋友关系。"

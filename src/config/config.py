@@ -44,7 +44,7 @@ from src.config.official_configs import (
     PermissionConfig,
     CommandConfig,
     PlanningSystemConfig,
-    AffinityFlowConfig
+    AffinityFlowConfig,
 )
 
 from .api_ada_configs import (
@@ -399,9 +399,7 @@ class Config(ValidatedConfigBase):
     cross_context: CrossContextConfig = Field(
         default_factory=lambda: CrossContextConfig(), description="跨群聊上下文共享配置"
     )
-    affinity_flow: AffinityFlowConfig = Field(
-        default_factory=lambda: AffinityFlowConfig(), description="亲和流配置"
-    )
+    affinity_flow: AffinityFlowConfig = Field(default_factory=lambda: AffinityFlowConfig(), description="亲和流配置")
 
 
 class APIAdapterConfig(ValidatedConfigBase):
