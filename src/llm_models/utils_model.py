@@ -202,7 +202,7 @@ class LLMRequest:
             content, extracted_reasoning = self._extract_reasoning(content)
             reasoning_content = extracted_reasoning
         if usage := response.usage:
-            llm_usage_recorder.record_usage_to_database(
+            await llm_usage_recorder.record_usage_to_database(
                 model_info=model_info,
                 model_usage=usage,
                 user_id="system",
@@ -367,7 +367,7 @@ class LLMRequest:
 
                     # 成功获取响应
                     if usage := response.usage:
-                        llm_usage_recorder.record_usage_to_database(
+                        await llm_usage_recorder.record_usage_to_database(
                             model_info=model_info,
                             model_usage=usage,
                             time_cost=time.time() - start_time,
@@ -442,7 +442,7 @@ class LLMRequest:
         embedding = response.embedding
 
         if usage := response.usage:
-            llm_usage_recorder.record_usage_to_database(
+            await llm_usage_recorder.record_usage_to_database(
                 model_info=model_info,
                 time_cost=time.time() - start_time,
                 model_usage=usage,

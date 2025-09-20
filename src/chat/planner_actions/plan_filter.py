@@ -124,7 +124,7 @@ class PlanFilter:
             if plan.mode == ChatMode.PROACTIVE:
                 long_term_memory_block = await self._get_long_term_memory_context()
                 
-                chat_content_block, message_id_list = build_readable_messages_with_id(
+                chat_content_block, message_id_list = await build_readable_messages_with_id(
                     messages=[msg.flatten() for msg in plan.chat_history],
                     timestamp_mode="normal",
                     truncate=False,
@@ -160,7 +160,7 @@ class PlanFilter:
                 show_actions=True,
             )
 
-            actions_before_now = get_actions_by_timestamp_with_chat(
+            actions_before_now = await get_actions_by_timestamp_with_chat(
                 chat_id=plan.chat_id,
                 timestamp_start=time.time() - 3600,
                 timestamp_end=time.time(),

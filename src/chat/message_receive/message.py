@@ -95,17 +95,23 @@ class Message(MessageBase, metaclass=ABCMeta):
 class MessageRecv(Message):
     """接收消息类，用于处理从MessageCQ序列化的消息"""
 
-    def __init__(self, message_dict: dict[str, Any], message_id: str, chat_stream: "ChatStream", user_info: UserInfo):
+    def __init__(self, message_dict: dict[str, Any]):
         """从MessageCQ的字典初始化
 
         Args:
             message_dict: MessageCQ序列化后的字典
         """
-        super().__init__(message_id, chat_stream, user_info)
+        # Manually initialize attributes from MessageBase and Message
         self.message_info = BaseMessageInfo.from_dict(message_dict.get("message_info", {}))
         self.message_segment = Seg.from_dict(message_dict.get("message_segment", {}))
         self.raw_message = message_dict.get("raw_message")
+        
+        self.chat_stream = None
+        self.reply = None
         self.processed_plain_text = message_dict.get("processed_plain_text", "")
+        self.memorized_times = 0
+
+        # MessageRecv specific attributes
         self.is_emoji = False
         self.has_emoji = False
         self.is_picid = False
