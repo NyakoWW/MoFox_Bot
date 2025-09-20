@@ -118,7 +118,7 @@ class RelationshipManager:
                 name_mapping[replace_person_name] = f"用户{current_user}{user_count if user_count > 1 else ''}"
                 current_user = chr(ord(current_user) + 1)
 
-        readable_messages = build_readable_messages(
+        readable_messages = await build_readable_messages(
             messages=user_messages, replace_bot_name=True, timestamp_mode="normal_no_YMD", truncate=True
         )
 
