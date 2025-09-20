@@ -6,7 +6,7 @@ import urllib3
 import ssl
 import io
 
-from .database import BanUser, db_manager
+from .database import BanUser, napcat_db
 from src.common.logger import get_logger
 
 logger = get_logger("napcat_adapter")
@@ -270,10 +270,11 @@ async def read_ban_list(
         ]
     """
     try:
-        ban_list = db_manager.get_ban_records()
+        ban_list = await napcat_db.get_ban_records()
         lifted_list: List[BanUser] = []
         logger.info("已经读取禁言列表")
-        for ban_record in ban_list:
+        # 复制列表以避免迭代中修改原列表问题
+        for ban_record in list(ban_list):
             if ban_record.user_id == 0:
                 fetched_group_info = await get_group_info(websocket, ban_record.group_id)
                 if fetched_group_info is None:
@@ -301,12 +302,12 @@ async def read_ban_list(
                     ban_list.remove(ban_record)
                 else:
                     ban_record.lift_time = lift_ban_time
-        db_manager.update_ban_record(ban_list)
+        await napcat_db.update_ban_record(ban_list)
         return ban_list, lifted_list
     except Exception as e:
         logger.error(f"读取禁言列表失败: {e}")
         return [], []
 
 
-def save_ban_record(list: List[BanUser]):
-    return db_manager.update_ban_record(list)
+async def save_ban_record(list: List[BanUser]):
+    return await napcat_db.update_ban_record(list)

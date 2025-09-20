@@ -85,7 +85,7 @@ class UserBanManager:
                         reason=f"提示词注入攻击 (置信度: {detection_result.confidence:.2f})",
                         created_at=datetime.datetime.now(),
                     )
-                    await session.add(ban_record)
+                    session.add(ban_record)
 
                 await session.commit()
 

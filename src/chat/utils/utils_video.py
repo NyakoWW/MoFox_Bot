@@ -22,6 +22,7 @@ from src.llm_models.utils_model import LLMRequest
 from src.config.config import global_config, model_config
 from src.common.logger import get_logger
 from src.common.database.sqlalchemy_models import get_db_session, Videos
+from sqlalchemy import select
 
 logger = get_logger("utils_video")
 
@@ -205,34 +206,29 @@ class VideoAnalyzer:
         return hash_obj.hexdigest()
 
     @staticmethod
-    def _check_video_exists(video_hash: str) -> Optional[Videos]:
-        """检查视频是否已经分析过"""
+    async def _check_video_exists(video_hash: str) -> Optional[Videos]:
+        """检查视频是否已经分析过 (异步)"""
         try:
-            with get_db_session() as session:
-                # 明确刷新会话以确保看到其他事务的最新提交
-                session.expire_all()
-                return session.query(Videos).filter(Videos.video_hash == video_hash).first()
+            async with get_db_session() as session:
+                result = await session.execute(select(Videos).where(Videos.video_hash == video_hash))
+                return result.scalar_one_or_none()
         except Exception as e:
             logger.warning(f"检查视频是否存在时出错: {e}")
             return None
 
     @staticmethod
-    def _store_video_result(
-            video_hash: str, description: str, metadata: Optional[Dict] = None
+    async def _store_video_result(
+        video_hash: str, description: str, metadata: Optional[Dict] = None
     ) -> Optional[Videos]:
-        """存储视频分析结果到数据库"""
-        # 检查描述是否为错误信息，如果是则不保存
+        """存储视频分析结果到数据库 (异步)"""
         if description.startswith("❌"):
             logger.warning(f"⚠️ 检测到错误信息，不保存到数据库: {description[:50]}...")
             return None
-
         try:
-            with get_db_session() as session:
-                # 只根据video_hash查找
-                existing_video = session.query(Videos).filter(Videos.video_hash == video_hash).first()
-
+            async with get_db_session() as session:
+                result = await session.execute(select(Videos).where(Videos.video_hash == video_hash))
+                existing_video = result.scalar_one_or_none()
                 if existing_video:
-                    # 如果已存在，更新描述和计数
                     existing_video.description = description
                     existing_video.count += 1
                     existing_video.timestamp = time.time()
@@ -243,12 +239,17 @@ class VideoAnalyzer:
                         existing_video.resolution = metadata.get("resolution")
                         existing_video.file_size = metadata.get("file_size")
                     await session.commit()
-                    session.refresh(existing_video)
-                    logger.info(f"✅ 更新已存在的视频记录，hash: {video_hash[:16]}..., count: {existing_video.count}")
+                    await session.refresh(existing_video)
+                    logger.info(
+                        f"✅ 更新已存在的视频记录，hash: {video_hash[:16]}..., count: {existing_video.count}"
+                    )
                     return existing_video
                 else:
                     video_record = Videos(
-                        video_hash=video_hash, description=description, timestamp=time.time(), count=1
+                        video_hash=video_hash,
+                        description=description,
+                        timestamp=time.time(),
+                        count=1,
                     )
                     if metadata:
                         video_record.duration = metadata.get("duration")
@@ -256,11 +257,12 @@ class VideoAnalyzer:
                         video_record.fps = metadata.get("fps")
                         video_record.resolution = metadata.get("resolution")
                         video_record.file_size = metadata.get("file_size")
-
-                    await session.add(video_record)
+                    session.add(video_record)
                     await session.commit()
-                    session.refresh(video_record)
-                    logger.info(f"✅ 新视频分析结果已保存到数据库，hash: {video_hash[:16]}...")
+                    await session.refresh(video_record)
+                    logger.info(
+                        f"✅ 新视频分析结果已保存到数据库，hash: {video_hash[:16]}..."
+                    )
                     return video_record
         except Exception as e:
             logger.error(f"❌ 存储视频分析结果时出错: {e}")
@@ -708,7 +710,7 @@ class VideoAnalyzer:
                     logger.info("✅ 等待结束，检查是否有处理结果")
 
                     # 检查是否有结果了
-                    existing_video = self._check_video_exists(video_hash)
+                    existing_video = await self._check_video_exists(video_hash)
                     if existing_video:
                         logger.info(f"✅ 找到了处理结果，直接返回 (id: {existing_video.id})")
                         return {"summary": existing_video.description}
@@ -722,7 +724,7 @@ class VideoAnalyzer:
                 logger.info(f"🔒 获得视频处理锁，开始处理 (hash: {video_hash[:16]}...)")
 
                 # 再次检查数据库（可能在等待期间已经有结果了）
-                existing_video = self._check_video_exists(video_hash)
+                existing_video = await self._check_video_exists(video_hash)
                 if existing_video:
                     logger.info(f"✅ 获得锁后发现已有结果，直接返回 (id: {existing_video.id})")
                     video_event.set()  # 通知其他等待者
@@ -753,7 +755,7 @@ class VideoAnalyzer:
                 # 保存分析结果到数据库（仅保存成功的结果）
                 if success:
                     metadata = {"filename": filename, "file_size": len(video_bytes), "analysis_timestamp": time.time()}
-                    self._store_video_result(video_hash=video_hash, description=result, metadata=metadata)
+                    await self._store_video_result(video_hash=video_hash, description=result, metadata=metadata)
                     logger.info("✅ 分析结果已保存到数据库")
                 else:
                     logger.warning("⚠️ 分析失败，不保存到数据库以便后续重试")
