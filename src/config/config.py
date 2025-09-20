@@ -412,7 +412,6 @@ class APIAdapterConfig(ValidatedConfigBase):
         self.api_providers_dict = {provider.name: provider for provider in self.api_providers}
         self.models_dict = {model.name: model for model in self.models}
 
-    @field_validator("models")
     @classmethod
     def validate_models_list(cls, v):
         """验证模型列表"""
@@ -431,7 +430,6 @@ class APIAdapterConfig(ValidatedConfigBase):
 
         return v
 
-    @field_validator("api_providers")
     @classmethod
     def validate_api_providers_list(cls, v):
         """验证API提供商列表"""
