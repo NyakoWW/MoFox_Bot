@@ -32,7 +32,7 @@ class AntiInjectionStatistics:
                 stats = session.query(AntiInjectionStats).order_by(AntiInjectionStats.id.desc()).first()
                 if not stats:
                     stats = AntiInjectionStats()
-                    await session.add(stats)
+                    session.add(stats)
                     await session.commit()
                     await session.refresh(stats)
                 return stats
@@ -48,7 +48,7 @@ class AntiInjectionStatistics:
                 stats = session.query(AntiInjectionStats).order_by(AntiInjectionStats.id.desc()).first()
                 if not stats:
                     stats = AntiInjectionStats()
-                    await session.add(stats)
+                    session.add(stats)
 
                 # 更新统计字段
                 for key, value in kwargs.items():

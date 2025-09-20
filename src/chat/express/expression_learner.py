@@ -381,7 +381,7 @@ class ExpressionLearner:
                             type=type,
                             create_date=current_time,  # 手动设置创建日期
                         )
-                        await session.add(new_expression)
+                        session.add(new_expression)
                 
                 # 限制最大数量
                 exprs_result = await session.execute(
@@ -608,7 +608,7 @@ class ExpressionLearnerManager:
                                     type=type_str,
                                     create_date=last_active_time,  # 迁移时使用last_active_time作为创建时间
                                 )
-                                await session.add(new_expression)
+                                session.add(new_expression)
 
                                 migrated_count += 1
                     logger.info(f"已迁移 {expr_file} 到数据库，包含 {len(expressions)} 个表达方式")

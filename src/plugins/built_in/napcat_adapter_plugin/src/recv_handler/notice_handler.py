@@ -9,7 +9,7 @@ from src.common.logger import get_logger
 logger = get_logger("napcat_adapter")
 
 from src.plugin_system.apis import config_api
-from ..database import BanUser, db_manager, is_identical
+from ..database import BanUser, napcat_db, is_identical
 from . import NoticeType, ACCEPT_FORMAT
 from .message_sending import message_send_instance
 from .message_handler import message_handler
@@ -62,7 +62,7 @@ class NoticeHandler:
             return self.server_connection
         return websocket_manager.get_connection()
 
-    def _ban_operation(self, group_id: int, user_id: Optional[int] = None, lift_time: Optional[int] = None) -> None:
+    async def _ban_operation(self, group_id: int, user_id: Optional[int] = None, lift_time: Optional[int] = None) -> None:
         """
         将用户禁言记录添加到self.banned_list中
         如果是全体禁言，则user_id为0
@@ -71,16 +71,16 @@ class NoticeHandler:
             user_id = 0  # 使用0表示全体禁言
             lift_time = -1
         ban_record = BanUser(user_id=user_id, group_id=group_id, lift_time=lift_time)
-        for record in self.banned_list:
+        for record in list(self.banned_list):
             if is_identical(record, ban_record):
                 self.banned_list.remove(record)
                 self.banned_list.append(ban_record)
-                db_manager.create_ban_record(ban_record)  # 作为更新
+                await napcat_db.create_ban_record(ban_record)  # 更新
                 return
         self.banned_list.append(ban_record)
-        db_manager.create_ban_record(ban_record)  # 添加到数据库
+        await napcat_db.create_ban_record(ban_record)  # 新建
 
-    def _lift_operation(self, group_id: int, user_id: Optional[int] = None) -> None:
+    async def _lift_operation(self, group_id: int, user_id: Optional[int] = None) -> None:
         """
         从self.lifted_group_list中移除已经解除全体禁言的群
         """
@@ -88,7 +88,12 @@ class NoticeHandler:
             user_id = 0  # 使用0表示全体禁言
         ban_record = BanUser(user_id=user_id, group_id=group_id, lift_time=-1)
         self.lifted_list.append(ban_record)
-        db_manager.delete_ban_record(ban_record)  # 删除数据库中的记录
+        # 从被禁言列表里移除对应记录
+        for record in list(self.banned_list):
+            if is_identical(record, ban_record):
+                self.banned_list.remove(record)
+                break
+        await napcat_db.delete_ban_record(ban_record)
 
     async def handle_notice(self, raw_message: dict) -> None:
         notice_type = raw_message.get("notice_type")
@@ -376,7 +381,7 @@ class NoticeHandler:
 
         if user_id == 0:  # 为全体禁言
             sub_type: str = "whole_ban"
-            self._ban_operation(group_id)
+            await self._ban_operation(group_id)
         else:  # 为单人禁言
             # 获取被禁言人的信息
             sub_type: str = "ban"
@@ -390,7 +395,7 @@ class NoticeHandler:
                 user_nickname=user_nickname,
                 user_cardname=user_cardname,
             )
-            self._ban_operation(group_id, user_id, int(time.time() + duration))
+            await self._ban_operation(group_id, user_id, int(time.time() + duration))
 
         seg_data: Seg = Seg(
             type="notify",
@@ -439,7 +444,7 @@ class NoticeHandler:
         user_id = raw_message.get("user_id")
         if user_id == 0:  # 全体禁言解除
             sub_type = "whole_lift_ban"
-            self._lift_operation(group_id)
+            await self._lift_operation(group_id)
         else:  # 单人禁言解除
             sub_type = "lift_ban"
             # 获取被解除禁言人的信息
@@ -455,7 +460,7 @@ class NoticeHandler:
                 user_nickname=user_nickname,
                 user_cardname=user_cardname,
             )
-            self._lift_operation(group_id, user_id)
+            await self._lift_operation(group_id, user_id)
 
         seg_data: Seg = Seg(
             type="notify",
@@ -483,7 +488,7 @@ class NoticeHandler:
                 group_id = lift_record.group_id
                 user_id = lift_record.user_id
 
-                db_manager.delete_ban_record(lift_record)  # 从数据库中删除禁言记录
+                asyncio.create_task(napcat_db.delete_ban_record(lift_record))  # 从数据库中删除禁言记录
 
                 seg_message: Seg = await self.natural_lift(group_id, user_id)
 
