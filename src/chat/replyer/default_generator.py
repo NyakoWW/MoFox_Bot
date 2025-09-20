@@ -987,8 +987,9 @@ class DefaultReplyer:
             if person_name is None:
                 # 尝试从reply_message获取用户名
                 fallback_name = reply_message.get("user_nickname") or reply_message.get("user_id", "未知用户")
-                logger.warning(f"无法获取person_name，使用fallback: {fallback_name}")
+                logger.warning(f"未知用户，将存储用户信息:{fallback_name}")
                 person_name = str(fallback_name)
+                person_info_manager.set_value(person_id, "person_name", fallback_name)
             
             # 检查是否是bot自己的名字，如果是则替换为"(你)"
             bot_user_id = str(global_config.bot.qq_account)
