@@ -513,6 +513,45 @@ class PersonInfoManager:
 
 
     @staticmethod
+    def get_value(person_id: str, field_name: str) -> Any:
+        """获取单个字段值（同步版本）"""
+        if not person_id:
+            logger.debug("get_value获取失败：person_id不能为空")
+            return None
+
+        import asyncio
+        
+        async def _get_record_sync():
+            async with get_db_session() as session:
+                return (await session.execute(select(PersonInfo).where(PersonInfo.person_id == person_id))).scalar()
+
+        try:
+            record = asyncio.run(_get_record_sync())
+        except RuntimeError:
+            # 如果当前线程已经有事件循环在运行，则使用现有的循环
+            loop = asyncio.get_running_loop()
+            record = loop.run_until_complete(_get_record_sync())
+
+        model_fields = [column.name for column in PersonInfo.__table__.columns]
+
+        if field_name not in model_fields:
+            if field_name in person_info_default:
+                logger.debug(f"字段'{field_name}'不在SQLAlchemy模型中，使用默认配置值。")
+                return copy.deepcopy(person_info_default[field_name])
+            else:
+                logger.debug(f"get_value查询失败：字段'{field_name}'未在SQLAlchemy模型和默认配置中定义。")
+                return None
+
+        if record:
+            value = getattr(record, field_name)
+            if value is not None:
+                return value
+            else:
+                return copy.deepcopy(person_info_default.get(field_name))
+        else:
+            return copy.deepcopy(person_info_default.get(field_name))
+
+    @staticmethod
     async def get_values(person_id: str, field_names: list) -> dict:
         """获取指定person_id文档的多个字段值，若不存在该字段，则返回该字段的全局默认值"""
         if not person_id:
@@ -550,7 +589,6 @@ class PersonInfoManager:
                 result[field_name] = copy.deepcopy(person_info_default.get(field_name))
 
         return result
-
     @staticmethod
     async def get_specific_value_list(
         field_name: str,

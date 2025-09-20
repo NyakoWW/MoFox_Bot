@@ -46,8 +46,8 @@ def replace_user_references_sync(
             if replace_bot_name and user_id == global_config.bot.qq_account:
                 return f"{global_config.bot.nickname}(你)"
             person_id = PersonInfoManager.get_person_id(platform, user_id)
-            return person_info_manager.get_value_sync(person_id, "person_name") or user_id  # type: ignore
-
+            return person_info_manager.get_value(person_id, "person_name") or user_id  # type: ignore
+ 
         name_resolver = default_resolver
 
     # 处理回复<aaa:bbb>格式

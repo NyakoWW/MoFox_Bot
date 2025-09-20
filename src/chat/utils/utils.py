@@ -663,7 +663,7 @@ def get_chat_type_and_target_info(chat_id: str) -> Tuple[bool, Optional[Dict]]:
                     if person_id:
                         # get_value is async, so await it directly
                         person_info_manager = get_person_info_manager()
-                        person_name = person_info_manager.get_value_sync(person_id, "person_name")
+                        person_name = person_info_manager.get_value(person_id, "person_name")
 
                     target_info["person_id"] = person_id
                     target_info["person_name"] = person_name
