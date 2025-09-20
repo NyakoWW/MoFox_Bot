@@ -233,6 +233,19 @@ class DefaultReplyer:
 
         self.tool_executor = ToolExecutor(chat_id=self.chat_stream.stream_id)
 
+    def _should_block_self_message(self, reply_message: Optional[Dict[str, Any]]) -> bool:
+        """判定是否应阻断当前待处理消息（自消息且无外部触发）"""
+        try:
+            bot_id = str(global_config.bot.qq_account)
+            uid = str(reply_message.get("user_id"))
+            if uid != bot_id:
+                return False
+
+            return True
+        except Exception as e:
+            logger.warning(f"[SelfGuard] 判定异常，回退为不阻断: {e}")
+            return False
+
     async def generate_reply_with_context(
         self,
         reply_to: str = "",
@@ -260,6 +273,10 @@ class DefaultReplyer:
         prompt = None
         if available_actions is None:
             available_actions = {}
+        # 自消息阻断
+        if self._should_block_self_message(reply_message):
+            logger.debug("[SelfGuard] 阻断：自消息且无外部触发。")
+            return False, None, None
         llm_response = None
         try:
             # 构建 Prompt
@@ -822,36 +839,35 @@ class DefaultReplyer:
             # 兼容旧的reply_to
             sender, target = self._parse_reply_target(reply_to)
         else:
-            # 获取 platform，如果不存在则从 chat_stream 获取，如果还是 None 则使用默认值
-            if reply_message is None:
-                logger.warning("reply_message 为 None，无法构建prompt")
-                return ""
-            platform = reply_message.get("chat_info_platform")
-            person_id = person_info_manager.get_person_id(
-                platform,  # type: ignore
-                reply_message.get("user_id"),  # type: ignore
-            )
-            person_info = await person_info_manager.get_values(person_id, ["person_name", "user_id"])
-            person_name = person_info.get("person_name")
-            
-            # 如果person_name为None，使用fallback值
-            if person_name is None:
-                # 尝试从reply_message获取用户名
-                fallback_name = reply_message.get("user_nickname") or reply_message.get("user_id", "未知用户")
-                logger.warning(f"无法获取person_name，使用fallback: {fallback_name}")
-                person_name = str(fallback_name)
-            
-            # 检查是否是bot自己的名字，如果是则替换为"(你)"
+            # 需求：遍历最近消息，找到第一条 user_id != bot_id 的消息作为目标；找不到则静默退出
             bot_user_id = str(global_config.bot.qq_account)
-            current_user_id = person_info.get("user_id")
-            current_platform = reply_message.get("chat_info_platform")
-            
-            if current_user_id == bot_user_id and current_platform == global_config.bot.platform:
-                sender = f"{person_name}(你)"
+            # 优先使用传入的 reply_message 如果它不是 bot
+            candidate_msg = None
+            if reply_message and str(reply_message.get("user_id")) != bot_user_id:
+                candidate_msg = reply_message
             else:
-                # 如果不是bot自己，直接使用person_name
-                sender = person_name
-            target = reply_message.get("processed_plain_text")
+                try:
+                    recent_msgs = await get_raw_msg_before_timestamp_with_chat(
+                        chat_id=chat_id,
+                        timestamp=time.time(),
+                        limit= max(10, int(global_config.chat.max_context_size * 0.5)),
+                    )
+                    # 从最近到更早遍历，找第一条不是bot的
+                    for m in reversed(recent_msgs):
+                        if str(m.get("user_id")) != bot_user_id:
+                            candidate_msg = m
+                            break
+                except Exception as e:
+                    logger.error(f"获取最近消息失败: {e}")
+            if not candidate_msg:
+                logger.debug("未找到可作为目标的非bot消息，静默不回复。")
+                return ""
+            platform = candidate_msg.get("chat_info_platform") or self.chat_stream.platform
+            person_id = person_info_manager.get_person_id(platform, candidate_msg.get("user_id"))
+            person_info = await person_info_manager.get_values(person_id, ["person_name", "user_id"]) if person_id else {}
+            person_name = person_info.get("person_name") or candidate_msg.get("user_nickname") or candidate_msg.get("user_id") or "未知用户"
+            sender = person_name
+            target = candidate_msg.get("processed_plain_text") or candidate_msg.get("raw_message") or ""
 
         # 最终的空值检查，确保sender和target不为None
         if sender is None:
@@ -866,6 +882,8 @@ class DefaultReplyer:
         platform = chat_stream.platform
 
         target = replace_user_references_sync(target, chat_stream.platform, replace_bot_name=True)
+
+    # （简化）不再对自消息做额外任务段落清理，只通过前置选择逻辑避免自目标
 
         # 构建action描述 (如果启用planner)
         action_descriptions = ""
@@ -895,7 +913,6 @@ class DefaultReplyer:
             read_mark=0.0,
             show_actions=True,
         )
-
         # 获取目标用户信息，用于s4u模式
         target_user_info = None
         if sender:
@@ -1067,6 +1084,8 @@ class DefaultReplyer:
         template_prompt = await global_prompt_manager.get_prompt_async(template_name)
         prompt = Prompt(template=template_prompt.template, parameters=prompt_parameters)
         prompt_text = await prompt.build()
+
+    # 自目标情况已在上游通过筛选避免，这里不再额外修改 prompt
 
         # --- 动态添加分割指令 ---
         if global_config.response_splitter.enable and global_config.response_splitter.split_mode == "llm":
