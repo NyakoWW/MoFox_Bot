@@ -49,49 +49,36 @@ class InterestScoringSystem:
         self, messages: List[DatabaseMessages], bot_nickname: str
     ) -> List[InterestScore]:
         """计算消息的兴趣度评分"""
-        logger.info("🚀 开始计算消息兴趣度评分...")
-        logger.info(f"📨 收到 {len(messages)} 条消息")
-
-        # 通过 user_id 判断是否是用户消息（非机器人发送的消息）
+        logger.info(f"开始为 {len(messages)} 条消息计算兴趣度...")
         user_messages = [msg for msg in messages if str(msg.user_info.user_id) != str(global_config.bot.qq_account)]
-        logger.info(f"👤 过滤出 {len(user_messages)} 条用户消息")
+        logger.info(f"正在处理 {len(user_messages)} 条用户消息。")
 
         scores = []
         for i, msg in enumerate(user_messages, 1):
-            logger.info(f"📋 [{i}/{len(user_messages)}] 处理消息 ID: {msg.message_id}")
+            logger.debug(f"[{i}/{len(user_messages)}] 处理消息 ID: {msg.message_id}")
             score = await self._calculate_single_message_score(msg, bot_nickname)
             scores.append(score)
 
-        logger.info(f"✅ 兴趣度评分计算完成，生成 {len(scores)} 个评分")
+        logger.info(f"兴趣度计算完成，共生成 {len(scores)} 个评分。")
         return scores
 
     async def _calculate_single_message_score(self, message: DatabaseMessages, bot_nickname: str) -> InterestScore:
         """计算单条消息的兴趣度评分"""
-        logger.info(f"🎯 计算消息 {message.message_id} 的兴趣度评分...")
-        logger.debug(f"📝 消息长度: {len(message.processed_plain_text)} 字符")
+        logger.info(f"计算消息 {message.message_id} 的分数...")
+        logger.debug(f"消息长度: {len(message.processed_plain_text)} 字符")
 
-        # 提取关键词（从数据库的反序列化字段）
-        logger.debug("🔍 提取关键词...")
         keywords = self._extract_keywords_from_database(message)
-        logger.debug(f"🏷️  提取到 {len(keywords)} 个关键词")
+        logger.debug(f"提取到 {len(keywords)} 个关键词。")
 
-        # 1. 计算兴趣匹配度（现在是异步的）
-        logger.debug("🧠 计算兴趣匹配度...")
         interest_match_score = await self._calculate_interest_match_score(message.processed_plain_text, keywords)
-        logger.debug(f"📊 兴趣匹配度: {interest_match_score:.3f}")
+        logger.debug(f"兴趣匹配度: {interest_match_score:.3f}")
 
-        # 2. 计算关系分
-        logger.debug("🤝 计算关系分...")
         relationship_score = self._calculate_relationship_score(message.user_info.user_id)
-        logger.debug(f"💝 关系分: {relationship_score:.3f}")
+        logger.debug(f"关系分数: {relationship_score:.3f}")
 
-        # 3. 计算提及分数
-        logger.debug("📢 计算提及分数...")
         mentioned_score = self._calculate_mentioned_score(message, bot_nickname)
-        logger.debug(f"📣 提及分数: {mentioned_score:.3f}")
+        logger.debug(f"提及分数: {mentioned_score:.3f}")
 
-        # 4. 计算总分
-        logger.debug("🧮 计算加权总分...")
         total_score = (
             interest_match_score * self.score_weights["interest_match"]
             + relationship_score * self.score_weights["relationship"]
@@ -99,14 +86,14 @@ class InterestScoringSystem:
         )
 
         details = {
-            "interest_match": f"兴趣匹配度: {interest_match_score:.3f}",
-            "relationship": f"关系分: {relationship_score:.3f}",
-            "mentioned": f"提及分数: {mentioned_score:.3f}",
+            "interest_match": f"兴趣匹配: {interest_match_score:.3f}",
+            "relationship": f"关系: {relationship_score:.3f}",
+            "mentioned": f"提及: {mentioned_score:.3f}",
         }
 
-        logger.info(f"📈 消息 {message.message_id} 最终评分: {total_score:.3f}")
-        logger.debug(f"⚖️  评分权重: {self.score_weights}")
-        logger.debug(f"📋 评分详情: {details}")
+        logger.info(f"消息 {message.message_id} 最终得分: {total_score:.3f}")
+        logger.debug(f"Score weights: {self.score_weights}")
+        logger.debug(f"Score details: {details}")
 
         return InterestScore(
             message_id=message.message_id,
@@ -279,59 +266,41 @@ class InterestScoringSystem:
 
     def should_reply(self, score: InterestScore) -> bool:
         """判断是否应该回复"""
-        logger.info("🤔 评估是否应该回复...")
-        logger.debug("📊 评分详情:")
-        logger.debug(f"   📝 消息ID: {score.message_id}")
-        logger.debug(f"   💯 总分: {score.total_score:.3f}")
-        logger.debug(f"   🧠 兴趣匹配: {score.interest_match_score:.3f}")
-        logger.debug(f"   🤝 关系分: {score.relationship_score:.3f}")
-        logger.debug(f"   📢 提及分: {score.mentioned_score:.3f}")
-
+        logger.info(f"评估消息 {score.message_id} (得分: {score.total_score:.3f}) 是否回复...")
         base_threshold = self.reply_threshold
-        logger.debug(f"📋 基础阈值: {base_threshold:.3f}")
 
         # 如果被提及，降低阈值
-        if (
-            score.mentioned_score >= global_config.affinity_flow.mention_bot_adjustment_threshold
-        ):  # 使用提及bot兴趣分的一半作为判断阈值
+        if score.mentioned_score >= global_config.affinity_flow.mention_bot_adjustment_threshold:
             base_threshold = self.mention_threshold
-            logger.debug(f"📣 消息提及了机器人，使用降低阈值: {base_threshold:.3f}")
+            logger.debug(f"机器人被提及, 使用较低阈值: {base_threshold:.3f}")
 
         # 计算连续不回复的概率提升
         probability_boost = min(self.no_reply_count * self.probability_boost_per_no_reply, 0.8)
         effective_threshold = base_threshold - probability_boost
-
-        logger.debug("📈 连续不回复统计:")
-        logger.debug(f"   🚫 不回复次数: {self.no_reply_count}")
-        logger.debug(f"   📈 概率提升: {probability_boost:.3f}")
-        logger.debug(f"   🎯 有效阈值: {effective_threshold:.3f}")
+        logger.debug(
+            f"基础阈值: {base_threshold:.3f}, 不回复提升: {probability_boost:.3f}, 有效阈值: {effective_threshold:.3f}"
+        )
 
         # 做出决策
-        score.total_score = score.total_score * 1
         should_reply = score.total_score >= effective_threshold
-        decision = "✅ 应该回复" if should_reply else "❌ 不回复"
-
-        logger.info(f"🎯 回复决策: {decision}")
-        logger.info(f"📊 决策依据: {score.total_score:.3f} {'>=' if should_reply else '<'} {effective_threshold:.3f}")
+        decision = "✅ 回复" if should_reply else "❌ 不回复"
+        logger.info(f"回复决策: {decision} (分数: {score.total_score:.3f} {' >=' if should_reply else ' <'} 阈值: {effective_threshold:.3f})")
 
         return should_reply, score.total_score
 
     def record_reply_action(self, did_reply: bool):
         """记录回复动作"""
         old_count = self.no_reply_count
-
         if did_reply:
             self.no_reply_count = max(0, self.no_reply_count - global_config.affinity_flow.reply_cooldown_reduction)
-            action = "✅ reply动作可用"
+            action = "回复"
         else:
             self.no_reply_count += 1
-            action = "❌ reply动作不可用"
+            action = "不回复"
 
         # 限制最大计数
         self.no_reply_count = min(self.no_reply_count, self.max_no_reply_count)
-
-        logger.info(f"📊 记录回复动作: {action}")
-        logger.info(f"📈 连续不回复次数: {old_count} → {self.no_reply_count}")
+        logger.info(f"记录动作: {action} | 连续不回复次数: {old_count} -> {self.no_reply_count}")
         logger.debug(f"📋 最大限制: {self.max_no_reply_count} 次")
 
     def update_user_relationship(self, user_id: str, relationship_change: float):
@@ -370,23 +339,22 @@ class InterestScoringSystem:
     async def initialize_smart_interests(self, personality_description: str, personality_id: str = "default"):
         """初始化智能兴趣系统"""
         try:
-            logger.info("🚀 开始初始化智能兴趣系统...")
-            logger.info(f"📋 人设ID: {personality_id}")
-            logger.info(f"📝 人设描述长度: {len(personality_description)} 字符")
+            logger.info("开始初始化智能兴趣系统...")
+            logger.info(f"人设ID: {personality_id}, 描述长度: {len(personality_description)}")
 
             await bot_interest_manager.initialize(personality_description, personality_id)
-            logger.info("✅ 智能兴趣系统初始化完成")
+            logger.info("智能兴趣系统初始化完成。")
 
             # 显示初始化后的统计信息
             stats = bot_interest_manager.get_interest_stats()
-            logger.info("📊 兴趣系统统计:")
-            logger.info(f"   🏷️  总标签数: {stats.get('total_tags', 0)}")
-            logger.info(f"   💾 缓存大小: {stats.get('cache_size', 0)}")
-            logger.info(f"   🧠 模型: {stats.get('embedding_model', '未知')}")
+            logger.info(
+                f"兴趣系统统计: 总标签={stats.get('total_tags', 0)}, "
+                f"缓存大小={stats.get('cache_size', 0)}, "
+                f"模型='{stats.get('embedding_model', '未知')}'"
+            )
 
         except Exception as e:
-            logger.error(f"❌ 初始化智能兴趣系统失败: {e}")
-            logger.error("🔍 错误详情:")
+            logger.error(f"初始化智能兴趣系统失败: {e}")
             traceback.print_exc()
 
     def get_matching_config(self) -> Dict[str, Any]:

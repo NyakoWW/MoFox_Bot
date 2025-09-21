@@ -37,22 +37,17 @@ class BotInterestManager:
     async def initialize(self, personality_description: str, personality_id: str = "default"):
         """初始化兴趣标签系统"""
         try:
-            logger.info("=" * 60)
-            logger.info("🚀 开始初始化机器人兴趣标签系统")
-            logger.info(f"📋 人设ID: {personality_id}")
-            logger.info(f"📝 人设描述长度: {len(personality_description)} 字符")
-            logger.info("=" * 60)
+            logger.info("机器人兴趣系统开始初始化...")
+            logger.info(f"人设ID: {personality_id}, 描述长度: {len(personality_description)}")
 
             # 初始化embedding模型
-            logger.info("🧠 正在初始化embedding模型...")
             await self._initialize_embedding_model()
 
             # 检查embedding客户端是否成功初始化
             if not self.embedding_request:
-                raise RuntimeError("❌ Embedding客户端初始化失败，无法继续")
+                raise RuntimeError("Embedding客户端初始化失败")
 
             # 生成或加载兴趣标签
-            logger.info("🎯 正在生成或加载兴趣标签...")
             await self._load_or_generate_interests(personality_description, personality_id)
 
             self._initialized = True
@@ -60,18 +55,13 @@ class BotInterestManager:
             # 检查是否成功获取兴趣标签
             if self.current_interests and len(self.current_interests.get_active_tags()) > 0:
                 active_tags_count = len(self.current_interests.get_active_tags())
-                logger.info("=" * 60)
-                logger.info("✅ 机器人兴趣标签系统初始化完成!")
-                logger.info(f"📊 活跃兴趣标签数量: {active_tags_count}")
-                logger.info(f"💾 Embedding缓存大小: {len(self.embedding_cache)}")
-                logger.info("=" * 60)
+                logger.info("机器人兴趣系统初始化完成！")
+                logger.info(f"当前已激活 {active_tags_count} 个兴趣标签, Embedding缓存 {len(self.embedding_cache)} 个")
             else:
-                raise RuntimeError("❌ 未能成功生成或加载兴趣标签")
+                raise RuntimeError("未能成功加载或生成兴趣标签")
 
         except Exception as e:
-            logger.error("=" * 60)
-            logger.error(f"❌ 初始化机器人兴趣标签系统失败: {e}")
-            logger.error("=" * 60)
+            logger.error(f"机器人兴趣系统初始化失败: {e}")
             traceback.print_exc()
             raise  # 重新抛出异常，不允许降级初始化
 
@@ -113,19 +103,19 @@ class BotInterestManager:
         logger.info(f"📚 正在为 '{personality_id}' 加载或生成兴趣标签...")
 
         # 首先尝试从数据库加载
-        logger.info("💾 尝试从数据库加载现有兴趣标签...")
+        logger.info("尝试从数据库加载兴趣标签...")
         loaded_interests = await self._load_interests_from_database(personality_id)
 
         if loaded_interests:
             self.current_interests = loaded_interests
             active_count = len(loaded_interests.get_active_tags())
-            logger.info(f"✅ 成功从数据库加载 {active_count} 个兴趣标签")
-            logger.info(f"📅 最后更新时间: {loaded_interests.last_updated}")
-            logger.info(f"🔄 版本号: {loaded_interests.version}")
+            logger.info(f"成功从数据库加载 {active_count} 个兴趣标签 (版本: {loaded_interests.version})")
+            tags_info = [f"  - '{tag.tag_name}' (权重: {tag.weight:.2f})" for tag in loaded_interests.get_active_tags()]
+            tags_str = "\n".join(tags_info)
+            logger.info(f"当前兴趣标签:\n{tags_str}")
         else:
             # 生成新的兴趣标签
-            logger.info("🆕 数据库中未找到兴趣标签，开始生成新的...")
-            logger.info("🤖 正在调用LLM生成个性化兴趣标签...")
+            logger.info("数据库中未找到兴趣标签，开始生成...")
             generated_interests = await self._generate_interests_from_personality(
                 personality_description, personality_id
             )
@@ -133,10 +123,13 @@ class BotInterestManager:
             if generated_interests:
                 self.current_interests = generated_interests
                 active_count = len(generated_interests.get_active_tags())
-                logger.info(f"✅ 成功生成 {active_count} 个兴趣标签")
+                logger.info(f"成功生成 {active_count} 个新兴趣标签。")
+                tags_info = [f"  - '{tag.tag_name}' (权重: {tag.weight:.2f})" for tag in generated_interests.get_active_tags()]
+                tags_str = "\n".join(tags_info)
+                logger.info(f"当前兴趣标签:\n{tags_str}")
 
                 # 保存到数据库
-                logger.info("💾 正在保存兴趣标签到数据库...")
+                logger.info("正在保存至数据库...")
                 await self._save_interests_to_database(generated_interests)
             else:
                 raise RuntimeError("❌ 兴趣标签生成失败")
@@ -411,10 +404,8 @@ class BotInterestManager:
         if not self.current_interests or not self._initialized:
             raise RuntimeError("❌ 兴趣标签系统未初始化")
 
-        logger.info("🎯 开始计算兴趣匹配度...")
-        logger.debug(f"💬 消息长度: {len(message_text)} 字符")
-        if keywords:
-            logger.debug(f"🏷️  关键词数量: {len(keywords)}")
+        logger.info("开始计算兴趣匹配度...")
+        logger.debug(f"消息长度: {len(message_text)}, 关键词: {len(keywords) if keywords else 0}")
 
         message_id = f"msg_{datetime.now().timestamp()}"
         result = InterestMatchResult(message_id=message_id)
@@ -422,14 +413,14 @@ class BotInterestManager:
         # 获取活跃的兴趣标签
         active_tags = self.current_interests.get_active_tags()
         if not active_tags:
-            raise RuntimeError("❌ 没有活跃的兴趣标签")
+            raise RuntimeError("没有检测到活跃的兴趣标签")
 
-        logger.info(f"📊 有 {len(active_tags)} 个活跃兴趣标签参与匹配")
+        logger.info(f"正在与 {len(active_tags)} 个兴趣标签进行匹配...")
 
         # 生成消息的embedding
-        logger.debug("🔄 正在生成消息embedding...")
+        logger.debug("正在生成消息 embedding...")
         message_embedding = await self._get_embedding(message_text)
-        logger.debug(f"✅ 消息embedding生成成功，维度: {len(message_embedding)}")
+        logger.debug(f"消息 embedding 生成成功, 维度: {len(message_embedding)}")
 
         # 计算与每个兴趣标签的相似度
         match_count = 0
@@ -483,10 +474,12 @@ class BotInterestManager:
                         f"   🏷️  '{tag.tag_name}': 相似度={similarity:.3f}, 权重={tag.weight:.2f}, 基础分数={weighted_score:.3f}, 增强分数={enhanced_score:.3f} [低匹配]"
                     )
 
-        logger.info(f"📈 匹配统计: {match_count}/{len(active_tags)} 个标签超过阈值")
-        logger.info(f"🔥 高相似度匹配(>{high_threshold}): {high_similarity_count} 个")
-        logger.info(f"⚡ 中相似度匹配(>{medium_threshold}): {medium_similarity_count} 个")
-        logger.info(f"🌊 低相似度匹配(>{low_threshold}): {low_similarity_count} 个")
+        logger.info(
+            f"匹配统计: {match_count}/{len(active_tags)} 个标签命中 | "
+            f"高(>{high_threshold}): {high_similarity_count}, "
+            f"中(>{medium_threshold}): {medium_similarity_count}, "
+            f"低(>{low_threshold}): {low_similarity_count}"
+        )
 
         # 添加直接关键词匹配奖励
         keyword_bonus = self._calculate_keyword_match_bonus(keywords, result.matched_tags)
@@ -509,10 +502,10 @@ class BotInterestManager:
         if result.matched_tags:
             top_tag_name = max(result.match_scores.items(), key=lambda x: x[1])[0]
             result.top_tag = top_tag_name
-            logger.info(f"🏆 最佳匹配标签: '{top_tag_name}' (分数: {result.match_scores[top_tag_name]:.3f})")
+            logger.info(f"最佳匹配: '{top_tag_name}' (分数: {result.match_scores[top_tag_name]:.3f})")
 
         logger.info(
-            f"📊 最终结果: 总分={result.overall_score:.3f}, 置信度={result.confidence:.3f}, 匹配标签数={len(result.matched_tags)}"
+            f"最终结果: 总分={result.overall_score:.3f}, 置信度={result.confidence:.3f}, 匹配标签数={len(result.matched_tags)}"
         )
         return result
 
@@ -620,7 +613,7 @@ class BotInterestManager:
     async def _load_interests_from_database(self, personality_id: str) -> Optional[BotPersonalityInterests]:
         """从数据库加载兴趣标签"""
         try:
-            logger.info(f"💾 正在从数据库加载兴趣标签，personality_id: {personality_id}")
+            logger.debug(f"从数据库加载兴趣标签, personality_id: {personality_id}")
 
             # 导入SQLAlchemy相关模块
             from src.common.database.sqlalchemy_models import BotPersonalityInterests as DBBotPersonalityInterests
@@ -637,7 +630,7 @@ class BotInterestManager:
                 )
 
                 if db_interests:
-                    logger.info(f"✅ 找到数据库中的兴趣标签配置，版本: {db_interests.version}")
+                    logger.debug(f"在数据库中找到兴趣标签配置, 版本: {db_interests.version}")
                     logger.debug(f"📅 最后更新时间: {db_interests.last_updated}")
                     logger.debug(f"🧠 使用的embedding模型: {db_interests.embedding_model}")
 
@@ -671,7 +664,7 @@ class BotInterestManager:
                             )
                             interests.interest_tags.append(tag)
 
-                        logger.info(f"✅ 成功从数据库加载 {len(interests.interest_tags)} 个兴趣标签")
+                        logger.debug(f"成功解析 {len(interests.interest_tags)} 个兴趣标签")
                         return interests
 
                     except (orjson.JSONDecodeError, Exception) as e:

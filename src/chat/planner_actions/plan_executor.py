@@ -96,7 +96,7 @@ class PlanExecutor:
         self.execution_stats["failed_executions"] += len(execution_results) - successful_count
 
         logger.info(
-            f"动作执行完成: 总数={len(plan.decided_actions)}, 成功={successful_count}, 失败={len(execution_results) - successful_count}"
+            f"规划执行完成: 总数={len(plan.decided_actions)}, 成功={successful_count}, 失败={len(execution_results) - successful_count}"
         )
 
         return {
@@ -124,7 +124,7 @@ class PlanExecutor:
         reply_content = ""
 
         try:
-            logger.info(f"执行回复动作: {action_info.action_type}, 原因: {action_info.reasoning}")
+            logger.info(f"执行回复动作: {action_info.action_type} (原因: {action_info.reasoning})")
 
             # 获取用户ID - 兼容对象和字典
             if hasattr(action_info.action_message, "user_info"):
@@ -156,7 +156,7 @@ class PlanExecutor:
             )
 
             success = True
-            logger.info(f"回复动作执行成功: {action_info.action_type}")
+            logger.info(f"回复动作 '{action_info.action_type}' 执行成功。")
 
         except Exception as e:
             error_message = str(e)
@@ -214,7 +214,7 @@ class PlanExecutor:
         error_message = ""
 
         try:
-            logger.info(f"执行其他动作: {action_info.action_type}, 原因: {action_info.reasoning}")
+            logger.info(f"执行其他动作: {action_info.action_type} (原因: {action_info.reasoning})")
 
             # 构建动作参数
             action_params = {
@@ -228,7 +228,7 @@ class PlanExecutor:
             await self.action_manager.execute_action(action_name=action_info.action_type, **action_params)
 
             success = True
-            logger.info(f"其他动作执行成功: {action_info.action_type}")
+            logger.info(f"其他动作 '{action_info.action_type}' 执行成功。")
 
         except Exception as e:
             error_message = str(e)

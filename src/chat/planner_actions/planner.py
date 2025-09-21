@@ -128,7 +128,7 @@ class ActionPlanner:
 
                     reply_not_available = False
                     if not should_reply and "reply" in initial_plan.available_actions:
-                        logger.info(f"消息兴趣度不足({latest_score.total_score:.2f})，移除reply动作")
+                        logger.info(f"兴趣度不足 ({latest_score.total_score:.2f})，移除'回复'动作。")
                         reply_not_available = True
 
             # base_threshold = self.interest_scoring.reply_threshold
@@ -136,9 +136,8 @@ class ActionPlanner:
             non_reply_action_interest_threshold = global_config.affinity_flow.non_reply_action_interest_threshold
             if score < non_reply_action_interest_threshold:
                 logger.info(
-                    f"❌ 兴趣度不足非回复动作阈值: {score:.3f} < {non_reply_action_interest_threshold:.3f}，直接返回no_action"
+                    f"兴趣度 {score:.3f} 低于非回复动作阈值 {non_reply_action_interest_threshold:.3f}，不执行任何动作。"
                 )
-                logger.info(f"📊 最低要求: {non_reply_action_interest_threshold:.3f}")
                 # 直接返回 no_action
                 from src.common.data_models.info_data_model import ActionPlannerInfo
 
