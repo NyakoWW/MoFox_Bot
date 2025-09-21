@@ -548,11 +548,13 @@ class PluginManagementPlugin(BasePlugin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # 注册权限节点
-        permission_api.register_permission_node(
-            "plugin.management.admin",
-            "插件管理：可以管理插件和组件的加载、卸载、启用、禁用等操作",
-            "plugin_management",
-            False,
+        
+    async def on_plugin_loaded(self):
+        await permission_api.register_permission_node(
+                "plugin.management.admin",
+                "插件管理：可以管理插件和组件的加载、卸载、启用、禁用等操作",
+                "plugin_management",
+                False,
         )
 
     def get_plugin_components(self) -> List[Tuple[PlusCommandInfo, Type[PlusCommand]]]:
