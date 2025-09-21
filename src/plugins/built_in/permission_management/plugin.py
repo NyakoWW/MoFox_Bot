@@ -34,11 +34,13 @@ class PermissionCommand(PlusCommand):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # 注册权限节点
-        permission_api.register_permission_node(
+
+    async def on_plugin_loaded(self):
+        # 注册权限节点（使用显式前缀，避免再次自动补全）
+        await permission_api.register_permission_node(
             "plugin.permission.manage", "权限管理：可以授权和撤销其他用户的权限", "permission_manager", False
         )
-        permission_api.register_permission_node(
+        await permission_api.register_permission_node(
             "plugin.permission.view", "权限查看：可以查看权限节点和用户权限信息", "permission_manager", True
         )
 
@@ -179,7 +181,7 @@ class PermissionCommand(PlusCommand):
         permission_node = args[1]
 
         # 执行授权
-        success = permission_api.grant_permission(chat_stream.platform, user_id, permission_node)
+        success = await permission_api.grant_permission(chat_stream.platform, user_id, permission_node)
 
         if success:
             await self.send_text(f"✅ 已授权用户 {user_id} 权限节点 `{permission_node}`")
@@ -202,7 +204,7 @@ class PermissionCommand(PlusCommand):
         permission_node = args[1]
 
         # 执行撤销
-        success = permission_api.revoke_permission(chat_stream.platform, user_id, permission_node)
+        success = await permission_api.revoke_permission(chat_stream.platform, user_id, permission_node)
 
         if success:
             await self.send_text(f"✅ 已撤销用户 {user_id} 权限节点 `{permission_node}`")
@@ -225,10 +227,10 @@ class PermissionCommand(PlusCommand):
             target_user_id = chat_stream.user_info.user_id
 
         # 检查是否为Master用户
-        is_master = permission_api.is_master(chat_stream.platform, target_user_id)
+        is_master = await permission_api.is_master(chat_stream.platform, target_user_id)
 
         # 获取用户权限
-        permissions = permission_api.get_user_permissions(chat_stream.platform, target_user_id)
+        permissions = await permission_api.get_user_permissions(chat_stream.platform, target_user_id)
 
         if is_master:
             response = f"👑 用户 `{target_user_id}` 是Master用户，拥有所有权限"
@@ -257,8 +259,8 @@ class PermissionCommand(PlusCommand):
         permission_node = args[1]
 
         # 检查权限
-        has_permission = permission_api.check_permission(chat_stream.platform, user_id, permission_node)
-        is_master = permission_api.is_master(chat_stream.platform, user_id)
+        has_permission = await permission_api.check_permission(chat_stream.platform, user_id, permission_node)
+        is_master = await permission_api.is_master(chat_stream.platform, user_id)
 
         if has_permission:
             if is_master:
@@ -277,11 +279,11 @@ class PermissionCommand(PlusCommand):
 
         if plugin_name:
             # 获取指定插件的权限节点
-            nodes = permission_api.get_plugin_permission_nodes(plugin_name)
+            nodes = await permission_api.get_plugin_permission_nodes(plugin_name)
             title = f"📋 插件 {plugin_name} 的权限节点："
         else:
             # 获取所有权限节点
-            nodes = permission_api.get_all_permission_nodes()
+            nodes = await permission_api.get_all_permission_nodes()
             title = "📋 所有权限节点："
 
         if not nodes:
@@ -307,7 +309,7 @@ class PermissionCommand(PlusCommand):
     async def _list_all_nodes_with_description(self, chat_stream):
         """列出所有插件的权限节点（带详细描述）"""
         # 获取所有权限节点
-        all_nodes = permission_api.get_all_permission_nodes()
+        all_nodes = await permission_api.get_all_permission_nodes()
 
         if not all_nodes:
             response = "📋 系统中没有任何权限节点"

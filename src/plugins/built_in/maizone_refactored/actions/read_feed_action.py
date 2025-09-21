@@ -39,7 +39,7 @@ class ReadFeedAction(BaseAction):
         user_id = self.chat_stream.user_info.user_id
 
         # 使用权限API检查用户是否有阅读说说的权限
-        return permission_api.check_permission(platform, user_id, "plugin.maizone.read_feed")
+        return await permission_api.check_permission(platform, user_id, "plugin.maizone.read_feed")
 
     async def execute(self) -> Tuple[bool, str]:
         """

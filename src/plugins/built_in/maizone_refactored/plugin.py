@@ -87,11 +87,11 @@ class MaiZoneRefactoredPlugin(BasePlugin):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # 注册权限节点
-        permission_api.register_permission_node(
+    async def on_plugin_loaded(self):
+        await permission_api.register_permission_node(
             "plugin.maizone.send_feed", "是否可以使用机器人发送QQ空间说说", "maiZone", False
         )
-        permission_api.register_permission_node(
+        await permission_api.register_permission_node(
             "plugin.maizone.read_feed", "是否可以使用机器人读取QQ空间说说", "maiZone", True
         )
         # 创建所有服务实例
