@@ -46,8 +46,8 @@ def replace_user_references_sync(
             if replace_bot_name and user_id == global_config.bot.qq_account:
                 return f"{global_config.bot.nickname}(你)"
             person_id = PersonInfoManager.get_person_id(platform, user_id)
-            return person_info_manager.get_value_sync(person_id, "person_name") or user_id  # type: ignore
-
+            return person_info_manager.get_value(person_id, "person_name") or user_id  # type: ignore
+ 
         name_resolver = default_resolver
 
     # 处理回复<aaa:bbb>格式
@@ -1232,7 +1232,7 @@ async def build_anonymous_messages(messages: List[Dict[str, Any]]) -> str:
 
     # 在最前面添加图片映射信息
     final_output_lines = []
-    pic_mapping_info = build_pic_mapping_info(pic_id_mapping)
+    pic_mapping_info = await build_pic_mapping_info(pic_id_mapping)
     if pic_mapping_info:
         final_output_lines.append(pic_mapping_info)
         final_output_lines.append("\n\n")
