@@ -4,6 +4,7 @@ PlanExecutor: 接收 Plan 对象并执行其中的所有动作。
 """
 
 import asyncio
+import re
 import time
 from typing import Dict, List
 
@@ -83,11 +84,11 @@ class PlanExecutor:
             execution_results.extend(reply_result["results"])
             self.execution_stats["reply_executions"] += len(reply_actions)
 
-        # 并行执行其他动作
+        # 将其他动作放入后台任务执行，避免阻塞主流程
         if other_actions:
-            other_result = await self._execute_other_actions(other_actions, plan)
-            execution_results.extend(other_result["results"])
-            self.execution_stats["other_action_executions"] += len(other_actions)
+            asyncio.create_task(self._execute_other_actions(other_actions, plan))
+            logger.info(f"已将 {len(other_actions)} 个其他动作放入后台任务执行。")
+            # 注意：后台任务的结果不会立即计入本次返回的统计数据
 
         # 更新总体统计
         self.execution_stats["total_executed"] += len(plan.decided_actions)
@@ -216,12 +217,35 @@ class PlanExecutor:
         try:
             logger.info(f"执行其他动作: {action_info.action_type} (原因: {action_info.reasoning})")
 
+            action_data = action_info.action_data or {}
+
+            # 针对 poke_user 动作，特殊处理
+            if action_info.action_type == "poke_user":
+                target_message = action_info.action_message
+                if target_message:
+                    # 优先直接获取 user_id，这才是最可靠的信息
+                    user_id = target_message.get("user_id")
+                    if user_id:
+                        action_data["user_id"] = user_id
+                        logger.info(f"检测到戳一戳动作，目标用户ID: {user_id}")
+                    else:
+                        # 如果没有 user_id，再尝试用 user_nickname 作为备用方案
+                        user_name = target_message.get("user_nickname")
+                        if user_name:
+                            action_data["user_name"] = user_name
+                            logger.info(f"检测到戳一戳动作，目标用户: {user_name}")
+                        else:
+                            logger.warning("无法从戳一戳消息中获取用户ID或昵称。")
+                    
+                    # 传递原始消息ID以支持引用
+                    action_data["target_message_id"] = target_message.get("message_id")
+
             # 构建动作参数
             action_params = {
                 "chat_id": plan.chat_id,
                 "target_message": action_info.action_message,
                 "reasoning": action_info.reasoning,
-                "action_data": action_info.action_data or {},
+                "action_data": action_data,
             }
 
             # 通过动作管理器执行动作

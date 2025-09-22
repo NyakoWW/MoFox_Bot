@@ -747,7 +747,7 @@ class VideoAnalyzer:
                         os.unlink(temp_path)
 
                 # 保存分析结果到数据库（仅保存成功的结果）
-                if success:
+                if success and not result.startswith("❌"):
                     metadata = {"filename": filename, "file_size": len(video_bytes), "analysis_timestamp": time.time()}
                     self._store_video_result(video_hash=video_hash, description=result, metadata=metadata)
                     logger.info("✅ 分析结果已保存到数据库")
