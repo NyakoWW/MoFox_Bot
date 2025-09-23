@@ -18,7 +18,7 @@ async def check_and_migrate_database():
     - 自动为现有表创建缺失的索引。
     """
     logger.info("正在检查数据库结构并执行自动迁移...")
-    engine = get_engine()
+    engine = await get_engine()
 
     async with engine.connect() as connection:
         # 在同步上下文中运行inspector操作
@@ -28,7 +28,7 @@ async def check_and_migrate_database():
         inspector = await connection.run_sync(get_inspector)
 
         # 在同步lambda中传递inspector
-        db_table_names = await connection.run_sync(lambda conn: set(inspector.get_table_names(conn)))
+        db_table_names = await connection.run_sync(lambda conn: set(inspector.get_table_names()))
 
         # 1. 首先处理表的创建
         tables_to_create = []
@@ -60,7 +60,7 @@ async def check_and_migrate_database():
             try:
                 # 检查并添加缺失的列
                 db_columns = await connection.run_sync(
-                    lambda conn: {col["name"] for col in inspector.get_columns(table_name, conn)}
+                    lambda conn: {col["name"] for col in inspector.get_columns(table_name)}
                 )
                 model_columns = {col.name for col in table.c}
                 missing_columns = model_columns - db_columns
@@ -100,7 +100,7 @@ async def check_and_migrate_database():
 
                 # 检查并创建缺失的索引
                 db_indexes = await connection.run_sync(
-                    lambda conn: {idx["name"] for idx in inspector.get_indexes(table_name, conn)}
+                    lambda conn: {idx["name"] for idx in inspector.get_indexes(table_name)}
                 )
                 model_indexes = {idx.name for idx in table.indexes}
                 missing_indexes = model_indexes - db_indexes

@@ -249,7 +249,7 @@ class ChatManager:
             # 检查数据库中是否存在
             async def _db_find_stream_async(s_id: str):
                 async with get_db_session() as session:
-                    return (await session.execute(select(ChatStreams).where(ChatStreams.stream_id == s_id))).scalar()
+                    return (await session.execute(select(ChatStreams).where(ChatStreams.stream_id == s_id))).scalars().first()
 
             model_instance = await _db_find_stream_async(stream_id)
 
@@ -396,7 +396,7 @@ class ChatManager:
         async def _db_load_all_streams_async():
             loaded_streams_data = []
             async with get_db_session() as session:
-                for model_instance in (await session.execute(select(ChatStreams))).scalars():
+                for model_instance in (await session.execute(select(ChatStreams))).scalars().all():
                     user_info_data = {
                         "platform": model_instance.user_platform,
                         "user_id": model_instance.user_id,
