@@ -215,7 +215,7 @@ class PluginBase(ABC):
     def _generate_and_save_default_config(self, config_file_path: str):
         """根据插件的Schema生成并保存默认配置文件"""
         if not self.config_schema:
-            logger.debug(f"{self.log_prefix} 插件未定义config_schema，不生成配置文件")
+            logger.info(f"{self.log_prefix} 插件未定义config_schema，不生成配置文件")
             return
 
         toml_str = f"# {self.plugin_name} - 自动生成的配置文件\n"
@@ -479,6 +479,12 @@ class PluginBase(ABC):
 
         # 检查最终的用户配置文件是否存在
         if not os.path.exists(user_config_path):
+            # 如果插件没有定义config_schema，那么不创建文件是正常行为
+            if not self.config_schema:
+                logger.debug(f"{self.log_prefix} 插件未定义config_schema，使用空的配置.")
+                self.config = {}
+                return
+
             logger.warning(f"{self.log_prefix} 用户配置文件 {user_config_path} 不存在且无法创建。")
             return
 
