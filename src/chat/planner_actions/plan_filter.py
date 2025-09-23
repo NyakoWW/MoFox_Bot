@@ -28,7 +28,7 @@ from src.schedule.schedule_manager import schedule_manager
 logger = get_logger("plan_filter")
 
 
-class ChatterPlanFilter:
+class PlanFilter:
     """
     根据 Plan 中的模式和信息，筛选并决定最终的动作。
     """
@@ -321,7 +321,7 @@ class ChatterPlanFilter:
         interest_scores = {}
 
         try:
-            from src.plugins.built_in.affinity_flow_chatter.interest_scoring import chatter_interest_scoring_system as interest_scoring_system
+            from src.plugins.built_in.affinity_flow_chatter.interest_scoring import chatter_interest_scoring_system
             from src.common.data_models.database_data_model import DatabaseMessages
 
             # 转换消息格式
@@ -348,7 +348,7 @@ class ChatterPlanFilter:
             # 计算兴趣度评分
             if db_messages:
                 bot_nickname = global_config.bot.nickname or "麦麦"
-                scores = await interest_scoring_system.calculate_interest_scores(db_messages, bot_nickname)
+                scores = await chatter_interest_scoring_system.calculate_interest_scores(db_messages, bot_nickname)
 
                 # 构建兴趣度字典
                 for score in scores:
