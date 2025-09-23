@@ -443,8 +443,16 @@ class ChatterPlanFilter:
                     if target_message_id := action_data.get("target_message_id"):
                         target_message_dict = self._find_message_by_id(target_message_id, message_id_list)
                     else:
-                        # 如果LLM没有指定target_message_id，我们就默认选择最新的一条消息
-                        target_message_dict = self._get_latest_message(message_id_list)
+                        # 如果LLM没有指定target_message_id，进行特殊处理
+                        if action == "poke_user":
+                            # 对于poke_user，尝试找到触发它的那条戳一戳消息
+                            target_message_dict = self._find_poke_notice(message_id_list)
+                            if not target_message_dict:
+                                # 如果找不到，再使用最新消息作为兜底
+                                target_message_dict = self._get_latest_message(message_id_list)
+                        else:
+                            # 其他动作，默认选择最新的一条消息
+                            target_message_dict = self._get_latest_message(message_id_list)
 
                     if target_message_dict:
                         # 直接使用字典作为action_message，避免DatabaseMessages对象创建失败
@@ -466,7 +474,7 @@ class ChatterPlanFilter:
 
                 if (
                     action not in ["no_action", "no_reply", "reply", "do_nothing", "proactive_reply"]
-                    and action not in self.available_actions
+                    and action not in plan.available_actions
                 ):
                     reasoning = f"LLM 返回了当前不可用的动作 '{action}'。原始理由: {reasoning}"
                     action = "no_action"
@@ -586,3 +594,15 @@ class ChatterPlanFilter:
         if not message_id_list:
             return None
         return message_id_list[-1].get("message")
+
+    def _find_poke_notice(self, message_id_list: list) -> Optional[Dict[str, Any]]:
+        """在消息列表中寻找戳一戳的通知消息"""
+        for item in reversed(message_id_list):
+            message = item.get("message")
+            if (
+                isinstance(message, dict)
+                and message.get("type") == "notice"
+                and "戳" in message.get("processed_plain_text", "")
+            ):
+                return message
+        return None

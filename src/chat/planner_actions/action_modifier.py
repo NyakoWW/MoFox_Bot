@@ -125,7 +125,8 @@ class ActionModifier:
 
         # === 第二阶段：检查动作的关联类型 ===
         chat_context = self.chat_stream.context
-        type_mismatched_actions = self._check_action_associated_types(all_actions, chat_context)
+        current_actions_s2 = self.action_manager.get_using_actions()
+        type_mismatched_actions = self._check_action_associated_types(current_actions_s2, chat_context)
 
         if type_mismatched_actions:
             removals_s2.extend(type_mismatched_actions)
@@ -140,11 +141,12 @@ class ActionModifier:
             logger.debug(f"{self.log_prefix}开始激活类型判定阶段")
 
             # 获取当前使用的动作集（经过第一阶段处理）
-            current_using_actions = self.action_manager.get_using_actions()
+            # 在第三阶段开始前，再次获取最新的动作列表
+            current_actions_s3 = self.action_manager.get_using_actions()
 
             # 获取因激活类型判定而需要移除的动作
             removals_s3 = await self._get_deactivated_actions_by_type(
-                current_using_actions,
+                current_actions_s3,
                 chat_content,
             )
 
