@@ -23,7 +23,8 @@ class AntiInjectionStatistics:
         self.session_start_time = datetime.datetime.now()
         """当前会话开始时间"""
 
-    async def get_or_create_stats(self):
+    @staticmethod
+    async def get_or_create_stats():
         """获取或创建统计记录"""
         try:
             with get_db_session() as session:
@@ -32,14 +33,15 @@ class AntiInjectionStatistics:
                 if not stats:
                     stats = AntiInjectionStats()
                     session.add(stats)
-                    session.commit()
-                    session.refresh(stats)
+                    await session.commit()
+                    await session.refresh(stats)
                 return stats
         except Exception as e:
             logger.error(f"获取统计记录失败: {e}")
             return None
 
-    async def update_stats(self, **kwargs):
+    @staticmethod
+    async def update_stats(**kwargs):
         """更新统计数据"""
         try:
             with get_db_session() as session:
@@ -78,7 +80,7 @@ class AntiInjectionStatistics:
                             # 直接设置的字段
                             setattr(stats, key, value)
 
-                session.commit()
+                await session.commit()
         except Exception as e:
             logger.error(f"更新统计数据失败: {e}")
 
@@ -132,13 +134,14 @@ class AntiInjectionStatistics:
             logger.error(f"获取统计信息失败: {e}")
             return {"error": f"获取统计信息失败: {e}"}
 
-    async def reset_stats(self):
+    @staticmethod
+    async def reset_stats():
         """重置统计信息"""
         try:
             with get_db_session() as session:
                 # 删除现有统计记录
                 session.query(AntiInjectionStats).delete()
-                session.commit()
+                await session.commit()
                 logger.info("统计信息已重置")
         except Exception as e:
             logger.error(f"重置统计信息失败: {e}")

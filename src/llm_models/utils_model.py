@@ -202,7 +202,7 @@ class LLMRequest:
             content, extracted_reasoning = self._extract_reasoning(content)
             reasoning_content = extracted_reasoning
         if usage := response.usage:
-            llm_usage_recorder.record_usage_to_database(
+            await llm_usage_recorder.record_usage_to_database(
                 model_info=model_info,
                 model_usage=usage,
                 user_id="system",
@@ -367,7 +367,7 @@ class LLMRequest:
 
                     # 成功获取响应
                     if usage := response.usage:
-                        llm_usage_recorder.record_usage_to_database(
+                        await llm_usage_recorder.record_usage_to_database(
                             model_info=model_info,
                             model_usage=usage,
                             time_cost=time.time() - start_time,
@@ -442,7 +442,7 @@ class LLMRequest:
         embedding = response.embedding
 
         if usage := response.usage:
-            llm_usage_recorder.record_usage_to_database(
+            await llm_usage_recorder.record_usage_to_database(
                 model_info=model_info,
                 time_cost=time.time() - start_time,
                 model_usage=usage,
@@ -625,9 +625,9 @@ class LLMRequest:
             logger.error(f"任务-'{task_name}' 模型-'{model_name}': 未知异常，错误信息-{str(e)}")
             return -1, None  # 不再重试请求该模型
 
+    @staticmethod
     def _check_retry(
-        self,
-        remain_try: int,
+            remain_try: int,
         retry_interval: int,
         can_retry_msg: str,
         cannot_retry_msg: str,
@@ -745,7 +745,8 @@ class LLMRequest:
             )
             return -1, None
 
-    def _build_tool_options(self, tools: Optional[List[Dict[str, Any]]]) -> Optional[List[ToolOption]]:
+    @staticmethod
+    def _build_tool_options(tools: Optional[List[Dict[str, Any]]]) -> Optional[List[ToolOption]]:
         # sourcery skip: extract-method
         """构建工具选项列表"""
         if not tools:
@@ -809,7 +810,8 @@ class LLMRequest:
 
         return final_text
 
-    def _inject_random_noise(self, text: str, intensity: int) -> str:
+    @staticmethod
+    def _inject_random_noise(text: str, intensity: int) -> str:
         """在文本中注入随机乱码"""
         import random
         import string

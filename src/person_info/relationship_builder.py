@@ -113,7 +113,7 @@ class RelationshipBuilder:
     # 负责跟踪用户消息活动、管理消息段、清理过期数据
     # ================================
 
-    def _update_message_segments(self, person_id: str, message_time: float):
+    async def _update_message_segments(self, person_id: str, message_time: float):
         """更新用户的消息段
 
         Args:
@@ -126,11 +126,8 @@ class RelationshipBuilder:
         segments = self.person_engaged_cache[person_id]
 
         # 获取该消息前5条消息的时间作为潜在的开始时间
-        before_messages = get_raw_msg_before_timestamp_with_chat(self.chat_id, message_time, limit=5)
-        if before_messages:
-            potential_start_time = before_messages[0]["time"]
-        else:
-            potential_start_time = message_time
+        before_messages = await get_raw_msg_before_timestamp_with_chat(self.chat_id, message_time, limit=5)
+        potential_start_time = before_messages[0]["time"] if before_messages else message_time
 
         # 如果没有现有消息段，创建新的
         if not segments:
@@ -138,11 +135,10 @@ class RelationshipBuilder:
                 "start_time": potential_start_time,
                 "end_time": message_time,
                 "last_msg_time": message_time,
-                "message_count": self._count_messages_in_timerange(potential_start_time, message_time),
+                "message_count": await self._count_messages_in_timerange(potential_start_time, message_time),
             }
             segments.append(new_segment)
-
-            person_name = get_person_info_manager().get_value_sync(person_id, "person_name") or person_id
+            person_name = get_person_info_manager().get_value(person_id, "person_name") or person_id
             logger.debug(
                 f"{self.log_prefix} 眼熟用户 {person_name} 在 {time.strftime('%H:%M:%S', time.localtime(potential_start_time))} - {time.strftime('%H:%M:%S', time.localtime(message_time))} 之间有 {new_segment['message_count']} 条消息"
             )
@@ -153,57 +149,50 @@ class RelationshipBuilder:
         last_segment = segments[-1]
 
         # 计算从最后一条消息到当前消息之间的消息数量（不包含边界）
-        messages_between = self._count_messages_between(last_segment["last_msg_time"], message_time)
+        messages_between = await self._count_messages_between(last_segment["last_msg_time"], message_time)
 
         if messages_between <= 10:
-            # 在10条消息内，延伸当前消息段
             last_segment["end_time"] = message_time
             last_segment["last_msg_time"] = message_time
-            # 重新计算整个消息段的消息数量
-            last_segment["message_count"] = self._count_messages_in_timerange(
+            last_segment["message_count"] = await self._count_messages_in_timerange(
                 last_segment["start_time"], last_segment["end_time"]
             )
             logger.debug(f"{self.log_prefix} 延伸用户 {person_id} 的消息段: {last_segment}")
         else:
-            # 超过10条消息，结束当前消息段并创建新的
-            # 结束当前消息段：延伸到原消息段最后一条消息后5条消息的时间
             current_time = time.time()
-            after_messages = get_raw_msg_by_timestamp_with_chat(
+            after_messages = await get_raw_msg_by_timestamp_with_chat(
                 self.chat_id, last_segment["last_msg_time"], current_time, limit=5, limit_mode="earliest"
             )
             if after_messages and len(after_messages) >= 5:
-                # 如果有足够的后续消息，使用第5条消息的时间作为结束时间
                 last_segment["end_time"] = after_messages[4]["time"]
 
-            # 重新计算当前消息段的消息数量
-            last_segment["message_count"] = self._count_messages_in_timerange(
+            last_segment["message_count"] = await self._count_messages_in_timerange(
                 last_segment["start_time"], last_segment["end_time"]
             )
 
-            # 创建新的消息段
             new_segment = {
                 "start_time": potential_start_time,
                 "end_time": message_time,
                 "last_msg_time": message_time,
-                "message_count": self._count_messages_in_timerange(potential_start_time, message_time),
+                "message_count": await self._count_messages_in_timerange(potential_start_time, message_time),
             }
             segments.append(new_segment)
             person_info_manager = get_person_info_manager()
-            person_name = person_info_manager.get_value_sync(person_id, "person_name") or person_id
+            person_name = person_info_manager.get_value(person_id, "person_name") or person_id
             logger.debug(
                 f"{self.log_prefix} 重新眼熟用户 {person_name} 创建新消息段（超过10条消息间隔）: {new_segment}"
             )
 
         self._save_cache()
 
-    def _count_messages_in_timerange(self, start_time: float, end_time: float) -> int:
+    async def _count_messages_in_timerange(self, start_time: float, end_time: float) -> int:
         """计算指定时间范围内的消息数量（包含边界）"""
-        messages = get_raw_msg_by_timestamp_with_chat_inclusive(self.chat_id, start_time, end_time)
+        messages = await get_raw_msg_by_timestamp_with_chat_inclusive(self.chat_id, start_time, end_time)
         return len(messages)
 
-    def _count_messages_between(self, start_time: float, end_time: float) -> int:
+    async def _count_messages_between(self, start_time: float, end_time: float) -> int:
         """计算两个时间点之间的消息数量（不包含边界），用于间隔检查"""
-        return num_new_messages_since(self.chat_id, start_time, end_time)
+        return await num_new_messages_since(self.chat_id, start_time, end_time)
 
     def _get_total_message_count(self, person_id: str) -> int:
         """获取用户所有消息段的总消息数量"""
@@ -314,18 +303,12 @@ class RelationshipBuilder:
         if not self.person_engaged_cache:
             return f"{self.log_prefix} 关系缓存为空"
 
-        status_lines = [f"{self.log_prefix} 关系缓存状态："]
-        status_lines.append(
-            f"最后处理消息时间：{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.last_processed_message_time)) if self.last_processed_message_time > 0 else '未设置'}"
-        )
-        status_lines.append(
-            f"最后清理时间：{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.last_cleanup_time)) if self.last_cleanup_time > 0 else '未执行'}"
-        )
-        status_lines.append(f"总用户数：{len(self.person_engaged_cache)}")
-        status_lines.append(
-            f"清理配置：{'启用' if SEGMENT_CLEANUP_CONFIG['enable_cleanup'] else '禁用'} (最大保存{SEGMENT_CLEANUP_CONFIG['max_segment_age_days']}天, 每用户最多{SEGMENT_CLEANUP_CONFIG['max_segments_per_user']}段)"
-        )
-        status_lines.append("")
+        status_lines = [f"{self.log_prefix} 关系缓存状态：",
+                        f"最后处理消息时间：{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.last_processed_message_time)) if self.last_processed_message_time > 0 else '未设置'}",
+                        f"最后清理时间：{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.last_cleanup_time)) if self.last_cleanup_time > 0 else '未执行'}",
+                        f"总用户数：{len(self.person_engaged_cache)}",
+                        f"清理配置：{'启用' if SEGMENT_CLEANUP_CONFIG['enable_cleanup'] else '禁用'} (最大保存{SEGMENT_CLEANUP_CONFIG['max_segment_age_days']}天, 每用户最多{SEGMENT_CLEANUP_CONFIG['max_segments_per_user']}段)",
+                        ""]
 
         for person_id, segments in self.person_engaged_cache.items():
             total_count = self._get_total_message_count(person_id)
@@ -356,7 +339,7 @@ class RelationshipBuilder:
         self._cleanup_old_segments()
         current_time = time.time()
 
-        if latest_messages := get_raw_msg_by_timestamp_with_chat(
+        if latest_messages := await get_raw_msg_by_timestamp_with_chat(
             self.chat_id,
             self.last_processed_message_time,
             current_time,
@@ -375,7 +358,7 @@ class RelationshipBuilder:
                     and msg_time > self.last_processed_message_time
                 ):
                     person_id = PersonInfoManager.get_person_id(platform, user_id)
-                    self._update_message_segments(person_id, msg_time)
+                    await self._update_message_segments(person_id, msg_time)
                     logger.debug(
                         f"{self.log_prefix} 更新用户 {person_id} 的消息段，消息时间：{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(msg_time))}"
                     )
@@ -385,8 +368,8 @@ class RelationshipBuilder:
         users_to_build_relationship = []
         for person_id, segments in self.person_engaged_cache.items():
             total_message_count = self._get_total_message_count(person_id)
-            person_name = get_person_info_manager().get_value_sync(person_id, "person_name") or person_id
-
+            person_name = get_person_info_manager().get_value(person_id, "person_name") or person_id
+ 
             if total_message_count >= max_build_threshold or (
                 total_message_count >= 5 and (immediate_build == person_id or immediate_build == "all")
             ):
@@ -445,7 +428,7 @@ class RelationshipBuilder:
                 start_date = time.strftime("%Y-%m-%d %H:%M", time.localtime(start_time))
 
                 # 获取该段的消息（包含边界）
-                segment_messages = get_raw_msg_by_timestamp_with_chat_inclusive(self.chat_id, start_time, end_time)
+                segment_messages = await get_raw_msg_by_timestamp_with_chat_inclusive(self.chat_id, start_time, end_time)
                 logger.debug(
                     f"消息段: {start_date} - {time.strftime('%Y-%m-%d %H:%M', time.localtime(end_time))}, 消息数: {len(segment_messages)}"
                 )

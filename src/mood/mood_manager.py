@@ -98,14 +98,14 @@ class ChatMood:
         )
 
         message_time: float = message.message_info.time  # type: ignore
-        message_list_before_now = get_raw_msg_by_timestamp_with_chat_inclusive(
+        message_list_before_now = await get_raw_msg_by_timestamp_with_chat_inclusive(
             chat_id=self.chat_id,
             timestamp_start=self.last_change_time,
             timestamp_end=message_time,
             limit=int(global_config.chat.max_context_size / 3),
             limit_mode="last",
         )
-        chat_talking_prompt = build_readable_messages(
+        chat_talking_prompt = await build_readable_messages(
             message_list_before_now,
             replace_bot_name=True,
             merge_messages=False,
@@ -147,14 +147,14 @@ class ChatMood:
 
     async def regress_mood(self):
         message_time = time.time()
-        message_list_before_now = get_raw_msg_by_timestamp_with_chat_inclusive(
+        message_list_before_now = await get_raw_msg_by_timestamp_with_chat_inclusive(
             chat_id=self.chat_id,
             timestamp_start=self.last_change_time,
             timestamp_end=message_time,
             limit=15,
             limit_mode="last",
         )
-        chat_talking_prompt = build_readable_messages(
+        chat_talking_prompt = await build_readable_messages(
             message_list_before_now,
             replace_bot_name=True,
             merge_messages=False,

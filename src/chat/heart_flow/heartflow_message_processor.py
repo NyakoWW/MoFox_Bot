@@ -1,22 +1,20 @@
 import asyncio
-import re
 import math
+import re
 import traceback
-from datetime import datetime
-
 from typing import Tuple, TYPE_CHECKING
 
-from src.config.config import global_config
+from src.chat.heart_flow.heartflow import heartflow
 from src.chat.memory_system.Hippocampus import hippocampus_manager
 from src.chat.message_receive.message import MessageRecv
 from src.chat.message_receive.storage import MessageStorage
-from src.chat.heart_flow.heartflow import heartflow
-from src.chat.utils.utils import is_mentioned_bot_in_message
-from src.chat.utils.timer_calculator import Timer
 from src.chat.utils.chat_message_builder import replace_user_references_sync
+from src.chat.utils.timer_calculator import Timer
+from src.chat.utils.utils import is_mentioned_bot_in_message
 from src.common.logger import get_logger
-from src.person_info.relationship_manager import get_relationship_manager
+from src.config.config import global_config
 from src.mood.mood_manager import mood_manager
+from src.person_info.relationship_manager import get_relationship_manager
 
 if TYPE_CHECKING:
     from src.chat.heart_flow.sub_heartflow import SubHeartflow
@@ -139,7 +137,7 @@ class HeartFCMessageReceiver:
 
             subheartflow: SubHeartflow = await heartflow.get_or_create_subheartflow(chat.stream_id)  # type: ignore
 
-            # subheartflow.add_message_to_normal_chat_cache(message, interested_rate, is_mentioned)
+            await subheartflow.heart_fc_instance.add_message(message.to_dict())
             if global_config.mood.enable_mood:
                 chat_mood = mood_manager.get_mood_by_chat_id(subheartflow.chat_id)
                 asyncio.create_task(chat_mood.update_mood_by_message(message, interested_rate))

@@ -106,7 +106,8 @@ class InstantMemory:
         else:
             logger.info(f"不需要记忆：{text}")
 
-    async def store_memory(self, memory_item: MemoryItem):
+    @staticmethod
+    async def store_memory(memory_item: MemoryItem):
         with get_db_session() as session:
             memory = Memory(
                 memory_id=memory_item.memory_id,
@@ -117,7 +118,7 @@ class InstantMemory:
                 last_view_time=memory_item.last_view_time,
             )
             session.add(memory)
-            session.commit()
+            await session.commit()
 
     async def get_memory(self, target: str):
         from json_repair import repair_json
@@ -198,7 +199,8 @@ class InstantMemory:
             logger.error(f"获取记忆出现错误：{str(e)} {traceback.format_exc()}")
             return None
 
-    def _parse_time_range(self, time_str):
+    @staticmethod
+    def _parse_time_range(time_str):
         # sourcery skip: extract-duplicate-method, use-contextlib-suppress
         """
         支持解析如下格式：

@@ -2,19 +2,18 @@ import time
 import traceback
 from typing import TYPE_CHECKING, Dict, Any
 
+from src.chat.utils.chat_message_builder import get_raw_msg_before_timestamp_with_chat, build_readable_messages_with_id
+from src.common.database.sqlalchemy_database_api import store_action_info
 from src.common.logger import get_logger
-from src.plugin_system.base.component_types import ChatMode
-from ..hfc_context import HfcContext
-from .events import ProactiveTriggerEvent
+from src.config.config import global_config
+from src.mood.mood_manager import mood_manager
+from src.plugin_system import tool_api
 from src.plugin_system.apis import generator_api
 from src.plugin_system.apis.generator_api import process_human_text
+from src.plugin_system.base.component_types import ChatMode
 from src.schedule.schedule_manager import schedule_manager
-from src.plugin_system import tool_api
-from src.config.config import global_config
-from src.chat.utils.chat_message_builder import get_raw_msg_before_timestamp_with_chat, build_readable_messages_with_id
-from src.mood.mood_manager import mood_manager
-from src.common.database.sqlalchemy_database_api import store_action_info, db_get
-from src.common.database.sqlalchemy_models import Messages
+from .events import ProactiveTriggerEvent
+from ..hfc_context import HfcContext
 
 if TYPE_CHECKING:
     from ..cycle_processor import CycleProcessor
@@ -121,6 +120,10 @@ class ProactiveThinker:
                 action_result = actions[0] if actions else {}
                 action_type = action_result.get("action_type")
 
+                if action_type is None:
+                    logger.info(f"{self.context.log_prefix} 主动思考决策: 规划器未返回有效动作")
+                    return
+
                 if action_type == "proactive_reply":
                     await self._generate_proactive_content_and_send(action_result, trigger_event)
                 elif action_type not in ["do_nothing", "no_action"]:
@@ -213,12 +216,12 @@ class ProactiveThinker:
                             logger.warning(f"{self.context.log_prefix} 主题为空，跳过网络搜索。")
                     except Exception as e:
                         logger.error(f"{self.context.log_prefix} 主动思考时网络搜索失败: {e}")
-                message_list = get_raw_msg_before_timestamp_with_chat(
+                message_list = await get_raw_msg_before_timestamp_with_chat(
                     chat_id=self.context.stream_id,
                     timestamp=time.time(),
                     limit=int(global_config.chat.max_context_size * 0.3),
                 )
-                chat_context_block, _ = build_readable_messages_with_id(messages=message_list)
+                chat_context_block, _ = await build_readable_messages_with_id(messages=message_list)
 
             from src.llm_models.utils_model import LLMRequest
             from src.config.config import model_config

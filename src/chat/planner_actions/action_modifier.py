@@ -97,12 +97,12 @@ class ActionModifier:
             for action_name, reason in chat_type_removals:
                 logger.debug(f"{self.log_prefix} - 移除 {action_name}: {reason}")
 
-        message_list_before_now_half = get_raw_msg_before_timestamp_with_chat(
+        message_list_before_now_half = await get_raw_msg_before_timestamp_with_chat(
             chat_id=self.chat_stream.stream_id,
             timestamp=time.time(),
             limit=min(int(global_config.chat.max_context_size * 0.33), 10),
         )
-        chat_content = build_readable_messages(
+        chat_content = await build_readable_messages(
             message_list_before_now_half,
             replace_bot_name=True,
             merge_messages=False,
@@ -243,7 +243,8 @@ class ActionModifier:
 
         return deactivated_actions
 
-    def _generate_context_hash(self, chat_content: str) -> str:
+    @staticmethod
+    def _generate_context_hash(chat_content: str) -> str:
         """生成上下文的哈希值用于缓存"""
         context_content = f"{chat_content}"
         return hashlib.md5(context_content.encode("utf-8")).hexdigest()

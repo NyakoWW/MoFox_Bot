@@ -118,7 +118,7 @@ class RelationshipManager:
                 name_mapping[replace_person_name] = f"用户{current_user}{user_count if user_count > 1 else ''}"
                 current_user = chr(ord(current_user) + 1)
 
-        readable_messages = build_readable_messages(
+        readable_messages = await build_readable_messages(
             messages=user_messages, replace_bot_name=True, timestamp_mode="normal_no_YMD", truncate=True
         )
 
@@ -492,7 +492,8 @@ class RelationshipManager:
 
         return current_points
 
-    def calculate_time_weight(self, point_time: str, current_time: str) -> float:
+    @staticmethod
+    def calculate_time_weight(point_time: str, current_time: str) -> float:
         """计算基于时间的权重系数"""
         try:
             point_timestamp = datetime.strptime(point_time, "%Y-%m-%d %H:%M:%S")
@@ -516,7 +517,8 @@ class RelationshipManager:
             logger.error(f"计算时间权重失败: {e}")
             return 0.5  # 发生错误时返回中等权重
 
-    def tfidf_similarity(self, s1, s2):
+    @staticmethod
+    def tfidf_similarity(s1, s2):
         """
         使用 TF-IDF 和余弦相似度计算两个句子的相似性。
         """
@@ -551,7 +553,8 @@ class RelationshipManager:
         # 返回 s1 和 s2 的相似度
         return similarity_matrix[0, 1]
 
-    def sequence_similarity(self, s1, s2):
+    @staticmethod
+    def sequence_similarity(s1, s2):
         """
         使用 SequenceMatcher 计算两个句子的相似性。
         """

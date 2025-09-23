@@ -122,10 +122,10 @@ class EmojiAction(BaseAction):
                     emoji_base64, emoji_description = random.choice(all_emojis_data)
                 else:
                     # 获取最近的5条消息内容用于判断
-                    recent_messages = message_api.get_recent_messages(chat_id=self.chat_id, limit=5)
+                    recent_messages = await message_api.get_recent_messages(chat_id=self.chat_id, limit=5)
                     messages_text = ""
                     if recent_messages:
-                        messages_text = message_api.build_readable_messages(
+                        messages_text = await message_api.build_readable_messages(
                             messages=recent_messages,
                             timestamp_mode="normal_no_YMD",
                             truncate=False,
@@ -181,10 +181,10 @@ class EmojiAction(BaseAction):
             elif global_config.emoji.emoji_selection_mode == "description":
                 # --- 详细描述选择模式 ---
                 # 获取最近的5条消息内容用于判断
-                recent_messages = message_api.get_recent_messages(chat_id=self.chat_id, limit=5)
+                recent_messages = await message_api.get_recent_messages(chat_id=self.chat_id, limit=5)
                 messages_text = ""
                 if recent_messages:
-                    messages_text = message_api.build_readable_messages(
+                    messages_text = await message_api.build_readable_messages(
                         messages=recent_messages,
                         timestamp_mode="normal_no_YMD",
                         truncate=False,

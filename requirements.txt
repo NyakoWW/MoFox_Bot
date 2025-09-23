@@ -1,4 +1,6 @@
 sqlalchemy
+aiosqlite
+aiomysql
 APScheduler
 aiohttp
 aiohttp-cors
@@ -68,3 +70,4 @@ lunar_python
 fuzzywuzzy
 python-multipart
 aiofiles
+inkfox

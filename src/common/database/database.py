@@ -25,27 +25,39 @@ class DatabaseProxy:
         self._engine = None
         self._session = None
 
-    def initialize(self, *args, **kwargs):
+    @staticmethod
+    def initialize(*args, **kwargs):
         """初始化数据库连接"""
         return initialize_database_compat()
 
 
 class SQLAlchemyTransaction:
-    """SQLAlchemy事务上下文管理器"""
+    """SQLAlchemy 异步事务上下文管理器 (兼容旧代码示例，推荐直接使用 get_db_session)。"""
 
     def __init__(self):
+        self._ctx = None
         self.session = None
 
-    def __enter__(self):
-        self.session = get_db_session()
+    async def __aenter__(self):
+        # get_db_session 是一个 async contextmanager
+        self._ctx = get_db_session()
+        self.session = await self._ctx.__aenter__()
         return self.session
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is None:
-            self.session.commit()
-        else:
-            self.session.rollback()
-        self.session.close()
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        try:
+            if self.session:
+                if exc_type is None:
+                    try:
+                        await self.session.commit()
+                    except Exception:
+                        await self.session.rollback()
+                        raise
+                else:
+                    await self.session.rollback()
+        finally:
+            if self._ctx:
+                await self._ctx.__aexit__(exc_type, exc_val, exc_tb)
 
 
 # 创建全局数据库代理实例
@@ -89,7 +101,7 @@ def get_db():
     return _db
 
 
-def initialize_sql_database(database_config):
+async def initialize_sql_database(database_config):
     """
     根据配置初始化SQL数据库连接（SQLAlchemy版本）
 
@@ -119,7 +131,7 @@ def initialize_sql_database(database_config):
         # 使用SQLAlchemy初始化
         success = initialize_database_compat()
         if success:
-            _sql_engine = get_engine()
+            _sql_engine = await get_engine()
             logger.info("SQLAlchemy数据库初始化成功")
         else:
             logger.error("SQLAlchemy数据库初始化失败")

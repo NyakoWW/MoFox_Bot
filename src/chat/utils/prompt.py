@@ -215,6 +215,10 @@ class PromptManager:
         result = prompt.format(**kwargs)
         return result
 
+    @property
+    def context(self):
+        return self._context
+
 
 # 全局单例
 global_prompt_manager = PromptManager()
@@ -256,7 +260,7 @@ class Prompt:
         self._processed_template = self._process_escaped_braces(template)
         
         # 自动注册
-        if should_register and not global_prompt_manager._context._current_context:
+        if should_register and not global_prompt_manager.context._current_context:
             global_prompt_manager.register(self)
     
     @staticmethod
@@ -459,8 +463,9 @@ class Prompt:
         context_data["chat_info"] = f"""群里的聊天内容：
 {self.parameters.chat_talking_prompt_short}"""
     
+    @staticmethod
     async def _build_s4u_chat_history_prompts(
-        self, message_list_before_now: List[Dict[str, Any]], target_user_id: str, sender: str
+            message_list_before_now: List[Dict[str, Any]], target_user_id: str, sender: str
     ) -> Tuple[str, str]:
         """构建S4U风格的分离对话prompt"""
         # 实现逻辑与原有SmartPromptBuilder相同
@@ -481,7 +486,7 @@ class Prompt:
         all_dialogue_prompt = ""
         if message_list_before_now:
             latest_25_msgs = message_list_before_now[-int(global_config.chat.max_context_size) :]
-            all_dialogue_prompt_str = build_readable_messages(
+            all_dialogue_prompt_str = await build_readable_messages(
                 latest_25_msgs,
                 replace_bot_name=True,
                 timestamp_mode="normal",
@@ -500,7 +505,7 @@ class Prompt:
             else:
                 core_dialogue_list = core_dialogue_list[-int(global_config.chat.max_context_size * 2) :]
                 
-                core_dialogue_prompt_str = build_readable_messages(
+                core_dialogue_prompt_str = await build_readable_messages(
                     core_dialogue_list,
                     replace_bot_name=True,
                     merge_messages=False,
@@ -529,7 +534,7 @@ class Prompt:
             chat_history = ""
             if self.parameters.message_list_before_now_long:
                 recent_messages = self.parameters.message_list_before_now_long[-10:]
-                chat_history = build_readable_messages(
+                chat_history = await build_readable_messages(
                     recent_messages,
                     replace_bot_name=True,
                     timestamp_mode="normal",
@@ -537,14 +542,10 @@ class Prompt:
                 )
             
             # 创建表情选择器
-            expression_selector = ExpressionSelector(self.parameters.chat_id)
+            expression_selector = ExpressionSelector()
             
             # 选择合适的表情
             selected_expressions = await expression_selector.select_suitable_expressions_llm(
-                chat_history=chat_history,
-                current_message=self.parameters.target,
-                emotional_tone="neutral",
-                topic_type="general"
             )
             
             # 构建表达习惯块
@@ -573,7 +574,7 @@ class Prompt:
             chat_history = ""
             if self.parameters.message_list_before_now_long:
                 recent_messages = self.parameters.message_list_before_now_long[-20:]
-                chat_history = build_readable_messages(
+                chat_history = await build_readable_messages(
                     recent_messages,
                     replace_bot_name=True,
                     timestamp_mode="normal",
@@ -631,7 +632,7 @@ class Prompt:
             chat_history = ""
             if self.parameters.message_list_before_now_long:
                 recent_messages = self.parameters.message_list_before_now_long[-15:]
-                chat_history = build_readable_messages(
+                chat_history = await build_readable_messages(
                     recent_messages,
                     replace_bot_name=True,
                     timestamp_mode="normal",
@@ -964,7 +965,7 @@ class Prompt:
         person_info_manager = get_person_info_manager()
         person_id = person_info_manager.get_person_id_by_person_name(sender)
         if person_id:
-            user_id = person_info_manager.get_value_sync(person_id, "user_id")
+            user_id = person_info_manager.get_value(person_id, "user_id")
             return str(user_id) if user_id else ""
 
         return ""
@@ -991,7 +992,7 @@ async def create_prompt_async(
 ) -> Prompt:
     """异步创建Prompt实例"""
     prompt = create_prompt(template, name, parameters, **kwargs)
-    if global_prompt_manager._context._current_context:
-        await global_prompt_manager._context.register_async(prompt)
+    if global_prompt_manager.context._current_context:
+        await global_prompt_manager.context.register_async(prompt)
     return prompt
 

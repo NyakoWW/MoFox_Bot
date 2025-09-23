@@ -1,21 +1,23 @@
-import time
-import urllib3
 import base64
-
-from abc import abstractmethod
+import time
+from abc import abstractmethod, ABCMeta
 from dataclasses import dataclass
-from rich.traceback import install
-from typing import Optional, Any
-from maim_message import Seg, UserInfo, BaseMessageInfo, MessageBase
+from typing import Optional, Any, TYPE_CHECKING
 
-from src.common.logger import get_logger
+import urllib3
+from maim_message import Seg, UserInfo, BaseMessageInfo, MessageBase
+from rich.traceback import install
+
 from src.chat.utils.utils_image import get_image_manager
-from src.chat.utils.utils_voice import get_voice_text
 from src.chat.utils.utils_video import get_video_analyzer, is_video_analysis_available
+from src.chat.utils.utils_voice import get_voice_text
+from src.common.logger import get_logger
 from src.config.config import global_config
-from .chat_stream import ChatStream
+from src.chat.message_receive.chat_stream import ChatStream
+
 
 install(extra_lines=3)
+
 
 logger = get_logger("chat_message")
 
@@ -28,7 +30,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 @dataclass
-class Message(MessageBase):
+class Message(MessageBase, metaclass=ABCMeta):
     chat_stream: "ChatStream" = None  # type: ignore
     reply: Optional["Message"] = None
     processed_plain_text: str = ""
@@ -102,10 +104,17 @@ class MessageRecv(Message):
         Args:
             message_dict: MessageCQ序列化后的字典
         """
+        # Manually initialize attributes from MessageBase and Message
         self.message_info = BaseMessageInfo.from_dict(message_dict.get("message_info", {}))
         self.message_segment = Seg.from_dict(message_dict.get("message_segment", {}))
         self.raw_message = message_dict.get("raw_message")
+        
+        self.chat_stream = None
+        self.reply = None
         self.processed_plain_text = message_dict.get("processed_plain_text", "")
+        self.memorized_times = 0
+
+        # MessageRecv specific attributes
         self.is_emoji = False
         self.has_emoji = False
         self.is_picid = False

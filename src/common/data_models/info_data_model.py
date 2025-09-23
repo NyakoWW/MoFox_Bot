@@ -1,10 +1,10 @@
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, TYPE_CHECKING
+
 from . import BaseDataModel
 
 if TYPE_CHECKING:
-    from .database_data_model import DatabaseMessages
-    from src.plugin_system.base.component_types import ActionInfo, ChatMode
+    pass
 
 
 @dataclass
@@ -21,7 +21,7 @@ class ActionPlannerInfo(BaseDataModel):
     action_type: str = field(default_factory=str)
     reasoning: Optional[str] = None
     action_data: Optional[Dict] = None
-    action_message: Optional["DatabaseMessages"] = None
+    action_message: Optional[Dict] = None
     available_actions: Optional[Dict[str, "ActionInfo"]] = None
 
 

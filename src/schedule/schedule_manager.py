@@ -3,6 +3,8 @@ import asyncio
 from datetime import datetime, time, timedelta
 from typing import Optional, List, Dict, Any
 
+from sqlalchemy import select
+
 from src.common.database.sqlalchemy_models import Schedule, get_db_session
 from src.config.config import global_config
 from src.common.logger import get_logger
@@ -23,6 +25,13 @@ class ScheduleManager:
         self.daily_task_started = False
         self.schedule_generation_running = False
 
+    async def initialize(self):
+        if global_config.planning_system.schedule_enable:
+            logger.info("日程表功能已启用，正在初始化管理器...")
+            await self.load_or_generate_today_schedule()
+            await self.start_daily_schedule_generation()
+            logger.info("日程表管理器初始化成功。")
+
     async def start_daily_schedule_generation(self):
         if not self.daily_task_started:
             logger.info("正在启动每日日程生成任务...")
@@ -40,7 +49,7 @@ class ScheduleManager:
 
         today_str = datetime.now().strftime("%Y-%m-%d")
         try:
-            schedule_data = self._load_schedule_from_db(today_str)
+            schedule_data = await self._load_schedule_from_db(today_str)
             if schedule_data:
                 self.today_schedule = schedule_data
                 self._log_loaded_schedule(today_str)
@@ -54,9 +63,10 @@ class ScheduleManager:
             logger.info("尝试生成日程作为备用方案...")
             await self.generate_and_save_schedule()
 
-    def _load_schedule_from_db(self, date_str: str) -> Optional[List[Dict[str, Any]]]:
-        with get_db_session() as session:
-            schedule_record = session.query(Schedule).filter(Schedule.date == date_str).first()
+    async def _load_schedule_from_db(self, date_str: str) -> Optional[List[Dict[str, Any]]]:
+        async with get_db_session() as session:
+            result = await session.execute(select(Schedule).filter(Schedule.date == date_str))
+            schedule_record = result.scalars().first()
             if schedule_record:
                 logger.info(f"从数据库加载今天的日程 ({date_str})。")
                 schedule_data = orjson.loads(str(schedule_record.schedule_data))
@@ -90,37 +100,39 @@ class ScheduleManager:
             sampled_plans = []
             if global_config.planning_system.monthly_plan_enable:
                 await self.plan_manager.ensure_and_generate_plans_if_needed(current_month_str)
-                sampled_plans = self.plan_manager.get_plans_for_schedule(current_month_str, max_count=3)
+                sampled_plans = await self.plan_manager.get_plans_for_schedule(current_month_str, max_count=3)
 
             schedule_data = await self.llm_generator.generate_schedule_with_llm(sampled_plans)
 
             if schedule_data:
-                self._save_schedule_to_db(today_str, schedule_data)
+                await self._save_schedule_to_db(today_str, schedule_data)
                 self.today_schedule = schedule_data
                 self._log_generated_schedule(today_str, schedule_data)
 
                 if sampled_plans:
                     used_plan_ids = [plan.id for plan in sampled_plans]
                     logger.info(f"更新使用过的月度计划 {used_plan_ids} 的统计信息。")
-                    update_plan_usage(used_plan_ids, today_str)
+                    await update_plan_usage(used_plan_ids, today_str)
         finally:
             self.schedule_generation_running = False
             logger.info("日程生成任务结束")
 
-    def _save_schedule_to_db(self, date_str: str, schedule_data: List[Dict[str, Any]]):
-        with get_db_session() as session:
+    @staticmethod
+    async def _save_schedule_to_db(date_str: str, schedule_data: List[Dict[str, Any]]):
+        async with get_db_session() as session:
             schedule_json = orjson.dumps(schedule_data).decode("utf-8")
-            existing_schedule = session.query(Schedule).filter(Schedule.date == date_str).first()
+            result = await session.execute(select(Schedule).filter(Schedule.date == date_str))
+            existing_schedule = result.scalars().first()
             if existing_schedule:
-                session.query(Schedule).filter(Schedule.date == date_str).update(
-                    {Schedule.schedule_data: schedule_json, Schedule.updated_at: datetime.now()}
-                )
+                existing_schedule.schedule_data = schedule_json
+                existing_schedule.updated_at = datetime.now()
             else:
                 new_schedule = Schedule(date=date_str, schedule_data=schedule_json)
                 session.add(new_schedule)
-            session.commit()
+            await session.commit()
 
-    def _log_generated_schedule(self, date_str: str, schedule_data: List[Dict[str, Any]]):
+    @staticmethod
+    def _log_generated_schedule(date_str: str, schedule_data: List[Dict[str, Any]]):
         schedule_str = f"✅ 成功生成并保存今天的日程 ({date_str})：\n"
         for item in schedule_data:
             schedule_str += f"  - {item.get('time_range', '未知时间')}: {item.get('activity', '未知活动')}\n"
@@ -145,7 +157,8 @@ class ScheduleManager:
                 logger.warning(f"解析日程事件失败: {event}, 错误: {e}")
         return None
 
-    def _validate_schedule_with_pydantic(self, schedule_data) -> bool:
+    @staticmethod
+    def _validate_schedule_with_pydantic(schedule_data) -> bool:
         try:
             ScheduleData(schedule=schedule_data)
             return True

@@ -124,7 +124,8 @@ class ChatMood:
         # 发送初始情绪状态到ws端
         asyncio.create_task(self.send_emotion_update(self.mood_values))
 
-    def _parse_numerical_mood(self, response: str) -> dict[str, int] | None:
+    @staticmethod
+    def _parse_numerical_mood(response: str) -> dict[str, int] | None:
         try:
             # The LLM might output markdown with json inside
             if "```json" in response:
@@ -159,14 +160,14 @@ class ChatMood:
         self.regression_count = 0
 
         message_time: float = message.message_info.time  # type: ignore
-        message_list_before_now = get_raw_msg_by_timestamp_with_chat_inclusive(
+        message_list_before_now = await get_raw_msg_by_timestamp_with_chat_inclusive(
             chat_id=self.chat_id,
             timestamp_start=self.last_change_time,
             timestamp_end=message_time,
             limit=10,
             limit_mode="last",
         )
-        chat_talking_prompt = build_readable_messages(
+        chat_talking_prompt = await build_readable_messages(
             message_list_before_now,
             replace_bot_name=True,
             merge_messages=False,
@@ -238,14 +239,14 @@ class ChatMood:
 
     async def regress_mood(self):
         message_time = time.time()
-        message_list_before_now = get_raw_msg_by_timestamp_with_chat_inclusive(
+        message_list_before_now = await get_raw_msg_by_timestamp_with_chat_inclusive(
             chat_id=self.chat_id,
             timestamp_start=self.last_change_time,
             timestamp_end=message_time,
             limit=5,
             limit_mode="last",
         )
-        chat_talking_prompt = build_readable_messages(
+        chat_talking_prompt = await build_readable_messages(
             message_list_before_now,
             replace_bot_name=True,
             merge_messages=False,

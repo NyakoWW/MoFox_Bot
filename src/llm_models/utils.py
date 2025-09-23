@@ -145,9 +145,9 @@ class LLMUsageRecorder:
     LLM使用情况记录器（SQLAlchemy版本）
     """
 
-    def record_usage_to_database(
-        self,
-        model_info: ModelInfo,
+    @staticmethod
+    async def record_usage_to_database(
+            model_info: ModelInfo,
         model_usage: UsageRecord,
         user_id: str,
         request_type: str,
@@ -161,7 +161,7 @@ class LLMUsageRecorder:
         session = None
         try:
             # 使用 SQLAlchemy 会话创建记录
-            with get_db_session() as session:
+            async with get_db_session() as session:
                 usage_record = LLMUsage(
                     model_name=model_info.model_identifier,
                     model_assign_name=model_info.name,
@@ -179,7 +179,7 @@ class LLMUsageRecorder:
                 )
 
                 session.add(usage_record)
-                session.commit()
+                await session.commit()
 
             logger.debug(
                 f"Token使用情况 - 模型: {model_usage.model_name}, "

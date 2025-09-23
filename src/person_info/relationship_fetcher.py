@@ -99,16 +99,22 @@ class RelationshipFetcher:
         self._cleanup_expired_cache()
 
         person_info_manager = get_person_info_manager()
-        person_name = await person_info_manager.get_value(person_id, "person_name")
-        short_impression = await person_info_manager.get_value(person_id, "short_impression")
-
-        nickname_str = await person_info_manager.get_value(person_id, "nickname")
-        platform = await person_info_manager.get_value(person_id, "platform")
+        person_info = await person_info_manager.get_values(
+            person_id, ["person_name", "short_impression", "nickname", "platform", "points"]
+        )
+        person_name = person_info.get("person_name")
+        short_impression = person_info.get("short_impression")
+        nickname_str = person_info.get("nickname")
+        platform = person_info.get("platform")
 
         if person_name == nickname_str and not short_impression:
             return ""
 
-        current_points = await person_info_manager.get_value(person_id, "points") or []
+        current_points = person_info.get("points")
+        if isinstance(current_points, str):
+            current_points = orjson.loads(current_points)
+        else:
+            current_points = current_points or []
 
         # 按时间排序forgotten_points
         current_points.sort(key=lambda x: x[2])
@@ -170,7 +176,8 @@ class RelationshipFetcher:
         nickname_str = ",".join(global_config.bot.alias_names)
         name_block = f"你的名字是{global_config.bot.nickname},你的昵称有{nickname_str}，有人也会用这些昵称称呼你。"
         person_info_manager = get_person_info_manager()
-        person_name: str = await person_info_manager.get_value(person_id, "person_name")  # type: ignore
+        person_info = await person_info_manager.get_values(person_id, ["person_name"])
+        person_name: str = person_info.get("person_name")  # type: ignore
 
         info_cache_block = self._build_info_cache_block()
 
@@ -252,7 +259,8 @@ class RelationshipFetcher:
         person_info_manager = get_person_info_manager()
 
         # 首先检查 info_list 缓存
-        info_list = await person_info_manager.get_value(person_id, "info_list") or []
+        person_info = await person_info_manager.get_values(person_id, ["info_list"])
+        info_list = person_info.get("info_list") or []
         cached_info = None
 
         # 查找对应的 info_type
@@ -279,8 +287,9 @@ class RelationshipFetcher:
 
         # 如果缓存中没有，尝试从用户档案中提取
         try:
-            person_impression = await person_info_manager.get_value(person_id, "impression")
-            points = await person_info_manager.get_value(person_id, "points")
+            person_info = await person_info_manager.get_values(person_id, ["impression", "points"])
+            person_impression = person_info.get("impression")
+            points = person_info.get("points")
 
             # 构建印象信息块
             if person_impression:
@@ -372,7 +381,8 @@ class RelationshipFetcher:
             person_info_manager = get_person_info_manager()
 
             # 获取现有的 info_list
-            info_list = await person_info_manager.get_value(person_id, "info_list") or []
+            person_info = await person_info_manager.get_values(person_id, ["info_list"])
+            info_list = person_info.get("info_list") or []
 
             # 查找是否已存在相同 info_type 的记录
             found_index = -1
