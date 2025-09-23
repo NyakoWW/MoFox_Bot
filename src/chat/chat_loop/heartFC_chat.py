@@ -559,64 +559,16 @@ class HeartFChatting:
         if not new_message:
             return False, 0.0
 
-        new_message_count = len(new_message)
-
-        talk_frequency = global_config.chat.get_current_talk_frequency(self.context.stream_id)
-
-        modified_exit_count_threshold = self.context.focus_energy * 0.5 / talk_frequency
-        modified_exit_interest_threshold = 1.5 / talk_frequency
-
-        # 计算当前批次消息的兴趣值
-        batch_interest = 0.0
+        # 计算平均兴趣值
+        total_interest = 0.0
+        message_count = 0
         for msg_dict in new_message:
             interest_value = msg_dict.get("interest_value", 0.0)
             if msg_dict.get("processed_plain_text", ""):
-                batch_interest += interest_value
+                total_interest += interest_value
+                message_count += 1
+        
+        avg_interest = total_interest / message_count if message_count > 0 else 0.0
 
-        # 在breaking形式下累积所有消息的兴趣值
-        if new_message_count > 0:
-            self.context.breaking_accumulated_interest += batch_interest
-            total_interest = self.context.breaking_accumulated_interest
-        else:
-            total_interest = self.context.breaking_accumulated_interest
-
-        if new_message_count >= modified_exit_count_threshold:
-            # 记录兴趣度到列表
-            self.recent_interest_records.append(total_interest)
-            # 重置累积兴趣值，因为已经达到了消息数量阈值
-            self.context.breaking_accumulated_interest = 0.0
-
-            logger.info(
-                f"{self.context.log_prefix} 累计消息数量达到{new_message_count}条(>{modified_exit_count_threshold:.1f})，结束等待，累积兴趣值: {total_interest:.2f}"
-            )
-            return True, total_interest / new_message_count
-
-        # 检查累计兴趣值
-        if new_message_count > 0:
-            # 只在兴趣值变化时输出log
-            if not hasattr(self, "_last_accumulated_interest") or total_interest != self._last_accumulated_interest:
-                logger.info(
-                    f"{self.context.log_prefix} breaking形式当前累积兴趣值: {total_interest:.2f}, 专注度: {global_config.chat.focus_value:.1f}"
-                )
-                self._last_accumulated_interest = total_interest
-            if total_interest >= modified_exit_interest_threshold:
-                # 记录兴趣度到列表
-                self.recent_interest_records.append(total_interest)
-                # 重置累积兴趣值，因为已经达到了兴趣值阈值
-                self.context.breaking_accumulated_interest = 0.0
-                logger.info(
-                    f"{self.context.log_prefix} 累计兴趣值达到{total_interest:.2f}(>{modified_exit_interest_threshold:.1f})，结束等待"
-                )
-                return True, total_interest / new_message_count
-
-        # 每10秒输出一次等待状态
-        if (
-            int(time.time() - self.context.last_read_time) > 0
-            and int(time.time() - self.context.last_read_time) % 10 == 0
-        ):
-            logger.info(
-                f"{self.context.log_prefix} 已等待{time.time() - self.context.last_read_time:.0f}秒，累计{new_message_count}条消息，累积兴趣{total_interest:.1f}，继续等待..."
-            )
-            await asyncio.sleep(0.5)
-
-        return False, 0.0
+        logger.info(f"{self.context.log_prefix} 收到 {len(new_message)} 条新消息，立即处理！平均兴趣值: {avg_interest:.2f}")
+        return True, avg_interest
