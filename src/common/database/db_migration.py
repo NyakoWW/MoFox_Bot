@@ -1,7 +1,8 @@
 # mmc/src/common/database/db_migration.py
 
 from sqlalchemy import inspect
-from sqlalchemy.schema import AddColumn, CreateIndex
+from sqlalchemy.schema import CreateIndex
+from sqlalchemy.sql import text
 
 from src.common.database.sqlalchemy_models import Base, get_engine
 from src.common.logger import get_logger
@@ -17,7 +18,7 @@ async def check_and_migrate_database():
     - 自动为现有表创建缺失的索引。
     """
     logger.info("正在检查数据库结构并执行自动迁移...")
-    engine = await get_engine()
+    engine = get_engine()
 
     async with engine.connect() as connection:
         # 在同步上下文中运行inspector操作
@@ -66,20 +67,34 @@ async def check_and_migrate_database():
 
                 if missing_columns:
                     logger.info(f"在表 '{table_name}' 中发现缺失的列: {', '.join(missing_columns)}")
-                    async with connection.begin() as trans:
+
+                    def add_columns_sync(conn):
+                        dialect = conn.dialect
                         for column_name in missing_columns:
-                            try:
-                                column = table.c[column_name]
-                                add_column_ddl = AddColumn(table_name, column)
-                                await connection.execute(add_column_ddl)
-                                logger.info(f"成功向表 '{table_name}' 添加列 '{column_name}'。")
-                            except Exception as e:
-                                logger.error(
-                                    f"向表 '{table_name}' 添加列 '{column_name}' 失败: {e}",
-                                    exc_info=True,
-                                )
-                                await trans.rollback()
-                                break  # 如果一列失败，则停止处理此表的其他列
+                            column = table.c[column_name]
+                            
+                            # 使用DDLCompiler为特定方言编译列
+                            compiler = dialect.ddl_compiler(dialect, None)
+                            
+                            # 编译列的数据类型
+                            column_type = compiler.get_column_specification(column)
+                            
+                            # 构建原生SQL
+                            sql = f"ALTER TABLE {table.name} ADD COLUMN {column.name} {column_type}"
+                            
+                            # 添加默认值（如果存在）
+                            if column.default:
+                                default_value = compiler.render_literal_value(column.default.arg, column.type)
+                                sql += f" DEFAULT {default_value}"
+                            
+                            # 添加非空约束（如果存在）
+                            if not column.nullable:
+                                sql += " NOT NULL"
+                            
+                            conn.execute(text(sql))
+                            logger.info(f"成功向表 '{table_name}' 添加列 '{column_name}'。")
+
+                    await connection.run_sync(add_columns_sync)
                 else:
                     logger.info(f"表 '{table_name}' 的列结构一致。")
 
@@ -92,20 +107,16 @@ async def check_and_migrate_database():
 
                 if missing_indexes:
                     logger.info(f"在表 '{table_name}' 中发现缺失的索引: {', '.join(missing_indexes)}")
-                    async with connection.begin() as trans:
-                        for index_name in missing_indexes:
-                            try:
+
+                    def add_indexes_sync(conn):
+                        with conn.begin():
+                            for index_name in missing_indexes:
                                 index_obj = next((idx for idx in table.indexes if idx.name == index_name), None)
                                 if index_obj is not None:
-                                    await connection.execute(CreateIndex(index_obj))
+                                    conn.execute(CreateIndex(index_obj))
                                     logger.info(f"成功为表 '{table_name}' 创建索引 '{index_name}'。")
-                            except Exception as e:
-                                logger.error(
-                                    f"为表 '{table_name}' 创建索引 '{index_name}' 失败: {e}",
-                                    exc_info=True,
-                                )
-                                await trans.rollback()
-                                break  # 如果一个索引失败，则停止处理此表的其他索引
+
+                    await connection.run_sync(add_indexes_sync)
                 else:
                     logger.debug(f"表 '{table_name}' 的索引一致。")
 
@@ -114,3 +125,4 @@ async def check_and_migrate_database():
                 continue
 
     logger.info("数据库结构检查与自动迁移完成。")
+
