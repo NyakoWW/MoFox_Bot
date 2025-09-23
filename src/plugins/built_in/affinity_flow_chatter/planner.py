@@ -73,13 +73,13 @@ class ChatterActionPlanner:
         }
 
     async def plan(
-        self, mode: ChatMode = ChatMode.FOCUS, context: "StreamContext" = None
+        self, mode: ChatMode = ChatMode.GROUP, context: "StreamContext" = None
     ) -> Tuple[List[Dict], Optional[Dict]]:
         """
         执行完整的增强版规划流程。
 
         Args:
-            mode (ChatMode): 当前的聊天模式，默认为 FOCUS。
+            mode (ChatMode): 当前的聊天模式，默认为 GROUP。
             context (StreamContext): 包含聊天流消息的上下文对象。
 
         Returns:

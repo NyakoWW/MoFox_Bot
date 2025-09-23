@@ -59,7 +59,7 @@ class AffinityChatter(BaseChatter):
             unread_messages = context.get_unread_messages()
 
             # 使用增强版规划器处理消息
-            actions, target_message = await self.planner.plan(mode=ChatMode.FOCUS, context=context)
+            actions, target_message = await self.planner.plan(mode=ChatMode.GROUP, context=context)
             self.stats["plans_created"] += 1
 
             # 执行动作（如果规划器返回了动作）

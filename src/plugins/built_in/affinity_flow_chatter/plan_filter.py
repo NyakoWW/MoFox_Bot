@@ -186,7 +186,7 @@ class ChatterPlanFilter:
             if global_config.chat.at_bot_inevitable_reply:
                 mentioned_bonus = "\n- 有人提到你，或者at你"
 
-            if plan.mode == ChatMode.FOCUS:
+            if plan.mode == ChatMode.GROUP:
                 no_action_block = """
 动作：no_action
 动作描述：不选择任何动作
@@ -204,7 +204,7 @@ class ChatterPlanFilter:
     "reason":"不回复的原因"
 }}
 """
-            else:  # NORMAL Mode
+            else:  # PRIVATE Mode
                 no_action_block = """重要说明：
 - 'reply' 表示只进行普通聊天回复，不执行任何额外动作
 - 其他action表示在普通回复的基础上，执行相应的额外动作
