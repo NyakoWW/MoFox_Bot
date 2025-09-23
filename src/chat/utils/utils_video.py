@@ -78,7 +78,7 @@ class VideoAnalyzer:
             self.video_llm = LLMRequest(
                 model_set=model_config.model_task_config.video_analysis, request_type="video_analysis"
             )
-            logger.info("✅ 使用video_analysis模型配置")
+            logger.debug("✅ 使用video_analysis模型配置")
         except (AttributeError, KeyError) as e:
             # 如果video_analysis不存在，使用vlm配置
             self.video_llm = LLMRequest(model_set=model_config.model_task_config.vlm, request_type="vlm")
@@ -155,14 +155,14 @@ class VideoAnalyzer:
         self.timeout = 60.0  # 分析超时时间（秒）
 
         if config:
-            logger.info("✅ 从配置文件读取视频分析参数")
+            logger.debug("✅ 从配置文件读取视频分析参数")
         else:
             logger.warning("配置文件中缺少video_analysis配置，使用默认值")
 
         # 系统提示词
         self.system_prompt = "你是一个专业的视频内容分析助手。请仔细观察用户提供的视频关键帧，详细描述视频内容。"
 
-        logger.info(f"✅ 视频分析器初始化完成，分析模式: {self.analysis_mode}, 线程池: {self.use_multiprocessing}")
+        logger.debug(f"✅ 视频分析器初始化完成，分析模式: {self.analysis_mode}, 线程池: {self.use_multiprocessing}")
 
         # 获取Rust模块系统信息
         self._log_system_info()
@@ -175,7 +175,7 @@ class VideoAnalyzer:
 
         try:
             system_info = rust_video.get_system_info()
-            logger.info(f"🔧 系统信息: 线程数={system_info.get('threads', '未知')}")
+            logger.debug(f"🔧 系统信息: 线程数={system_info.get('threads', '未知')}")
 
             # 记录CPU特性
             features = []
@@ -187,11 +187,11 @@ class VideoAnalyzer:
                 features.append("SIMD")
 
             if features:
-                logger.info(f"🚀 CPU特性: {', '.join(features)}")
+                logger.debug(f"🚀 CPU特性: {', '.join(features)}")
             else:
-                logger.info("⚠️ 未检测到SIMD支持")
+                logger.debug("⚠️ 未检测到SIMD支持")
 
-            logger.info(f"📦 Rust模块版本: {system_info.get('version', '未知')}")
+            logger.debug(f"📦 Rust模块版本: {system_info.get('version', '未知')}")
 
         except Exception as e:
             logger.warning(f"获取系统信息失败: {e}")
