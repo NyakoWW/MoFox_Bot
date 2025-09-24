@@ -467,6 +467,12 @@ class ChatterPlanFilter:
                             real_message_id = target_message_dict.get("message_id") or target_message_dict.get("id")
                             if real_message_id:
                                 action_data["target_message_id"] = real_message_id
+                        
+                        # 确保 action_message 中始终有 message_id 字段
+                        if "message_id" not in target_message_obj and "id" in target_message_obj:
+                            target_message_obj["message_id"] = target_message_obj["id"]
+                        
+                        logger.info(f"[_parse_single_action] target_message_obj: {target_message_obj}")
                     else:
                         # 如果找不到目标消息，对于reply动作来说这是必需的，应该记录警告
                         if action == "reply":

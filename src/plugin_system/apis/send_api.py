@@ -189,6 +189,7 @@ async def _send_to_target(
 
         # 处理回复消息
         if reply_to_message:
+            logger.info(f"[_send_to_target] reply_to_message: {reply_to_message}")
             anchor_message = message_dict_to_message_recv(message_dict=reply_to_message)
             anchor_message.update_chat_stream(target_stream)
             reply_to_platform_id = (

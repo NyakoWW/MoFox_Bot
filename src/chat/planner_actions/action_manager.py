@@ -434,6 +434,8 @@ class ChatterActionManager:
         # 根据新消息数量决定是否需要引用回复
         reply_text = ""
         is_proactive_thinking = (message_data.get("message_type") == "proactive_thinking") if message_data else True
+        
+        logger.debug(f"[send_response] message_data: {message_data}")
 
         first_replied = False
         for reply_seg in reply_set:
