@@ -265,7 +265,7 @@ class MessageManager:
             try:
                 context.mark_message_as_read(msg.message_id)
                 self.stats.total_processed_messages += 1
-                logger.info(f"强制清除消息 {msg.message_id}，标记为已读")
+                logger.debug(f"强制清除消息 {msg.message_id}，标记为已读")
             except Exception as e:
                 logger.error(f"清除消息 {msg.message_id} 时出错: {e}")
 
