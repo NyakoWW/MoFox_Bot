@@ -98,6 +98,7 @@ def message_dict_to_message_recv(message_dict: Dict[str, Any]) -> Optional[Messa
     message_recv = MessageRecv(new_message_dict)
 
     logger.info(f"[SendAPI] 找到匹配的回复消息，发送者: {message_dict.get('user_nickname', '')}")
+    logger.info(message_recv)
     return message_recv
 
 
@@ -189,7 +190,6 @@ async def _send_to_target(
 
         # 处理回复消息
         if reply_to_message:
-            logger.info(f"[_send_to_target] reply_to_message: {reply_to_message}")
             anchor_message = message_dict_to_message_recv(message_dict=reply_to_message)
             anchor_message.update_chat_stream(target_stream)
             reply_to_platform_id = (
