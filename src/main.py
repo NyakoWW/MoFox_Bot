@@ -95,7 +95,7 @@ def _task_done_callback(task: asyncio.Task, message_id: str, start_time: float):
     duration = end_time - start_time
     try:
         task.result()  # 如果任务有异常，这里会重新抛出
-        logger.info(f"消息 {message_id} 的后台任务 (ID: {id(task)}) 已成功完成, 耗时: {duration:.2f}s")
+        logger.debug(f"消息 {message_id} 的后台任务 (ID: {id(task)}) 已成功完成, 耗时: {duration:.2f}s")
     except asyncio.CancelledError:
         logger.warning(f"消息 {message_id} 的后台任务 (ID: {id(task)}) 被取消, 耗时: {duration:.2f}s")
     except Exception:
@@ -189,7 +189,7 @@ class MainSystem:
             message_id = message_data.get("message_info", {}).get("message_id", "UNKNOWN")
             # 创建后台任务
             task = asyncio.create_task(chat_bot.message_process(message_data))
-            logger.info(f"已为消息 {message_id} 创建后台处理任务 (ID: {id(task)})")
+            logger.debug(f"已为消息 {message_id} 创建后台处理任务 (ID: {id(task)})")
             # 添加一个回调函数，当任务完成时，它会被调用
             task.add_done_callback(partial(_task_done_callback, message_id=message_id, start_time=start_time))
         except Exception:
