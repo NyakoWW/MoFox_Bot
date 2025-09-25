@@ -360,19 +360,7 @@ class ChatBot:
         return
 
     async def message_process(self, message_data: Dict[str, Any]) -> None:
-        """处理转化后的统一格式消息
-        这个函数本质是预处理一些数据，根据配置信息和消息内容，预处理消息，并分发到合适的消息处理器中
-        heart_flow模式：使用思维流系统进行回复
-        - 包含思维流状态管理
-        - 在回复前进行观察和状态更新
-        - 回复后更新思维流状态
-        - 消息过滤
-        - 记忆激活
-        - 意愿计算
-        - 消息生成和发送
-        - 表情包处理
-        - 性能计时
-        """
+        """处理转化后的统一格式消息"""
         try:
             # 首先处理可能的切片消息重组
             from src.utils.message_chunker import reassembler
@@ -464,7 +452,8 @@ class ChatBot:
             result = await event_manager.trigger_event(EventType.ON_MESSAGE, permission_group="SYSTEM", message=message)
             if not result.all_continue_process():
                 raise UserWarning(f"插件{result.get_summary().get('stopped_handlers', '')}于消息到达时取消了消息处理")
-
+            
+            # TODO:暂不可用
             # 确认从接口发来的message是否有自定义的prompt模板信息
             if message.message_info.template_info and not message.message_info.template_info.template_default:
                 template_group_name: Optional[str] = message.message_info.template_info.template_name  # type: ignore

@@ -15,6 +15,7 @@ from src.plugin_system.base.component_types import ComponentType, ActionInfo
 from src.plugin_system.base.base_action import BaseAction
 from src.plugin_system.apis import generator_api, database_api, send_api, message_api
 
+
 logger = get_logger("action_manager")
 
 
@@ -161,6 +162,7 @@ class ChatterActionManager:
         Returns:
             执行结果
         """
+        from src.chat.message_manager.message_manager import message_manager
         try:
             logger.debug(f"🎯 [ActionManager] execute_action接收到 target_message: {target_message}")
             # 通过chat_id获取chat_stream
@@ -207,6 +209,11 @@ class ChatterActionManager:
                     thinking_id,
                     target_message,
                 )
+
+                # 如果动作执行成功且不是no_action，重置打断计数
+                if success:
+                    await self._reset_interruption_count_after_action(chat_stream.stream_id)
+
                 return {
                     "action_type": action_name,
                     "success": success,
@@ -244,6 +251,10 @@ class ChatterActionManager:
                     thinking_id,
                     [],  # actions
                 )
+
+                # 回复成功，重置打断计数
+                await self._reset_interruption_count_after_action(chat_stream.stream_id)
+
                 return {"action_type": "reply", "success": True, "reply_text": reply_text, "loop_info": loop_info}
 
         except Exception as e:
@@ -256,6 +267,20 @@ class ChatterActionManager:
                 "loop_info": None,
                 "error": str(e),
             }
+
+    async def _reset_interruption_count_after_action(self, stream_id: str):
+        """在动作执行成功后重置打断计数"""
+        from src.chat.message_manager.message_manager import message_manager
+        try:
+            if stream_id in message_manager.stream_contexts:
+                context = message_manager.stream_contexts[stream_id]
+                if context.interruption_count > 0:
+                    old_count = context.interruption_count
+                    old_afc_adjustment = context.get_afc_threshold_adjustment()
+                    context.reset_interruption_count()
+                    logger.debug(f"动作执行成功，重置聊天流 {stream_id} 的打断计数: {old_count} -> 0, afc调整: {old_afc_adjustment} -> 0")
+        except Exception as e:
+            logger.warning(f"重置打断计数时出错: {e}")
 
     async def _handle_action(
         self, chat_stream, action, reasoning, action_data, cycle_timers, thinking_id, action_message

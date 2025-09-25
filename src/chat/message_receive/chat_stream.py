@@ -83,10 +83,18 @@ class ChatStream:
         self.sleep_pressure = data.get("sleep_pressure", 0.0) if data else 0.0
         self.saved = False
         self.context: ChatMessageContext = None  # type: ignore # 用于存储该聊天的上下文信息
-        # 从配置文件中读取focus_value，如果没有则使用默认值1.0
-        self.focus_energy = (
-            data.get("focus_energy", global_config.chat.focus_value) if data else global_config.chat.focus_value
-        )
+
+        # 动态兴趣度系统 - 重构后的focus_energy
+        self.base_interest_energy = data.get("base_interest_energy", 0.5) if data else 0.5
+        self.message_interest_total = data.get("message_interest_total", 0.0) if data else 0.0
+        self.message_count = data.get("message_count", 0) if data else 0
+        self.action_count = data.get("action_count", 0) if data else 0
+        self.reply_count = data.get("reply_count", 0) if data else 0
+        self.last_interaction_time = data.get("last_interaction_time", time.time()) if data else time.time()
+        self.consecutive_no_reply = data.get("consecutive_no_reply", 0) if data else 0
+
+        # 计算动态focus_energy
+        self.focus_energy = self._calculate_dynamic_focus_energy()
         self.no_reply_consecutive = 0
         self.breaking_accumulated_interest = 0.0
 
@@ -103,6 +111,14 @@ class ChatStream:
             "sleep_pressure": self.sleep_pressure,
             "focus_energy": self.focus_energy,
             "breaking_accumulated_interest": self.breaking_accumulated_interest,
+            # 新增动态兴趣度系统字段
+            "base_interest_energy": self.base_interest_energy,
+            "message_interest_total": self.message_interest_total,
+            "message_count": self.message_count,
+            "action_count": self.action_count,
+            "reply_count": self.reply_count,
+            "last_interaction_time": self.last_interaction_time,
+            "consecutive_no_reply": self.consecutive_no_reply,
         }
 
     @classmethod
@@ -127,6 +143,148 @@ class ChatStream:
     def set_context(self, message: "MessageRecv"):
         """设置聊天消息上下文"""
         self.context = ChatMessageContext(message)
+
+    def _calculate_dynamic_focus_energy(self) -> float:
+        """动态计算聊天流的总体兴趣度"""
+        try:
+            # 基础分：平均消息兴趣度
+            avg_message_interest = self.message_interest_total / max(self.message_count, 1)
+
+            # 动作参与度：动作执行率
+            action_rate = self.action_count / max(self.message_count, 1)
+
+            # 回复活跃度：回复率
+            reply_rate = self.reply_count / max(self.message_count, 1)
+
+            # 获取用户关系分（对于私聊，群聊无效）
+            relationship_factor = self._get_user_relationship_score()
+
+            # 时间衰减因子：最近活跃度
+            current_time = time.time()
+            if not self.last_interaction_time:
+                self.last_interaction_time = current_time
+            time_since_interaction = current_time - self.last_interaction_time
+            time_decay = max(0.3, 1.0 - min(time_since_interaction / (7 * 24 * 3600), 0.7))  # 7天衰减
+
+            # 连续无回复惩罚
+            no_reply_penalty = max(0.1, 1.0 - self.consecutive_no_reply * 0.1)
+
+            # 获取AFC系统阈值，添加None值检查
+            reply_threshold = getattr(global_config.affinity_flow, 'reply_action_interest_threshold', 0.4)
+            non_reply_threshold = getattr(global_config.affinity_flow, 'non_reply_action_interest_threshold', 0.2)
+            high_match_threshold = getattr(global_config.affinity_flow, 'high_match_interest_threshold', 0.8)
+
+            # 计算与不同阈值的差距比例
+            reply_gap_ratio = max(0, (avg_message_interest - reply_threshold) / max(0.1, (1.0 - reply_threshold)))
+            non_reply_gap_ratio = max(0, (avg_message_interest - non_reply_threshold) / max(0.1, (1.0 - non_reply_threshold)))
+            high_match_gap_ratio = max(0, (avg_message_interest - high_match_threshold) / max(0.1, (1.0 - high_match_threshold)))
+
+            # 基于阈值差距比例的基础分计算
+            threshold_based_score = (
+                reply_gap_ratio * 0.6 +      # 回复阈值差距权重60%
+                non_reply_gap_ratio * 0.2 +  # 非回复阈值差距权重20%
+                high_match_gap_ratio * 0.2   # 高匹配阈值差距权重20%
+            )
+
+            # 动态权重调整：根据平均兴趣度水平调整权重分配
+            if avg_message_interest >= high_match_threshold:
+                # 高兴趣度：更注重阈值差距
+                threshold_weight = 0.7
+                activity_weight = 0.2
+                relationship_weight = 0.1
+            elif avg_message_interest >= reply_threshold:
+                # 中等兴趣度：平衡权重
+                threshold_weight = 0.5
+                activity_weight = 0.3
+                relationship_weight = 0.2
+            else:
+                # 低兴趣度：更注重活跃度提升
+                threshold_weight = 0.3
+                activity_weight = 0.5
+                relationship_weight = 0.2
+
+            # 计算活跃度得分
+            activity_score = (action_rate * 0.6 + reply_rate * 0.4)
+
+            # 综合计算：基于阈值的动态加权
+            focus_energy = (
+                threshold_based_score * threshold_weight +  # 阈值差距基础分
+                activity_score * activity_weight +            # 活跃度得分
+                relationship_factor * relationship_weight +   # 关系得分
+                self.base_interest_energy * 0.05             # 基础兴趣微调
+            ) * time_decay * no_reply_penalty
+
+            # 确保在合理范围内
+            focus_energy = max(0.1, min(1.0, focus_energy))
+
+            # 应用非线性变换增强区分度
+            if focus_energy >= 0.7:
+                # 高兴趣度区域：指数增强，更敏感
+                focus_energy = 0.7 + (focus_energy - 0.7) ** 0.8
+            elif focus_energy >= 0.4:
+                # 中等兴趣度区域：线性保持
+                pass
+            else:
+                # 低兴趣度区域：对数压缩，减少区分度
+                focus_energy = 0.4 * (focus_energy / 0.4) ** 1.2
+
+            return max(0.1, min(1.0, focus_energy))
+
+        except Exception as e:
+            logger.error(f"计算动态focus_energy失败: {e}")
+            return self.base_interest_energy
+
+    def _get_user_relationship_score(self) -> float:
+        """从外部系统获取用户关系分"""
+        try:
+            # 尝试从兴趣评分系统获取用户关系分
+            from src.plugins.built_in.affinity_flow_chatter.interest_scoring import (
+                chatter_interest_scoring_system,
+            )
+
+            if self.user_info and hasattr(self.user_info, 'user_id'):
+                return chatter_interest_scoring_system.get_user_relationship(str(self.user_info.user_id))
+        except Exception:
+            pass
+
+        # 默认基础分
+        return 0.3
+
+    def add_message_interest(self, interest_score: float):
+        """添加消息兴趣值并更新focus_energy"""
+        self.message_interest_total += interest_score
+        self.message_count += 1
+        self.last_interaction_time = time.time()
+        self.focus_energy = self._calculate_dynamic_focus_energy()
+
+    def record_action(self, is_reply: bool = False):
+        """记录动作执行"""
+        self.action_count += 1
+        if is_reply:
+            self.reply_count += 1
+            self.consecutive_no_reply = max(0, self.consecutive_no_reply - 1)
+        self.last_interaction_time = time.time()
+        self.focus_energy = self._calculate_dynamic_focus_energy()
+
+    def record_no_reply(self):
+        """记录无回复动作"""
+        self.consecutive_no_reply += 1
+        self.last_interaction_time = time.time()
+        self.focus_energy = self._calculate_dynamic_focus_energy()
+
+    def get_adjusted_focus_energy(self) -> float:
+        """获取应用了afc调整的focus_energy"""
+        try:
+            from src.chat.message_manager.message_manager import message_manager
+            if self.stream_id in message_manager.stream_contexts:
+                context = message_manager.stream_contexts[self.stream_id]
+                afc_adjustment = context.get_afc_threshold_adjustment()
+                # 对动态计算的focus_energy应用AFC调整
+                adjusted_energy = max(0.0, self.focus_energy - afc_adjustment)
+                return adjusted_energy
+        except Exception:
+            pass
+        return self.focus_energy
 
 
 class ChatManager:
@@ -364,7 +522,16 @@ class ChatManager:
                     "group_name": group_info_d["group_name"] if group_info_d else "",
                     "energy_value": s_data_dict.get("energy_value", 5.0),
                     "sleep_pressure": s_data_dict.get("sleep_pressure", 0.0),
-                    "focus_energy": s_data_dict.get("focus_energy", global_config.chat.focus_value),
+                    "focus_energy": s_data_dict.get("focus_energy", 0.5),
+                    # 新增动态兴趣度系统字段
+                    "base_interest_energy": s_data_dict.get("base_interest_energy", 0.5),
+                    "message_interest_total": s_data_dict.get("message_interest_total", 0.0),
+                    "message_count": s_data_dict.get("message_count", 0),
+                    "action_count": s_data_dict.get("action_count", 0),
+                    "reply_count": s_data_dict.get("reply_count", 0),
+                    "last_interaction_time": s_data_dict.get("last_interaction_time", time.time()),
+                    "relationship_score": s_data_dict.get("relationship_score", 0.3),
+                    "consecutive_no_reply": s_data_dict.get("consecutive_no_reply", 0),
                 }
 
                 # 根据数据库类型选择插入语句
@@ -426,7 +593,16 @@ class ChatManager:
                         "last_active_time": model_instance.last_active_time,
                         "energy_value": model_instance.energy_value,
                         "sleep_pressure": model_instance.sleep_pressure,
-                        "focus_energy": getattr(model_instance, "focus_energy", global_config.chat.focus_value),
+                        "focus_energy": getattr(model_instance, "focus_energy", 0.5),
+                        # 新增动态兴趣度系统字段 - 使用getattr提供默认值
+                        "base_interest_energy": getattr(model_instance, "base_interest_energy", 0.5),
+                        "message_interest_total": getattr(model_instance, "message_interest_total", 0.0),
+                        "message_count": getattr(model_instance, "message_count", 0),
+                        "action_count": getattr(model_instance, "action_count", 0),
+                        "reply_count": getattr(model_instance, "reply_count", 0),
+                        "last_interaction_time": getattr(model_instance, "last_interaction_time", time.time()),
+                        "relationship_score": getattr(model_instance, "relationship_score", 0.3),
+                        "consecutive_no_reply": getattr(model_instance, "consecutive_no_reply", 0),
                     }
                     loaded_streams_data.append(data_for_from_dict)
                 session.commit()

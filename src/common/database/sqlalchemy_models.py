@@ -53,7 +53,15 @@ class ChatStreams(Base):
     user_cardname = Column(Text, nullable=True)
     energy_value = Column(Float, nullable=True, default=5.0)
     sleep_pressure = Column(Float, nullable=True, default=0.0)
-    focus_energy = Column(Float, nullable=True, default=1.0)
+    focus_energy = Column(Float, nullable=True, default=0.5)
+    # 动态兴趣度系统字段
+    base_interest_energy = Column(Float, nullable=True, default=0.5)
+    message_interest_total = Column(Float, nullable=True, default=0.0)
+    message_count = Column(Integer, nullable=True, default=0)
+    action_count = Column(Integer, nullable=True, default=0)
+    reply_count = Column(Integer, nullable=True, default=0)
+    last_interaction_time = Column(Float, nullable=True, default=None)
+    consecutive_no_reply = Column(Integer, nullable=True, default=0)
 
     __table_args__ = (
         Index("idx_chatstreams_stream_id", "stream_id"),

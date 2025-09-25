@@ -104,6 +104,31 @@ class ChatConfig(ValidatedConfigBase):
     )
     delta_sigma: int = Field(default=120, description="采用正态分布随机时间间隔")
 
+    # 消息打断系统配置
+    interruption_enabled: bool = Field(default=True, description="是否启用消息打断系统")
+    interruption_max_limit: int = Field(default=3, ge=0, description="每个聊天流的最大打断次数")
+    interruption_probability_factor: float = Field(
+        default=0.8, ge=0.0, le=1.0, description="打断概率因子，当前打断次数/最大打断次数超过此值时触发概率下降"
+    )
+    interruption_afc_reduction: float = Field(
+        default=0.05, ge=0.0, le=1.0, description="每次连续打断降低的afc阈值数值"
+    )
+
+    # 动态消息分发系统配置
+    dynamic_distribution_enabled: bool = Field(default=True, description="是否启用动态消息分发周期调整")
+    dynamic_distribution_base_interval: float = Field(
+        default=5.0, ge=1.0, le=60.0, description="基础分发间隔（秒）"
+    )
+    dynamic_distribution_min_interval: float = Field(
+        default=1.0, ge=0.5, le=10.0, description="最小分发间隔（秒）"
+    )
+    dynamic_distribution_max_interval: float = Field(
+        default=30.0, ge=5.0, le=300.0, description="最大分发间隔（秒）"
+    )
+    dynamic_distribution_jitter_factor: float = Field(
+        default=0.2, ge=0.0, le=0.5, description="分发间隔随机扰动因子"
+    )
+
     def get_current_talk_frequency(self, chat_stream_id: Optional[str] = None) -> float:
         """
         根据当前时间和聊天流获取对应的 talk_frequency

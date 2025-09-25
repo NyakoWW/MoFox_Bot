@@ -1,5 +1,5 @@
 [inner]
-version = "6.9.6"
+version = "7.0.2"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -114,36 +114,23 @@ learn_expression = false
 learning_strength = 0.5
 
 [chat] #MoFox-Bot的聊天通用设置
-# 群聊聊天模式设置
-group_chat_mode = "auto" # 群聊聊天模式：auto-自动切换，normal-强制普通模式，focus-强制专注模式
-talk_frequency = 1 
-# MoFox-Bot活跃度，越高，麦麦回复越多
-# 专注时能更好把握发言时机，能够进行持久的连续对话
-
-focus_value = 1
-# MoFox-Bot的专注思考能力，越高越容易持续连续对话
-
-# 在专注模式下，只在被艾特或提及时才回复的群组列表
-# 这可以让你在某些群里保持“高冷”，只在被需要时才发言
-# 格式为: ["platform:group_id1", "platform:group_id2"]
-# 例如: ["qq:123456789", "qq:987654321"]
-focus_mode_quiet_groups = []
-
-# breaking模式配置
-enable_breaking_mode = true # 是否启用自动进入breaking模式，关闭后不会自动进入breaking形式
-
-# 强制私聊回复
-force_reply_private = false # 是否强制私聊回复，开启后私聊将强制回复
-
 allow_reply_self = false # 是否允许回复自己说的话
 
 max_context_size = 25 # 上下文长度
 thinking_timeout = 40 # MoFox-Bot一次回复最长思考规划时间，超过这个时间的思考会放弃（往往是api反应太慢）
-replyer_random_probability = 0.5 # 首要replyer模型被选择的概率
 
-mentioned_bot_inevitable_reply = true # 提及 bot 必然回复
-at_bot_inevitable_reply = true # @bot 或 提及bot 必然回复
-# 兼容normal、focus，在focus模式下为强制移除no_reply动作
+# 消息打断系统配置
+interruption_enabled = true # 是否启用消息打断系统
+interruption_max_limit = 3 # 每个聊天流的最大打断次数
+interruption_probability_factor = 0.8 # 打断概率因子，当前打断次数/最大打断次数超过此值时触发概率下降
+interruption_afc_reduction = 0.05 # 每次连续打断降低的afc阈值数值
+
+# 动态消息分发系统配置
+dynamic_distribution_enabled = true # 是否启用动态消息分发周期调整
+dynamic_distribution_base_interval = 5.0 # 基础分发间隔（秒）
+dynamic_distribution_min_interval = 1.0 # 最小分发间隔（秒）
+dynamic_distribution_max_interval = 30.0 # 最大分发间隔（秒）
+dynamic_distribution_jitter_factor = 0.2 # 分发间隔随机扰动因子
 
 talk_frequency_adjust = [
     ["", "8:00,1", "12:00,1.2", "18:00,1.5", "01:00,0.6"],
@@ -288,7 +275,7 @@ enable_vector_instant_memory = true # 是否启用基于向量的瞬时记忆
 memory_ban_words = [ "表情包", "图片", "回复", "聊天记录" ]
 
 [voice]
-enable_asr = false # 是否启用语音识别，启用后MoFox-Bot可以识别语音消息，启用该功能需要配置语音识别模型[model.voice]
+enable_asr = true # 是否启用语音识别，启用后MoFox-Bot可以识别语音消息，启用该功能需要配置语音识别模型[model.voice]
 
 [lpmm_knowledge] # lpmm知识库配置
 enable = false # 是否启用lpmm知识库
@@ -341,7 +328,7 @@ enable = true # 是否启用回复分割器
 split_mode = "punctuation" # 分割模式: "llm" - 由语言模型决定, "punctuation" - 基于标点符号
 max_length = 512 # 回复允许的最大长度
 max_sentence_num = 8 # 回复允许的最大句子数
-enable_kaomoji_protection = false # 是否启用颜文字保护
+enable_kaomoji_protection = true # 是否启用颜文字保护
 
 [log]
 date_style = "m-d H:i:s" # 日期格式

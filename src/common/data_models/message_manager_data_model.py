@@ -11,9 +11,12 @@ from typing import List, Optional, TYPE_CHECKING
 
 from . import BaseDataModel
 from src.plugin_system.base.component_types import ChatMode, ChatType
+from src.common.logger import get_logger
 
 if TYPE_CHECKING:
     from .database_data_model import DatabaseMessages
+
+logger = get_logger("stream_context")
 
 
 class MessageStatus(Enum):
@@ -36,6 +39,13 @@ class StreamContext(BaseDataModel):
     last_check_time: float = field(default_factory=time.time)
     is_active: bool = True
     processing_task: Optional[asyncio.Task] = None
+    interruption_count: int = 0  # 打断计数器
+    last_interruption_time: float = 0.0  # 上次打断时间
+    afc_threshold_adjustment: float = 0.0  # afc阈值调整量
+
+    # 独立分发周期字段
+    next_check_time: float = field(default_factory=time.time)  # 下次检查时间
+    distribution_interval: float = 5.0  # 当前分发周期（秒）
 
     def add_message(self, message: "DatabaseMessages"):
         """添加消息到上下文"""
@@ -50,9 +60,9 @@ class StreamContext(BaseDataModel):
         # 只有在第一次添加消息时才检测聊天类型，避免后续消息改变类型
         if len(self.unread_messages) == 1:  # 只有这条消息
             # 如果消息包含群组信息，则为群聊
-            if hasattr(message, 'chat_info_group_id') and message.chat_info_group_id:
+            if hasattr(message, "chat_info_group_id") and message.chat_info_group_id:
                 self.chat_type = ChatType.GROUP
-            elif hasattr(message, 'chat_info_group_name') and message.chat_info_group_name:
+            elif hasattr(message, "chat_info_group_name") and message.chat_info_group_name:
                 self.chat_type = ChatType.GROUP
             else:
                 self.chat_type = ChatType.PRIVATE
@@ -64,7 +74,7 @@ class StreamContext(BaseDataModel):
     def set_chat_mode(self, chat_mode: ChatMode):
         """设置聊天模式"""
         self.chat_mode = chat_mode
-        
+
     def is_group_chat(self) -> bool:
         """检查是否为群聊"""
         return self.chat_type == ChatType.GROUP
@@ -82,10 +92,6 @@ class StreamContext(BaseDataModel):
         else:
             return "未知类型"
 
-    def get_unread_messages(self) -> List["DatabaseMessages"]:
-        """获取未读消息"""
-        return [msg for msg in self.unread_messages if not msg.is_read]
-
     def mark_message_as_read(self, message_id: str):
         """标记消息为已读"""
         for msg in self.unread_messages:
@@ -94,12 +100,55 @@ class StreamContext(BaseDataModel):
                 self.history_messages.append(msg)
                 self.unread_messages.remove(msg)
                 break
-     
+
+    def get_unread_messages(self) -> List["DatabaseMessages"]:
+        """获取未读消息"""
+        return [msg for msg in self.unread_messages if not msg.is_read]
+
     def get_history_messages(self, limit: int = 20) -> List["DatabaseMessages"]:
         """获取历史消息"""
         # 优先返回最近的历史消息和所有未读消息
         recent_history = self.history_messages[-limit:] if len(self.history_messages) > limit else self.history_messages
         return recent_history
+
+    def calculate_interruption_probability(self, max_limit: int, probability_factor: float) -> float:
+        """计算打断概率"""
+        if max_limit <= 0:
+            return 0.0
+
+        # 计算打断比例
+        interruption_ratio = self.interruption_count / max_limit
+
+        # 如果超过概率因子，概率下降
+        if interruption_ratio > probability_factor:
+            # 使用指数衰减，超过限制越多，概率越低
+            excess_ratio = interruption_ratio - probability_factor
+            probability = 1.0 * (0.5**excess_ratio)  # 基础概率0.5，指数衰减
+        else:
+            # 在限制内，保持较高概率
+            probability = 0.8
+
+        return max(0.0, min(1.0, probability))
+
+    def increment_interruption_count(self):
+        """增加打断计数"""
+        self.interruption_count += 1
+        self.last_interruption_time = time.time()
+
+    def reset_interruption_count(self):
+        """重置打断计数和afc阈值调整"""
+        self.interruption_count = 0
+        self.last_interruption_time = 0.0
+        self.afc_threshold_adjustment = 0.0
+
+    def apply_interruption_afc_reduction(self, reduction_value: float):
+        """应用打断导致的afc阈值降低"""
+        self.afc_threshold_adjustment += reduction_value
+        logger.debug(f"应用afc阈值降低: {reduction_value}, 总调整量: {self.afc_threshold_adjustment}")
+
+    def get_afc_threshold_adjustment(self) -> float:
+        """获取当前的afc阈值调整量"""
+        return self.afc_threshold_adjustment
 
 
 @dataclass

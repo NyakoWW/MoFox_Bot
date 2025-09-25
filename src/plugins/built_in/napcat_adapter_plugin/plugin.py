@@ -299,7 +299,7 @@ class NapcatAdapterPlugin(BasePlugin):
             "name": ConfigField(type=str, default="napcat_adapter_plugin", description="插件名称"),
             "version": ConfigField(type=str, default="1.1.0", description="插件版本"),
             "config_version": ConfigField(type=str, default="1.3.1", description="配置文件版本"),
-            "enabled": ConfigField(type=bool, default=False, description="是否启用插件"),
+            "enabled": ConfigField(type=bool, default=True, description="是否启用插件"),
         },
         "inner": {
             "version": ConfigField(type=str, default="0.2.1", description="配置版本号，请勿修改"),
