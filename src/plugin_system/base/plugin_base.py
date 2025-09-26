@@ -5,6 +5,7 @@ import toml
 import orjson
 import shutil
 import datetime
+from pathlib import Path
 
 from src.common.logger import get_logger
 from src.config.config import CONFIG_DIR
@@ -268,100 +269,64 @@ class PluginBase(ABC):
         except IOError as e:
             logger.error(f"{self.log_prefix} 保存默认配置文件失败: {e}", exc_info=True)
 
-    def _get_expected_config_version(self) -> str:
-        """获取插件期望的配置版本号"""
-        # 从config_schema的plugin.config_version字段获取
-        if "plugin" in self.config_schema and isinstance(self.config_schema["plugin"], dict):
-            config_version_field = self.config_schema["plugin"].get("config_version")
-            if isinstance(config_version_field, ConfigField):
-                return config_version_field.default
-        return "1.0.0"
-
-    @staticmethod
-    def _get_current_config_version(config: Dict[str, Any]) -> str:
-        """从配置文件中获取当前版本号"""
-        if "plugin" in config and "config_version" in config["plugin"]:
-            return str(config["plugin"]["config_version"])
-        # 如果没有config_version字段，视为最早的版本
-        return "0.0.0"
-
     def _backup_config_file(self, config_file_path: str) -> str:
-        """备份配置文件"""
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = f"{config_file_path}.backup_{timestamp}"
-
+        """备份配置文件到指定的 backup 子目录"""
         try:
+            config_path = Path(config_file_path)
+            backup_dir = config_path.parent / "backup"
+            backup_dir.mkdir(exist_ok=True)
+
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_filename = f"{config_path.name}.backup_{timestamp}"
+            backup_path = backup_dir / backup_filename
+
             shutil.copy2(config_file_path, backup_path)
             logger.info(f"{self.log_prefix} 配置文件已备份到: {backup_path}")
-            return backup_path
+            return str(backup_path)
         except Exception as e:
-            logger.error(f"{self.log_prefix} 备份配置文件失败: {e}")
+            logger.error(f"{self.log_prefix} 备份配置文件失败: {e}", exc_info=True)
             return ""
 
-    def _migrate_config_values(self, old_config: Dict[str, Any], new_config: Dict[str, Any]) -> Dict[str, Any]:
-        """将旧配置值迁移到新配置结构中
+    def _synchronize_config(
+        self, schema_config: Dict[str, Any], user_config: Dict[str, Any]
+    ) -> tuple[Dict[str, Any], bool]:
+        """递归地将用户配置与 schema 同步，返回同步后的配置和是否发生变化的标志"""
+        changed = False
 
-        Args:
-            old_config: 旧配置数据
-            new_config: 基于新schema生成的默认配置
-
-        Returns:
-            Dict[str, Any]: 迁移后的配置
-        """
-
-        def migrate_section(
-            old_section: Dict[str, Any], new_section: Dict[str, Any], section_name: str
+        # 内部递归函数
+        def _sync_dicts(
+            schema_dict: Dict[str, Any], user_dict: Dict[str, Any], parent_key: str = ""
         ) -> Dict[str, Any]:
-            """迁移单个配置节"""
-            result = new_section.copy()
+            nonlocal changed
+            synced_dict = schema_dict.copy()
 
-            for key, value in old_section.items():
-                if key in new_section:
-                    # 特殊处理：config_version字段总是使用新版本
-                    if section_name == "plugin" and key == "config_version":
-                        # 保持新的版本号，不迁移旧值
-                        logger.debug(
-                            f"{self.log_prefix} 更新配置版本: {section_name}.{key} = {result[key]} (旧值: {value})"
-                        )
-                        continue
+            # 检查并记录用户配置中多余的、在 schema 中不存在的键
+            for key in user_dict:
+                if key not in schema_dict:
+                    logger.warning(f"{self.log_prefix} 发现废弃配置项 '{parent_key}{key}'，将被移除。")
+                    changed = True
 
-                    # 键存在于新配置中，复制值
-                    if isinstance(value, dict) and isinstance(new_section[key], dict):
-                        # 递归处理嵌套字典
-                        result[key] = migrate_section(value, new_section[key], f"{section_name}.{key}")
+            # 以 schema 为基准进行遍历，保留用户的值，补全缺失的项
+            for key, schema_value in schema_dict.items():
+                full_key = f"{parent_key}{key}"
+                if key in user_dict:
+                    user_value = user_dict[key]
+                    if isinstance(schema_value, dict) and isinstance(user_value, dict):
+                        # 递归同步嵌套的字典
+                        synced_dict[key] = _sync_dicts(schema_value, user_value, f"{full_key}.")
                     else:
-                        result[key] = value
-                        logger.debug(f"{self.log_prefix} 迁移配置: {section_name}.{key} = {value}")
+                        # 键存在，保留用户的值
+                        synced_dict[key] = user_value
                 else:
-                    # 键在新配置中不存在，记录警告
-                    logger.warning(f"{self.log_prefix} 配置项 {section_name}.{key} 在新版本中已被移除")
+                    # 键在用户配置中缺失，补全
+                    logger.info(f"{self.log_prefix} 补全缺失的配置项: '{full_key}' = {schema_value}")
+                    changed = True
+                    # synced_dict[key] 已经包含了来自 schema_dict.copy() 的默认值
 
-            return result
+            return synced_dict
 
-        migrated_config = {}
-
-        # 迁移每个配置节
-        for section_name, new_section_data in new_config.items():
-            if (
-                section_name in old_config
-                and isinstance(old_config[section_name], dict)
-                and isinstance(new_section_data, dict)
-            ):
-                migrated_config[section_name] = migrate_section(
-                    old_config[section_name], new_section_data, section_name
-                )
-            else:
-                # 新增的节或类型不匹配，使用默认值
-                migrated_config[section_name] = new_section_data
-                if section_name in old_config:
-                    logger.warning(f"{self.log_prefix} 配置节 {section_name} 结构已改变，使用默认值")
-
-        # 检查旧配置中是否有新配置没有的节
-        for section_name in old_config:
-            if section_name not in migrated_config:
-                logger.warning(f"{self.log_prefix} 配置节 {section_name} 在新版本中已被移除")
-
-        return migrated_config
+        final_config = _sync_dicts(schema_config, user_config)
+        return final_config, changed
 
     def _generate_config_from_schema(self) -> Dict[str, Any]:
         # sourcery skip: dict-comprehension
@@ -393,11 +358,7 @@ class PluginBase(ABC):
 
         toml_str = f"# {self.plugin_name} - 配置文件\n"
         plugin_description = self.get_manifest_info("description", "插件配置文件")
-        toml_str += f"# {plugin_description}\n"
-
-        # 获取当前期望的配置版本
-        expected_version = self._get_expected_config_version()
-        toml_str += f"# 配置版本: {expected_version}\n\n"
+        toml_str += f"# {plugin_description}\n\n"
 
         # 遍历每个配置节
         for section, fields in self.config_schema.items():
@@ -456,77 +417,74 @@ class PluginBase(ABC):
 
     def _load_plugin_config(self):  # sourcery skip: extract-method
         """
-        加载插件配置文件，实现集中化管理和自动迁移。
+        加载并同步插件配置文件。
 
         处理逻辑:
-        1. 确定用户配置文件路径（位于 `config/plugins/` 目录下）。
-        2. 如果用户配置文件不存在，则根据 config_schema 直接在中央目录生成一份。
-        3. 加载用户配置文件，并进行版本检查和自动迁移（如果需要）。
-        4. 最终加载的配置是用户配置文件。
+        1. 确定用户配置文件路径和插件自带的配置文件路径。
+        2. 如果用户配置文件不存在，尝试从插件目录迁移（移动）一份。
+        3. 如果迁移后（或原本）用户配置文件仍不存在，则根据 schema 生成一份。
+        4. 加载用户配置文件。
+        5. 以 schema 为基准，与用户配置进行同步，补全缺失项并移除废弃项。
+        6. 如果同步过程发现不一致，则先备份原始文件，然后将同步后的完整配置写回用户目录。
+        7. 将最终同步后的配置加载到 self.config。
         """
         if not self.config_file_name:
             logger.debug(f"{self.log_prefix} 未指定配置文件，跳过加载")
             return
 
-        # 1. 确定并确保用户配置文件路径存在
         user_config_path = os.path.join(CONFIG_DIR, "plugins", self.plugin_name, self.config_file_name)
+        plugin_config_path = os.path.join(self.plugin_dir, self.config_file_name)
         os.makedirs(os.path.dirname(user_config_path), exist_ok=True)
 
-        # 2. 如果用户配置文件不存在，直接在中央目录生成
+        # 首次加载迁移：如果用户配置不存在，但插件目录中存在，则移动过来
+        if not os.path.exists(user_config_path) and os.path.exists(plugin_config_path):
+            try:
+                shutil.move(plugin_config_path, user_config_path)
+                logger.info(f"{self.log_prefix} 已将配置文件从 {plugin_config_path} 迁移到 {user_config_path}")
+            except OSError as e:
+                logger.error(f"{self.log_prefix} 迁移配置文件失败: {e}", exc_info=True)
+
+        # 如果用户配置文件仍然不存在，生成默认的
         if not os.path.exists(user_config_path):
             logger.info(f"{self.log_prefix} 用户配置文件 {user_config_path} 不存在，将生成默认配置。")
             self._generate_and_save_default_config(user_config_path)
 
-        # 检查最终的用户配置文件是否存在
         if not os.path.exists(user_config_path):
-            # 如果插件没有定义config_schema，那么不创建文件是正常行为
             if not self.config_schema:
-                logger.debug(f"{self.log_prefix} 插件未定义config_schema，使用空的配置.")
+                logger.debug(f"{self.log_prefix} 插件未定义 config_schema，使用空配置。")
                 self.config = {}
-                return
-
-            logger.warning(f"{self.log_prefix} 用户配置文件 {user_config_path} 不存在且无法创建。")
+            else:
+                logger.warning(f"{self.log_prefix} 用户配置文件 {user_config_path} 不存在且无法创建。")
             return
 
-        # 3. 加载、检查和迁移用户配置文件
-        _, file_ext = os.path.splitext(self.config_file_name)
-        if file_ext.lower() != ".toml":
-            logger.warning(f"{self.log_prefix} 不支持的配置文件格式: {file_ext}，仅支持 .toml")
-            self.config = {}
-            return
         try:
             with open(user_config_path, "r", encoding="utf-8") as f:
-                existing_config = toml.load(f) or {}
+                user_config = toml.load(f) or {}
         except Exception as e:
             logger.error(f"{self.log_prefix} 加载用户配置文件 {user_config_path} 失败: {e}", exc_info=True)
-            self.config = {}
+            self.config = self._generate_config_from_schema()  # 加载失败时使用默认 schema
             return
 
-        current_version = self._get_current_config_version(existing_config)
-        expected_version = self._get_expected_config_version()
+        # 生成基于 schema 的理想配置结构
+        schema_config = self._generate_config_from_schema()
 
-        if current_version == "0.0.0":
-            logger.debug(f"{self.log_prefix} 用户配置文件无版本信息，跳过版本检查")
-            self.config = existing_config
-        elif current_version != expected_version:
-            logger.info(
-                f"{self.log_prefix} 检测到用户配置版本需要更新: 当前=v{current_version}, 期望=v{expected_version}"
-            )
-            new_config_structure = self._generate_config_from_schema()
-            migrated_config = self._migrate_config_values(existing_config, new_config_structure)
-            self._save_config_to_file(migrated_config, user_config_path)
-            logger.info(f"{self.log_prefix} 用户配置文件已从 v{current_version} 更新到 v{expected_version}")
-            self.config = migrated_config
-        else:
-            logger.debug(f"{self.log_prefix} 用户配置版本匹配 (v{current_version})，直接加载")
-            self.config = existing_config
+        # 将用户配置与 schema 同步
+        synced_config, was_changed = self._synchronize_config(schema_config, user_config)
 
-        logger.debug(f"{self.log_prefix} 配置已从 {user_config_path} 加载")
+        # 如果配置发生了变化（补全或移除），则备份并重写配置文件
+        if was_changed:
+            logger.info(f"{self.log_prefix} 检测到配置结构不匹配，将自动同步并更新配置文件。")
+            self._backup_config_file(user_config_path)
+            self._save_config_to_file(synced_config, user_config_path)
+            logger.info(f"{self.log_prefix} 配置文件已同步更新。")
 
-        # 从配置中更新 enable_plugin 状态
+        self.config = synced_config
+        logger.debug(f"{self.log_prefix} 配置已从 {user_config_path} 加载并同步。")
+
+        # 从最终配置中更新插件启用状态
         if "plugin" in self.config and "enabled" in self.config["plugin"]:
             self._is_enabled = self.config["plugin"]["enabled"]
-            logger.debug(f"{self.log_prefix} 从配置更新插件启用状态: {self._is_enabled}")
+            logger.info(f"{self.log_prefix} 从配置更新插件启用状态: {self._is_enabled}")
 
     def _check_dependencies(self) -> bool:
         """检查插件依赖"""
