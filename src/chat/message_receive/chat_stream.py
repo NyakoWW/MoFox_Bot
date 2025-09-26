@@ -257,6 +257,10 @@ class ChatStream:
         self.last_interaction_time = time.time()
         self.focus_energy = self._calculate_dynamic_focus_energy()
 
+    def update_focus_energy(self):
+        """手动触发更新focus_energy"""
+        self.focus_energy = self._calculate_dynamic_focus_energy()
+
     def record_action(self, is_reply: bool = False):
         """记录动作执行"""
         self.action_count += 1
@@ -530,7 +534,6 @@ class ChatManager:
                     "action_count": s_data_dict.get("action_count", 0),
                     "reply_count": s_data_dict.get("reply_count", 0),
                     "last_interaction_time": s_data_dict.get("last_interaction_time", time.time()),
-                    "relationship_score": s_data_dict.get("relationship_score", 0.3),
                     "consecutive_no_reply": s_data_dict.get("consecutive_no_reply", 0),
                 }
 
