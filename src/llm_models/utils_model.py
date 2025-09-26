@@ -313,7 +313,14 @@ class _RequestExecutor:
 
                 if request_type == RequestType.RESPONSE:
                     assert current_messages is not None, "message_list cannot be None for response requests"
-                    return await client.get_response(model_info=model_info, message_list=current_messages, **kwargs)
+                    
+                    # 修复: 防止 'message_list' 在 kwargs 中重复
+                    request_params = kwargs.copy()
+                    request_params.pop("message_list", None)
+                    
+                    return await client.get_response(
+                        model_info=model_info, message_list=current_messages, **request_params
+                    )
                 elif request_type == RequestType.EMBEDDING:
                     return await client.get_embedding(model_info=model_info, **kwargs)
                 elif request_type == RequestType.AUDIO:
