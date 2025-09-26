@@ -202,7 +202,9 @@ class DefaultReplyer:
     ):
         self.express_model = LLMRequest(model_set=model_config.model_task_config.replyer, request_type=request_type)
         self.chat_stream = chat_stream
-        self.is_group_chat, self.chat_target_info = get_chat_type_and_target_info(self.chat_stream.stream_id)
+        self.is_group_chat: Optional[bool] = None
+        self.chat_target_info: Optional[Dict[str, Any]] = None
+        self._initialized = False
 
         self.heart_fc_sender = HeartFCSender()
         self.memory_activator = MemoryActivator()
@@ -775,6 +777,12 @@ class DefaultReplyer:
         mai_think.target = target
         return mai_think
 
+    async def _async_init(self):
+        if self._initialized:
+            return
+        self.is_group_chat, self.chat_target_info = await get_chat_type_and_target_info(self.chat_stream.stream_id)
+        self._initialized = True
+
     async def build_prompt_reply_context(
         self,
         reply_to: str,
@@ -800,10 +808,11 @@ class DefaultReplyer:
         """
         if available_actions is None:
             available_actions = {}
+        await self._async_init()
         chat_stream = self.chat_stream
         chat_id = chat_stream.stream_id
         person_info_manager = get_person_info_manager()
-        is_group_chat = bool(chat_stream.group_info)
+        is_group_chat = self.is_group_chat
 
         if global_config.mood.enable_mood:
             chat_mood = mood_manager.get_mood_by_chat_id(chat_id)
@@ -1128,9 +1137,10 @@ class DefaultReplyer:
         reply_to: str,
         reply_message: Optional[Dict[str, Any]] = None,
     ) -> str:  # sourcery skip: merge-else-if-into-elif, remove-redundant-if
+        await self._async_init()
         chat_stream = self.chat_stream
         chat_id = chat_stream.stream_id
-        is_group_chat = bool(chat_stream.group_info)
+        is_group_chat = self.is_group_chat
 
         if reply_message:
             sender = reply_message.get("sender")
