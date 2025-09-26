@@ -308,6 +308,7 @@ class ExpressionRule(ValidatedConfigBase):
 class ExpressionConfig(ValidatedConfigBase):
     """表达配置类"""
 
+    enable_expression: bool = Field(default=True, description="是否启用表达")
     rules: List[ExpressionRule] = Field(default_factory=list, description="表达学习规则")
 
     def _parse_stream_config_to_chat_id(self, stream_config_str: str) -> Optional[str]:
