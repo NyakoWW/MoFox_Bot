@@ -62,6 +62,8 @@ class ChatStreams(Base):
     reply_count = Column(Integer, nullable=True, default=0)
     last_interaction_time = Column(Float, nullable=True, default=None)
     consecutive_no_reply = Column(Integer, nullable=True, default=0)
+    # 消息打断系统字段
+    interruption_count = Column(Integer, nullable=True, default=0)
 
     __table_args__ = (
         Index("idx_chatstreams_stream_id", "stream_id"),
@@ -171,11 +173,18 @@ class Messages(Base):
     is_command = Column(Boolean, nullable=False, default=False)
     is_notify = Column(Boolean, nullable=False, default=False)
 
+    # 兴趣度系统字段
+    interest_degree = Column(Float, nullable=True, default=0.0)
+    actions = Column(Text, nullable=True)  # JSON格式存储动作列表
+    should_reply = Column(Boolean, nullable=True, default=False)
+
     __table_args__ = (
         Index("idx_messages_message_id", "message_id"),
         Index("idx_messages_chat_id", "chat_id"),
         Index("idx_messages_time", "time"),
         Index("idx_messages_user_id", "user_id"),
+        Index("idx_messages_interest_degree", "interest_degree"),
+        Index("idx_messages_should_reply", "should_reply"),
     )
 
 

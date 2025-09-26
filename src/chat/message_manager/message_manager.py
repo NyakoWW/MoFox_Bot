@@ -89,7 +89,14 @@ class MessageManager:
 
         logger.debug(f"添加消息到聊天流 {stream_id}: {message.message_id}")
 
-    def update_message_and_refresh_energy(self, stream_id: str, message_id: str, interest_degree: float = None, actions: list = None, should_reply: bool = None):
+    def update_message_and_refresh_energy(
+        self,
+        stream_id: str,
+        message_id: str,
+        interest_degree: float = None,
+        actions: list = None,
+        should_reply: bool = None,
+    ):
         """更新消息信息"""
         if stream_id in self.stream_contexts:
             context = self.stream_contexts[stream_id]
@@ -288,6 +295,13 @@ class MessageManager:
                 global_config.chat.interruption_max_limit, global_config.chat.interruption_probability_factor
             )
 
+            # 检查是否已达到最大打断次数
+            if context.interruption_count >= global_config.chat.interruption_max_limit:
+                logger.debug(
+                    f"聊天流 {stream_id} 已达到最大打断次数 {context.interruption_count}/{global_config.chat.interruption_max_limit}，跳过打断检查"
+                )
+                return
+
             # 根据概率决定是否打断
             if random.random() < interruption_probability:
                 logger.info(f"聊天流 {stream_id} 触发消息打断，打断概率: {interruption_probability:.2f}")
@@ -302,9 +316,16 @@ class MessageManager:
                 # 增加打断计数并应用afc阈值降低
                 context.increment_interruption_count()
                 context.apply_interruption_afc_reduction(global_config.chat.interruption_afc_reduction)
-                logger.info(
-                    f"聊天流 {stream_id} 已打断，当前打断次数: {context.interruption_count}/{global_config.chat.interruption_max_limit}, afc阈值调整: {context.get_afc_threshold_adjustment()}"
-                )
+
+                # 检查是否已达到最大次数
+                if context.interruption_count >= global_config.chat.interruption_max_limit:
+                    logger.warning(
+                        f"聊天流 {stream_id} 已达到最大打断次数 {context.interruption_count}/{global_config.chat.interruption_max_limit}，后续消息将不再打断"
+                    )
+                else:
+                    logger.info(
+                        f"聊天流 {stream_id} 已打断，当前打断次数: {context.interruption_count}/{global_config.chat.interruption_max_limit}, afc阈值调整: {context.get_afc_threshold_adjustment()}"
+                    )
             else:
                 logger.debug(f"聊天流 {stream_id} 未触发打断，打断概率: {interruption_probability:.2f}")
 
@@ -312,9 +333,10 @@ class MessageManager:
         """计算单个聊天流的分发周期 - 基于阈值感知的focus_energy"""
         if not global_config.chat.dynamic_distribution_enabled:
             return self.check_interval  # 使用固定间隔
-        
+
         from src.plugin_system.apis.chat_api import get_chat_manager
-        chat_stream = get_chat_manager().get_stream(context.stream_id)      
+
+        chat_stream = get_chat_manager().get_stream(context.stream_id)
         # 获取该流的focus_energy（新的阈值感知版本）
         focus_energy = 0.5  # 默认值
         avg_message_interest = 0.5  # 默认平均兴趣度
@@ -327,13 +349,13 @@ class MessageManager:
             all_messages = history_messages + unread_messages
 
             if all_messages:
-                message_interests = [msg.interest_degree for msg in all_messages if hasattr(msg, 'interest_degree')]
+                message_interests = [msg.interest_degree for msg in all_messages if hasattr(msg, "interest_degree")]
                 avg_message_interest = sum(message_interests) / len(message_interests) if message_interests else 0.5
 
         # 获取AFC阈值用于参考，添加None值检查
-        reply_threshold = getattr(global_config.affinity_flow, 'reply_action_interest_threshold', 0.4)
-        non_reply_threshold = getattr(global_config.affinity_flow, 'non_reply_action_interest_threshold', 0.2)
-        high_match_threshold = getattr(global_config.affinity_flow, 'high_match_interest_threshold', 0.8)
+        reply_threshold = getattr(global_config.affinity_flow, "reply_action_interest_threshold", 0.4)
+        non_reply_threshold = getattr(global_config.affinity_flow, "non_reply_action_interest_threshold", 0.2)
+        high_match_threshold = getattr(global_config.affinity_flow, "high_match_interest_threshold", 0.8)
 
         # 使用配置参数
         base_interval = global_config.chat.dynamic_distribution_base_interval
@@ -364,6 +386,7 @@ class MessageManager:
 
         # 添加随机扰动避免同步
         import random
+
         jitter = random.uniform(1.0 - jitter_factor, 1.0 + jitter_factor)
         final_interval = interval * jitter
 
@@ -395,7 +418,7 @@ class MessageManager:
     def _calculate_next_manager_delay(self) -> float:
         """计算管理器下次检查的延迟时间"""
         current_time = time.time()
-        min_delay = float('inf')
+        min_delay = float("inf")
 
         # 找到最近需要检查的流
         for context in self.stream_contexts.values():
@@ -410,7 +433,7 @@ class MessageManager:
                 break
 
         # 如果没有活跃流，使用默认间隔
-        if min_delay == float('inf'):
+        if min_delay == float("inf"):
             return self.check_interval
 
         # 确保最小延迟
@@ -448,7 +471,8 @@ class MessageManager:
                     # 如果没有处理任务，创建一个
                     if not context.processing_task or context.processing_task.done():
                         from src.plugin_system.apis.chat_api import get_chat_manager
-                        chat_stream = get_chat_manager().get_stream(context.stream_id)      
+
+                        chat_stream = get_chat_manager().get_stream(context.stream_id)
                         focus_energy = chat_stream.focus_energy if chat_stream else 0.5
 
                         # 根据优先级记录日志
@@ -473,10 +497,7 @@ class MessageManager:
         self.stats.active_streams = active_count
 
         if processed_streams > 0:
-            logger.debug(
-                f"本次循环处理了 {processed_streams} 个流 | "
-                f"活跃流总数: {active_count}"
-            )
+            logger.debug(f"本次循环处理了 {processed_streams} 个流 | 活跃流总数: {active_count}")
 
     async def _check_all_streams_with_priority(self):
         """按优先级检查所有聊天流，高focus_energy的流优先处理"""
@@ -491,7 +512,8 @@ class MessageManager:
 
             # 获取focus_energy，如果不存在则使用默认值
             from src.plugin_system.apis.chat_api import get_chat_manager
-            chat_stream = get_chat_manager().get_stream(context.stream_id)      
+
+            chat_stream = get_chat_manager().get_stream(context.stream_id)
             focus_energy = 0.5
             if chat_stream:
                 focus_energy = chat_stream.focus_energy
@@ -534,7 +556,8 @@ class MessageManager:
     def _calculate_stream_priority(self, context: StreamContext, focus_energy: float) -> float:
         """计算聊天流的优先级分数"""
         from src.plugin_system.apis.chat_api import get_chat_manager
-        chat_stream = get_chat_manager().get_stream(context.stream_id)      
+
+        chat_stream = get_chat_manager().get_stream(context.stream_id)
         # 基础优先级：focus_energy
         base_priority = focus_energy
 
@@ -553,8 +576,8 @@ class MessageManager:
             consecutive_no_reply = 0
             all_messages = context.get_history_messages(limit=50) + context.get_unread_messages()
             for msg in reversed(all_messages):
-                if hasattr(msg, 'should_reply') and msg.should_reply:
-                    if not (hasattr(msg, 'actions') and 'reply' in (msg.actions or [])):
+                if hasattr(msg, "should_reply") and msg.should_reply:
+                    if not (hasattr(msg, "actions") and "reply" in (msg.actions or [])):
                         consecutive_no_reply += 1
                     else:
                         break
@@ -564,10 +587,10 @@ class MessageManager:
 
         # 综合优先级计算
         final_priority = (
-            base_priority * 0.6 +           # 基础兴趣度权重60%
-            message_count_bonus * 0.2 +     # 消息数量权重20%
-            time_penalty * 0.1 +            # 时间权重10%
-            no_reply_penalty * 0.1         # 回复状态权重10%
+            base_priority * 0.6  # 基础兴趣度权重60%
+            + message_count_bonus * 0.2  # 消息数量权重20%
+            + time_penalty * 0.1  # 时间权重10%
+            + no_reply_penalty * 0.1  # 回复状态权重10%
         )
 
         return max(0.0, min(1.0, final_priority))
