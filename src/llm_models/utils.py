@@ -145,7 +145,7 @@ class LLMUsageRecorder:
     LLM使用情况记录器（SQLAlchemy版本）
     """
 
-    def record_usage_to_database(
+    async def record_usage_to_database(
         self,
         model_info: ModelInfo,
         model_usage: UsageRecord,
