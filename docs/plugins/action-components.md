@@ -50,7 +50,7 @@ class ExampleAction(BaseAction):
 | emoji | 表情消息 | str: 表情包的无头base64|
 | image | 图片消息 | str: 图片的无头base64 |
 | reply | 回复消息 | str: 回复的消息ID |
-| voice | 语音消息 | str: wav格式语音的无头base64 | 
+| voice | 语音消息 | str: wav格式语音的无头base64 |
 | command | 命令消息 | 参见Adapter文档 |
 | voiceurl | 语音URL消息 | str: wav格式语音的URL |
 | music | 音乐消息 | str: 这首歌在网易云音乐的音乐id |
