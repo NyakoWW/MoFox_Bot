@@ -31,7 +31,6 @@ from src.chat.express.expression_selector import expression_selector
 from src.chat.memory_system.memory_activator import MemoryActivator
 from src.chat.memory_system.vector_instant_memory import VectorInstantMemoryV2
 from src.mood.mood_manager import mood_manager
-from src.person_info.relationship_fetcher import relationship_fetcher_manager
 from src.person_info.person_info import get_person_info_manager
 from src.plugin_system.base.component_types import ActionInfo, EventType
 from src.plugin_system.apis import llm_api
@@ -83,13 +82,13 @@ def init_prompt():
 - {schedule_block}
 
 ## 历史记录
-### {chat_context_type}中的所有人的聊天记录：
-{background_dialogue_prompt}
+### 📜 已读历史消息（仅供参考）
+{read_history_prompt}
 
 {cross_context_block}
 
-### {chat_context_type}中正在与你对话的聊天记录
-{core_dialogue_prompt}
+### 📬 未读历史消息（动作执行对象）
+{unread_history_prompt}
 
 ## 表达方式
 - *你需要参考你的回复风格：*
@@ -105,19 +104,38 @@ def init_prompt():
 ## 其他信息
 {memory_block}
 {relation_info_block}
+
 {extra_info_block}
+
 {action_descriptions}
 
 ## 任务
 
-*你正在一个{chat_context_type}里聊天，你需要理解整个{chat_context_type}的聊天动态和话题走向，并做出自然的回应。*
+*{chat_scene}*
 
 ### 核心任务
-- 你现在的主要任务是和 {sender_name} 聊天。
-- {reply_target_block} ，你需要生成一段紧密相关且能推动对话的回复。
+- 你现在的主要任务是和 {sender_name} 聊天。同时，也有其他用户会参与聊天，你可以参考他们的回复内容，但是你现在想回复{sender_name}的发言。
+
+-  {reply_target_block} 你需要生成一段紧密相关且能推动对话的回复。
 
 ## 规则
 {safety_guidelines_block}
+**重要提醒：**
+- **已读历史消息仅作为当前聊天情景的参考**
+- **动作执行对象只能是未读历史消息中的消息**
+- **请优先对兴趣值高的消息做出回复**（兴趣度标注在未读消息末尾）
+
+在回应之前，首先分析消息的针对性：
+1. **直接针对你**：@你、回复你、明确询问你 → 必须回应
+2. **间接相关**：涉及你感兴趣的话题但未直接问你 → 谨慎参与
+3. **他人对话**：与你无关的私人交流 → 通常不参与
+4. **重复内容**：他人已充分回答的问题 → 避免重复
+
+你的回复应该：
+1.  明确回应目标消息，而不是宽泛地评论。
+2.  可以分享你的看法、提出相关问题，或者开个合适的玩笑。
+3.  目的是让对话更有趣、更深入。
+4.  不要浮夸，不要夸张修辞，不要输出多余内容(包括前后缀，冒号和引号，括号()，表情包，at或 @等 )。
 最终请输出一条简短、完整且口语化的回复。
 
  --------------------------------
@@ -153,10 +171,14 @@ If you need to use the search tool, please directly call the function "lpmm_sear
     logger.debug("[Prompt模式调试] 正在注册normal_style_prompt模板")
     Prompt(
         """
-你正在一个QQ群里聊天，你需要理解整个群的聊天动态和话题走向，并做出自然的回应。
+{chat_scene}
 
 **重要：消息针对性判断**
-{safety_guidelines_block}
+在回应之前，首先分析消息的针对性：
+1. **直接针对你**：@你、回复你、明确询问你 → 必须回应
+2. **间接相关**：涉及你感兴趣的话题但未直接问你 → 谨慎参与
+3. **他人对话**：与你无关的私人交流 → 通常不参与
+4. **重复内容**：他人已充分回答的问题 → 避免重复
 
 {expression_habits_block}
 {tool_info_block}
@@ -186,6 +208,10 @@ If you need to use the search tool, please directly call the function "lpmm_sear
 {keywords_reaction_prompt}
 请注意不要输出多余内容(包括前后缀，冒号和引号，at或 @等 )。只输出回复内容。
 {moderation_prompt}
+你的核心任务是针对 {reply_target_block} 中提到的内容，{relation_info_block}生成一段紧密相关且能推动对话的回复。你的回复应该：
+1.  明确回应目标消息，而不是宽泛地评论。
+2.  可以分享你的看法、提出相关问题，或者开个合适的玩笑。
+3.  目的是让对话更有趣、更深入。
 最终请输出一条简短、完整且口语化的回复。
 现在，你说：
 """,
@@ -202,9 +228,7 @@ class DefaultReplyer:
     ):
         self.express_model = LLMRequest(model_set=model_config.model_task_config.replyer, request_type=request_type)
         self.chat_stream = chat_stream
-        self.is_group_chat: Optional[bool] = None
-        self.chat_target_info: Optional[Dict[str, Any]] = None
-        self._initialized = False
+        self.is_group_chat, self.chat_target_info = get_chat_type_and_target_info(self.chat_stream.stream_id)
 
         self.heart_fc_sender = HeartFCSender()
         self.memory_activator = MemoryActivator()
@@ -215,19 +239,6 @@ class DefaultReplyer:
 
         self.tool_executor = ToolExecutor(chat_id=self.chat_stream.stream_id)
 
-    def _should_block_self_message(self, reply_message: Optional[Dict[str, Any]]) -> bool:
-        """判定是否应阻断当前待处理消息（自消息且无外部触发）"""
-        try:
-            bot_id = str(global_config.bot.qq_account)
-            uid = str(reply_message.get("user_id"))
-            if uid != bot_id:
-                return False
-
-            return True
-        except Exception as e:
-            logger.warning(f"[SelfGuard] 判定异常，回退为不阻断: {e}")
-            return False
-
     async def generate_reply_with_context(
         self,
         reply_to: str = "",
@@ -237,7 +248,6 @@ class DefaultReplyer:
         from_plugin: bool = True,
         stream_id: Optional[str] = None,
         reply_message: Optional[Dict[str, Any]] = None,
-        read_mark: float = 0.0,
     ) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
         # sourcery skip: merge-nested-ifs
         """
@@ -256,10 +266,6 @@ class DefaultReplyer:
         prompt = None
         if available_actions is None:
             available_actions = {}
-        # 自消息阻断
-        if self._should_block_self_message(reply_message):
-            logger.debug("[SelfGuard] 阻断：自消息且无外部触发。")
-            return False, None, None
         llm_response = None
         try:
             # 构建 Prompt
@@ -270,7 +276,6 @@ class DefaultReplyer:
                     available_actions=available_actions,
                     enable_tool=enable_tool,
                     reply_message=reply_message,
-                    read_mark=read_mark,
                 )
 
             if not prompt:
@@ -300,7 +305,7 @@ class DefaultReplyer:
                     "model": model_name,
                     "tool_calls": tool_call,
                 }
-                
+
                 # 触发 AFTER_LLM 事件
                 if not from_plugin:
                     result = await event_manager.trigger_event(
@@ -592,17 +597,16 @@ class DefaultReplyer:
             logger.error(f"工具信息获取失败: {e}")
             return ""
 
-    @staticmethod
-    def _parse_reply_target(target_message: str) -> Tuple[str, str]:
+    def _parse_reply_target(self, target_message: str) -> Tuple[str, str]:
         """解析回复目标消息 - 使用共享工具"""
         from src.chat.utils.prompt import Prompt
+
         if target_message is None:
             logger.warning("target_message为None，返回默认值")
             return "未知用户", "(无消息内容)"
         return Prompt.parse_reply_target(target_message)
 
-    @staticmethod
-    async def build_keywords_reaction_prompt(target: Optional[str]) -> str:
+    async def build_keywords_reaction_prompt(self, target: Optional[str]) -> str:
         """构建关键词反应提示
 
         Args:
@@ -644,8 +648,7 @@ class DefaultReplyer:
 
         return keywords_reaction_prompt
 
-    @staticmethod
-    async def _time_and_run_task(coroutine, name: str) -> Tuple[str, Any, float]:
+    async def _time_and_run_task(self, coroutine, name: str) -> Tuple[str, Any, float]:
         """计时并运行异步任务的辅助函数
 
         Args:
@@ -662,79 +665,259 @@ class DefaultReplyer:
         return name, result, duration
 
     async def build_s4u_chat_history_prompts(
-        self, message_list_before_now: List[Dict[str, Any]], target_user_id: str, sender: str
+        self, message_list_before_now: List[Dict[str, Any]], target_user_id: str, sender: str, chat_id: str
     ) -> Tuple[str, str]:
         """
-        构建 s4u 风格的分离对话 prompt
+        构建 s4u 风格的已读/未读历史消息 prompt
 
         Args:
             message_list_before_now: 历史消息列表
             target_user_id: 目标用户ID（当前对话对象）
+            sender: 发送者名称
+            chat_id: 聊天ID
 
         Returns:
-            Tuple[str, str]: (核心对话prompt, 背景对话prompt)
+            Tuple[str, str]: (已读历史消息prompt, 未读历史消息prompt)
         """
-        core_dialogue_list = []
+        try:
+            # 从message_manager获取真实的已读/未读消息
+            from src.chat.message_manager.message_manager import message_manager
+
+            # 获取聊天流的上下文
+            stream_context = message_manager.stream_contexts.get(chat_id)
+            if stream_context:
+                # 使用真正的已读和未读消息
+                read_messages = stream_context.history_messages  # 已读消息
+                unread_messages = stream_context.get_unread_messages()  # 未读消息
+
+                # 构建已读历史消息 prompt
+                read_history_prompt = ""
+                if read_messages:
+                    read_content = build_readable_messages(
+                        [msg.flatten() for msg in read_messages[-50:]],  # 限制数量
+                        replace_bot_name=True,
+                        timestamp_mode="normal_no_YMD",
+                        truncate=True,
+                    )
+                    read_history_prompt = f"这是已读历史消息，仅作为当前聊天情景的参考：\n{read_content}"
+                else:
+                    # 如果没有已读消息，则从数据库加载最近的上下文
+                    logger.info("暂无已读历史消息，正在从数据库加载上下文...")
+                    fallback_messages = get_raw_msg_before_timestamp_with_chat(
+                        chat_id=chat_id,
+                        timestamp=time.time(),
+                        limit=global_config.chat.max_context_size,
+                    )
+                    if fallback_messages:
+                        # 从 unread_messages 获取 message_id 列表，用于去重
+                        unread_message_ids = {msg.message_id for msg in unread_messages}
+                        filtered_fallback_messages = [
+                            msg for msg in fallback_messages if msg.get("message_id") not in unread_message_ids
+                        ]
+
+                        if filtered_fallback_messages:
+                            read_content = build_readable_messages(
+                                filtered_fallback_messages,
+                                replace_bot_name=True,
+                                timestamp_mode="normal_no_YMD",
+                                truncate=True,
+                            )
+                            read_history_prompt = f"这是已读历史消息，仅作为当前聊天情景的参考：\n{read_content}"
+                        else:
+                            read_history_prompt = "暂无已读历史消息"
+                    else:
+                        read_history_prompt = "暂无已读历史消息"
+
+                # 构建未读历史消息 prompt（包含兴趣度）
+                unread_history_prompt = ""
+                if unread_messages:
+                    # 尝试获取兴趣度评分
+                    interest_scores = await self._get_interest_scores_for_messages(
+                        [msg.flatten() for msg in unread_messages]
+                    )
+
+                    unread_lines = []
+                    for msg in unread_messages:
+                        msg_id = msg.message_id
+                        msg_time = time.strftime("%H:%M:%S", time.localtime(msg.time))
+                        msg_content = msg.processed_plain_text
+
+                        # 使用与已读历史消息相同的方法获取用户名
+                        from src.person_info.person_info import PersonInfoManager, get_person_info_manager
+
+                        # 获取用户信息
+                        user_info = getattr(msg, "user_info", {})
+                        platform = getattr(user_info, "platform", "") or getattr(msg, "platform", "")
+                        user_id = getattr(user_info, "user_id", "") or getattr(msg, "user_id", "")
+
+                        # 获取用户名
+                        if platform and user_id:
+                            person_id = PersonInfoManager.get_person_id(platform, user_id)
+                            person_info_manager = get_person_info_manager()
+                            sender_name = person_info_manager.get_value_sync(person_id, "person_name") or "未知用户"
+                        else:
+                            sender_name = "未知用户"
+
+                        # 添加兴趣度信息
+                        interest_score = interest_scores.get(msg_id, 0.0)
+                        interest_text = f" [兴趣度: {interest_score:.3f}]" if interest_score > 0 else ""
+
+                        unread_lines.append(f"{msg_time} {sender_name}: {msg_content}{interest_text}")
+
+                    unread_history_prompt_str = "\n".join(unread_lines)
+                    unread_history_prompt = f"这是未读历史消息，包含兴趣度评分，请优先对兴趣值高的消息做出动作：\n{unread_history_prompt_str}"
+                else:
+                    unread_history_prompt = "暂无未读历史消息"
+
+                return read_history_prompt, unread_history_prompt
+            else:
+                # 回退到传统方法
+                return await self._fallback_build_chat_history_prompts(message_list_before_now, target_user_id, sender)
+
+        except Exception as e:
+            logger.warning(f"获取已读/未读历史消息失败，使用回退方法: {e}")
+            return await self._fallback_build_chat_history_prompts(message_list_before_now, target_user_id, sender)
+
+    async def _fallback_build_chat_history_prompts(
+        self, message_list_before_now: List[Dict[str, Any]], target_user_id: str, sender: str
+    ) -> Tuple[str, str]:
+        """
+        回退的已读/未读历史消息构建方法
+        """
+        # 通过is_read字段分离已读和未读消息
+        read_messages = []
+        unread_messages = []
         bot_id = str(global_config.bot.qq_account)
 
-        # 过滤消息：分离bot和目标用户的对话 vs 其他用户的对话
         for msg_dict in message_list_before_now:
             try:
                 msg_user_id = str(msg_dict.get("user_id"))
-                reply_to = msg_dict.get("reply_to", "")
-                _platform, reply_to_user_id = self._parse_reply_target(reply_to)
-                if (msg_user_id == bot_id and reply_to_user_id == target_user_id) or msg_user_id == target_user_id:
-                    # bot 和目标用户的对话
-                    core_dialogue_list.append(msg_dict)
+                if msg_dict.get("is_read", False):
+                    read_messages.append(msg_dict)
+                else:
+                    unread_messages.append(msg_dict)
             except Exception as e:
                 logger.error(f"处理消息记录时出错: {msg_dict}, 错误: {e}")
 
-        # 构建背景对话 prompt
-        all_dialogue_prompt = ""
-        if message_list_before_now:
-            latest_25_msgs = message_list_before_now[-int(global_config.chat.max_context_size) :]
-            all_dialogue_prompt_str = await build_readable_messages(
-                latest_25_msgs,
+        # 如果没有is_read字段，使用原有的逻辑
+        if not read_messages and not unread_messages:
+            # 使用原有的核心对话逻辑
+            core_dialogue_list = []
+            for msg_dict in message_list_before_now:
+                try:
+                    msg_user_id = str(msg_dict.get("user_id"))
+                    reply_to = msg_dict.get("reply_to", "")
+                    _platform, reply_to_user_id = self._parse_reply_target(reply_to)
+                    if (msg_user_id == bot_id and reply_to_user_id == target_user_id) or msg_user_id == target_user_id:
+                        core_dialogue_list.append(msg_dict)
+                except Exception as e:
+                    logger.error(f"处理消息记录时出错: {msg_dict}, 错误: {e}")
+
+            read_messages = [msg for msg in message_list_before_now if msg not in core_dialogue_list]
+            unread_messages = core_dialogue_list
+
+        # 构建已读历史消息 prompt
+        read_history_prompt = ""
+        if read_messages:
+            read_content = build_readable_messages(
+                read_messages[-50:],
                 replace_bot_name=True,
-                timestamp_mode="normal",
+                timestamp_mode="normal_no_YMD",
                 truncate=True,
             )
-            all_dialogue_prompt = f"所有用户的发言：\n{all_dialogue_prompt_str}"
+            read_history_prompt = f"这是已读历史消息，仅作为当前聊天情景的参考：\n{read_content}"
+        else:
+            read_history_prompt = "暂无已读历史消息"
 
-        # 构建核心对话 prompt
-        core_dialogue_prompt = ""
-        if core_dialogue_list:
-            # 检查最新五条消息中是否包含bot自己说的消息
-            latest_5_messages = core_dialogue_list[-5:] if len(core_dialogue_list) >= 5 else core_dialogue_list
-            has_bot_message = any(str(msg.get("user_id")) == bot_id for msg in latest_5_messages)
+        # 构建未读历史消息 prompt
+        unread_history_prompt = ""
+        if unread_messages:
+            # 尝试获取兴趣度评分
+            interest_scores = await self._get_interest_scores_for_messages(unread_messages)
 
-            # logger.info(f"最新五条消息：{latest_5_messages}")
-            # logger.info(f"最新五条消息中是否包含bot自己说的消息：{has_bot_message}")
+            unread_lines = []
+            for msg in unread_messages:
+                msg_id = msg.get("message_id", "")
+                msg_time = time.strftime("%H:%M:%S", time.localtime(msg.get("time", time.time())))
+                msg_content = msg.get("processed_plain_text", "")
 
-            # 如果最新五条消息中不包含bot的消息，则返回空字符串
-            if not has_bot_message:
-                core_dialogue_prompt = ""
-            else:
-                core_dialogue_list = core_dialogue_list[-int(global_config.chat.max_context_size * 2) :]  # 限制消息数量
+                # 使用与已读历史消息相同的方法获取用户名
+                from src.person_info.person_info import PersonInfoManager, get_person_info_manager
 
-                core_dialogue_prompt_str = await build_readable_messages(
-                    core_dialogue_list,
-                    replace_bot_name=True,
-                    merge_messages=False,
-                    timestamp_mode="normal_no_YMD",
-                    read_mark=0.0,
-                    truncate=True,
-                    show_actions=True,
-                )
-                core_dialogue_prompt = f"""
-{core_dialogue_prompt_str}
-"""
+                # 获取用户信息
+                user_info = msg.get("user_info", {})
+                platform = user_info.get("platform") or msg.get("platform", "")
+                user_id = user_info.get("user_id") or msg.get("user_id", "")
 
-        return core_dialogue_prompt, all_dialogue_prompt
+                # 获取用户名
+                if platform and user_id:
+                    person_id = PersonInfoManager.get_person_id(platform, user_id)
+                    person_info_manager = get_person_info_manager()
+                    sender_name = person_info_manager.get_value_sync(person_id, "person_name") or "未知用户"
+                else:
+                    sender_name = "未知用户"
 
-    @staticmethod
+                # 添加兴趣度信息
+                interest_score = interest_scores.get(msg_id, 0.0)
+                interest_text = f" [兴趣度: {interest_score:.3f}]" if interest_score > 0 else ""
+
+                unread_lines.append(f"{msg_time} {sender_name}: {msg_content}{interest_text}")
+
+            unread_history_prompt_str = "\n".join(unread_lines)
+            unread_history_prompt = (
+                f"这是未读历史消息，包含兴趣度评分，请优先对兴趣值高的消息做出动作：\n{unread_history_prompt_str}"
+            )
+        else:
+            unread_history_prompt = "暂无未读历史消息"
+
+        return read_history_prompt, unread_history_prompt
+
+    async def _get_interest_scores_for_messages(self, messages: List[dict]) -> dict[str, float]:
+        """为消息获取兴趣度评分"""
+        interest_scores = {}
+
+        try:
+            from src.plugins.built_in.affinity_flow_chatter.interest_scoring import chatter_interest_scoring_system as interest_scoring_system
+            from src.common.data_models.database_data_model import DatabaseMessages
+
+            # 转换消息格式
+            db_messages = []
+            for msg_dict in messages:
+                try:
+                    db_msg = DatabaseMessages(
+                        message_id=msg_dict.get("message_id", ""),
+                        time=msg_dict.get("time", time.time()),
+                        chat_id=msg_dict.get("chat_id", ""),
+                        processed_plain_text=msg_dict.get("processed_plain_text", ""),
+                        user_id=msg_dict.get("user_id", ""),
+                        user_nickname=msg_dict.get("user_nickname", ""),
+                        user_platform=msg_dict.get("platform", "qq"),
+                        chat_info_group_id=msg_dict.get("group_id", ""),
+                        chat_info_group_name=msg_dict.get("group_name", ""),
+                        chat_info_group_platform=msg_dict.get("platform", "qq"),
+                    )
+                    db_messages.append(db_msg)
+                except Exception as e:
+                    logger.warning(f"转换消息格式失败: {e}")
+                    continue
+
+            # 计算兴趣度评分
+            if db_messages:
+                bot_nickname = global_config.bot.nickname or "麦麦"
+                scores = await interest_scoring_system.calculate_interest_scores(db_messages, bot_nickname)
+
+                # 构建兴趣度字典
+                for score in scores:
+                    interest_scores[score.message_id] = score.total_score
+
+        except Exception as e:
+            logger.warning(f"获取兴趣度评分失败: {e}")
+
+        return interest_scores
+
     def build_mai_think_context(
-            chat_id: str,
+        self,
+        chat_id: str,
         memory_block: str,
         relation_info: str,
         time_block: str,
@@ -777,12 +960,6 @@ class DefaultReplyer:
         mai_think.target = target
         return mai_think
 
-    async def _async_init(self):
-        if self._initialized:
-            return
-        self.is_group_chat, self.chat_target_info = await get_chat_type_and_target_info(self.chat_stream.stream_id)
-        self._initialized = True
-
     async def build_prompt_reply_context(
         self,
         reply_to: str,
@@ -790,7 +967,6 @@ class DefaultReplyer:
         available_actions: Optional[Dict[str, ActionInfo]] = None,
         enable_tool: bool = True,
         reply_message: Optional[Dict[str, Any]] = None,
-        read_mark: float = 0.0,
     ) -> str:
         """
         构建回复器上下文
@@ -808,11 +984,10 @@ class DefaultReplyer:
         """
         if available_actions is None:
             available_actions = {}
-        await self._async_init()
         chat_stream = self.chat_stream
         chat_id = chat_stream.stream_id
         person_info_manager = get_person_info_manager()
-        is_group_chat = self.is_group_chat
+        is_group_chat = bool(chat_stream.group_info)
 
         if global_config.mood.enable_mood:
             chat_mood = mood_manager.get_mood_by_chat_id(chat_id)
@@ -829,35 +1004,38 @@ class DefaultReplyer:
             # 兼容旧的reply_to
             sender, target = self._parse_reply_target(reply_to)
         else:
-            # 需求：遍历最近消息，找到第一条 user_id != bot_id 的消息作为目标；找不到则静默退出
-            bot_user_id = str(global_config.bot.qq_account)
-            # 优先使用传入的 reply_message 如果它不是 bot
-            candidate_msg = None
-            if reply_message and str(reply_message.get("user_id")) != bot_user_id:
-                candidate_msg = reply_message
-            else:
-                try:
-                    recent_msgs = await get_raw_msg_before_timestamp_with_chat(
-                        chat_id=chat_id,
-                        timestamp=time.time(),
-                        limit= max(10, int(global_config.chat.max_context_size * 0.5)),
-                    )
-                    # 从最近到更早遍历，找第一条不是bot的
-                    for m in reversed(recent_msgs):
-                        if str(m.get("user_id")) != bot_user_id:
-                            candidate_msg = m
-                            break
-                except Exception as e:
-                    logger.error(f"获取最近消息失败: {e}")
-            if not candidate_msg:
-                logger.debug("未找到可作为目标的非bot消息，静默不回复。")
+            # 获取 platform，如果不存在则从 chat_stream 获取，如果还是 None 则使用默认值
+            if reply_message is None:
+                logger.warning("reply_message 为 None，无法构建prompt")
                 return ""
-            platform = candidate_msg.get("chat_info_platform") or self.chat_stream.platform
-            person_id = person_info_manager.get_person_id(platform, candidate_msg.get("user_id"))
-            person_info = await person_info_manager.get_values(person_id, ["person_name", "user_id"]) if person_id else {}
-            person_name = person_info.get("person_name") or candidate_msg.get("user_nickname") or candidate_msg.get("user_id") or "未知用户"
-            sender = person_name
-            target = candidate_msg.get("processed_plain_text") or candidate_msg.get("raw_message") or ""
+            platform = reply_message.get("chat_info_platform")
+            person_id = person_info_manager.get_person_id(
+                platform,  # type: ignore
+                reply_message.get("user_id"),  # type: ignore
+            )
+            person_name = await person_info_manager.get_value(person_id, "person_name")
+
+            # 如果person_name为None，使用fallback值
+            if person_name is None:
+                # 尝试从reply_message获取用户名
+                await person_info_manager.first_knowing_some_one(
+                    platform,  # type: ignore
+                    reply_message.get("user_id"),  # type: ignore
+                    reply_message.get("user_nickname"),
+                    reply_message.get("user_cardname")
+                )
+
+            # 检查是否是bot自己的名字，如果是则替换为"(你)"
+            bot_user_id = str(global_config.bot.qq_account)
+            current_user_id = person_info_manager.get_value_sync(person_id, "user_id")
+            current_platform = reply_message.get("chat_info_platform")
+
+            if current_user_id == bot_user_id and current_platform == global_config.bot.platform:
+                sender = f"{person_name}(你)"
+            else:
+                # 如果不是bot自己，直接使用person_name
+                sender = person_name
+            target = reply_message.get("processed_plain_text")
 
         # 最终的空值检查，确保sender和target不为None
         if sender is None:
@@ -868,12 +1046,10 @@ class DefaultReplyer:
             target = "(无消息内容)"
 
         person_info_manager = get_person_info_manager()
-        person_id = person_info_manager.get_person_id(platform, reply_message.get("user_id")) if reply_message else None
+        person_id = person_info_manager.get_person_id_by_person_name(sender)
         platform = chat_stream.platform
 
         target = replace_user_references_sync(target, chat_stream.platform, replace_bot_name=True)
-
-    # （简化）不再对自消息做额外任务段落清理，只通过前置选择逻辑避免自目标
 
         # 构建action描述 (如果启用planner)
         action_descriptions = ""
@@ -884,31 +1060,33 @@ class DefaultReplyer:
                 action_descriptions += f"- {action_name}: {action_description}\n"
             action_descriptions += "\n"
 
-        message_list_before_now_long = await get_raw_msg_before_timestamp_with_chat(
+        message_list_before_now_long = get_raw_msg_before_timestamp_with_chat(
             chat_id=chat_id,
             timestamp=time.time(),
             limit=global_config.chat.max_context_size * 2,
         )
 
-        message_list_before_short = await get_raw_msg_before_timestamp_with_chat(
+        message_list_before_short = get_raw_msg_before_timestamp_with_chat(
             chat_id=chat_id,
             timestamp=time.time(),
             limit=int(global_config.chat.max_context_size * 0.33),
         )
-        chat_talking_prompt_short = await build_readable_messages(
+        chat_talking_prompt_short = build_readable_messages(
             message_list_before_short,
             replace_bot_name=True,
             merge_messages=False,
             timestamp_mode="relative",
-            read_mark=read_mark,
+            read_mark=0.0,
             show_actions=True,
         )
+
         # 获取目标用户信息，用于s4u模式
         target_user_info = None
         if sender:
             target_user_info = await person_info_manager.get_person_info_by_name(sender)
-            
+
         from src.chat.utils.prompt import Prompt
+
         # 并行执行六个构建任务
         task_results = await asyncio.gather(
             self._time_and_run_task(
@@ -984,6 +1162,7 @@ class DefaultReplyer:
         schedule_block = ""
         if global_config.planning_system.schedule_enable:
             from src.schedule.schedule_manager import schedule_manager
+
             current_activity = schedule_manager.get_current_activity()
             if current_activity:
                 schedule_block = f"你当前正在：{current_activity}。"
@@ -996,43 +1175,12 @@ class DefaultReplyer:
         safety_guidelines = global_config.personality.safety_guidelines
         safety_guidelines_block = ""
         if safety_guidelines:
-            guidelines_text = "\n".join(f"{i+1}. {line}" for i, line in enumerate(safety_guidelines))
+            guidelines_text = "\n".join(f"{i + 1}. {line}" for i, line in enumerate(safety_guidelines))
             safety_guidelines_block = f"""### 安全与互动底线
 在任何情况下，你都必须遵守以下由你的设定者为你定义的原则：
 {guidelines_text}
 如果遇到违反上述原则的请求，请在保持你核心人设的同时，巧妙地拒绝或转移话题。
 """
-        
-        # 新增逻辑：构建回复规则块
-        reply_targeting_rules = global_config.personality.reply_targeting_rules
-        message_targeting_analysis = global_config.personality.message_targeting_analysis
-        reply_principles = global_config.personality.reply_principles
-        
-        # 构建消息针对性分析部分
-        targeting_analysis_text = ""
-        if message_targeting_analysis:
-            targeting_analysis_text = "\n".join(f"{i+1}. {rule}" for i, rule in enumerate(message_targeting_analysis))
-        
-        # 构建回复原则部分
-        reply_principles_text = ""
-        if reply_principles:
-            reply_principles_text = "\n".join(f"{i+1}. {principle}" for i, principle in enumerate(reply_principles))
-        
-        # 综合构建完整的规则块
-        if targeting_analysis_text or reply_principles_text:
-            complete_rules_block = ""
-            if targeting_analysis_text:
-                complete_rules_block += f"""
-在回应之前，首先分析消息的针对性：
-{targeting_analysis_text}
-"""
-            if reply_principles_text:
-                complete_rules_block += f"""
-你的回复应该：
-{reply_principles_text}
-"""
-            # 将规则块添加到safety_guidelines_block
-            safety_guidelines_block += complete_rules_block
 
         if sender and target:
             if is_group_chat:
@@ -1057,8 +1205,15 @@ class DefaultReplyer:
         # 根据配置选择模板
         current_prompt_mode = global_config.personality.prompt_mode
 
+        # 动态生成聊天场景提示
+        if is_group_chat:
+            chat_scene_prompt = "你正在一个QQ群里聊天，你需要理解整个群的聊天动态和话题走向，并做出自然的回应。"
+        else:
+            chat_scene_prompt = f"你正在和 {sender} 私下聊天，你需要理解你们的对话并做出自然的回应。"
+
         # 使用新的统一Prompt系统 - 创建PromptParameters
         prompt_parameters = PromptParameters(
+            chat_scene=chat_scene_prompt,
             chat_id=chat_id,
             is_group_chat=is_group_chat,
             sender=sender,
@@ -1090,7 +1245,6 @@ class DefaultReplyer:
             reply_target_block=reply_target_block,
             mood_prompt=mood_prompt,
             action_descriptions=action_descriptions,
-            read_mark=read_mark,
         )
 
         # 使用新的统一Prompt系统 - 使用正确的模板名称
@@ -1101,13 +1255,11 @@ class DefaultReplyer:
             template_name = "normal_style_prompt"
         elif current_prompt_mode == "minimal":
             template_name = "default_expressor_prompt"
-            
+
         # 获取模板内容
         template_prompt = await global_prompt_manager.get_prompt_async(template_name)
         prompt = Prompt(template=template_prompt.template, parameters=prompt_parameters)
         prompt_text = await prompt.build()
-
-    # 自目标情况已在上游通过筛选避免，这里不再额外修改 prompt
 
         # --- 动态添加分割指令 ---
         if global_config.response_splitter.enable and global_config.response_splitter.split_mode == "llm":
@@ -1137,10 +1289,9 @@ class DefaultReplyer:
         reply_to: str,
         reply_message: Optional[Dict[str, Any]] = None,
     ) -> str:  # sourcery skip: merge-else-if-into-elif, remove-redundant-if
-        await self._async_init()
         chat_stream = self.chat_stream
         chat_id = chat_stream.stream_id
-        is_group_chat = self.is_group_chat
+        is_group_chat = bool(chat_stream.group_info)
 
         if reply_message:
             sender = reply_message.get("sender")
@@ -1168,17 +1319,17 @@ class DefaultReplyer:
         else:
             mood_prompt = ""
 
-        message_list_before_now_half = await get_raw_msg_before_timestamp_with_chat(
+        message_list_before_now_half = get_raw_msg_before_timestamp_with_chat(
             chat_id=chat_id,
             timestamp=time.time(),
             limit=min(int(global_config.chat.max_context_size * 0.33), 15),
         )
-        chat_talking_prompt_half = await build_readable_messages(
+        chat_talking_prompt_half = build_readable_messages(
             message_list_before_now_half,
             replace_bot_name=True,
             merge_messages=False,
             timestamp_mode="relative",
-            read_mark=read_mark,
+            read_mark=0.0,
             show_actions=True,
         )
 
@@ -1370,16 +1521,57 @@ class DefaultReplyer:
         if not global_config.relationship.enable_relationship:
             return ""
 
-        relationship_fetcher = relationship_fetcher_manager.get_fetcher(self.chat_stream.stream_id)
-
         # 获取用户ID
         person_info_manager = get_person_info_manager()
-        person_id = await person_info_manager.get_person_id_by_person_name(sender)
+        person_id = person_info_manager.get_person_id_by_person_name(sender)
         if not person_id:
             logger.warning(f"未找到用户 {sender} 的ID，跳过信息提取")
             return f"你完全不认识{sender}，不理解ta的相关信息。"
 
-        return await relationship_fetcher.build_relation_info(person_id, points_num=5)
+        # 使用AFC关系追踪器获取关系信息
+        try:
+            from src.plugins.built_in.affinity_flow_chatter.relationship_tracker import ChatterRelationshipTracker
+
+            # 创建关系追踪器实例
+            from src.plugins.built_in.affinity_flow_chatter.interest_scoring import chatter_interest_scoring_system
+            relationship_tracker = ChatterRelationshipTracker(chatter_interest_scoring_system)
+            if relationship_tracker:
+                # 获取用户信息以获取真实的user_id
+                user_info = await person_info_manager.get_values(person_id, ["user_id", "platform"])
+                user_id = user_info.get("user_id", "unknown")
+
+                # 从数据库获取关系数据
+                relationship_data = relationship_tracker._get_user_relationship_from_db(user_id)
+                if relationship_data:
+                    relationship_text = relationship_data.get("relationship_text", "")
+                    relationship_score = relationship_data.get("relationship_score", 0.3)
+
+                    # 构建丰富的关系信息描述
+                    if relationship_text:
+                        # 转换关系分数为描述性文本
+                        if relationship_score >= 0.8:
+                            relationship_level = "非常亲密的朋友"
+                        elif relationship_score >= 0.6:
+                            relationship_level = "好朋友"
+                        elif relationship_score >= 0.4:
+                            relationship_level = "普通朋友"
+                        elif relationship_score >= 0.2:
+                            relationship_level = "认识的人"
+                        else:
+                            relationship_level = "陌生人"
+
+                        return f"你与{sender}的关系：{relationship_level}（关系分：{relationship_score:.2f}/1.0）。{relationship_text}"
+                    else:
+                        return f"你与{sender}是初次见面，关系分：{relationship_score:.2f}/1.0。"
+                else:
+                    return f"你完全不认识{sender}，这是第一次互动。"
+            else:
+                logger.warning("AFC关系追踪器未初始化，使用默认关系信息")
+                return f"你与{sender}是普通朋友关系。"
+
+        except Exception as e:
+            logger.error(f"获取AFC关系信息失败: {e}")
+            return f"你与{sender}是普通朋友关系。"
 
 
 def weighted_sample_no_replacement(items, weights, k) -> list:

@@ -30,7 +30,8 @@ class PokeAction(BaseAction):
 
     # === 功能描述（必须填写）===
     action_parameters = {
-        "user_name": "需要戳一戳的用户的名字",
+        "user_name": "需要戳一戳的用户的名字 (可选)",
+        "user_id": "需要戳一戳的用户的ID (可选，优先级更高)",
         "times": "需要戳一戳的次数 (默认为 1)",
     }
     action_require = ["当需要戳某个用户时使用", "当你想提醒特定用户时使用"]
@@ -46,32 +47,38 @@ class PokeAction(BaseAction):
 
     async def execute(self) -> Tuple[bool, str]:
         """执行戳一戳的动作"""
+        user_id = self.action_data.get("user_id")
         user_name = self.action_data.get("user_name")
+        
         try:
             times = int(self.action_data.get("times", 1))
         except (ValueError, TypeError):
             times = 1
 
-        if not user_name:
-            logger.warning("戳一戳动作缺少 'user_name' 参数。")
-            return False, "缺少 'user_name' 参数"
-
-        user_info = await get_person_info_manager().get_person_info_by_name(user_name)
-        if not user_info or not user_info.get("user_id"):
-            logger.info(f"找不到名为 '{user_name}' 的用户。")
-            return False, f"找不到名为 '{user_name}' 的用户"
-
-        user_id = user_info.get("user_id")
+        # 优先使用 user_id
+        if not user_id:
+            if not user_name:
+                logger.warning("戳一戳动作缺少 'user_id' 或 'user_name' 参数。")
+                return False, "缺少用户标识参数"
+            
+            # 备用方案：通过 user_name 查找
+            user_info = await get_person_info_manager().get_person_info_by_name(user_name)
+            if not user_info or not user_info.get("user_id"):
+                logger.info(f"找不到名为 '{user_name}' 的用户。")
+                return False, f"找不到名为 '{user_name}' 的用户"
+            user_id = user_info.get("user_id")
+        
+        display_name = user_name or user_id
 
         for i in range(times):
-            logger.info(f"正在向 {user_name} ({user_id}) 发送第 {i + 1}/{times} 次戳一戳...")
+            logger.info(f"正在向 {display_name} ({user_id}) 发送第 {i + 1}/{times} 次戳一戳...")
             await self.send_command(
-                "SEND_POKE", args={"qq_id": user_id}, display_message=f"戳了戳 {user_name} ({i + 1}/{times})"
+                "SEND_POKE", args={"qq_id": user_id}, display_message=f"戳了戳 {display_name} ({i + 1}/{times})"
             )
             # 添加一个小的延迟，以避免发送过快
             await asyncio.sleep(0.5)
 
-        success_message = f"已向 {user_name} 发送 {times} 次戳一戳。"
+        success_message = f"已向 {display_name} 发送 {times} 次戳一戳。"
         await self.store_action_info(
             action_build_into_prompt=True, action_prompt_display=success_message, action_done=True
         )

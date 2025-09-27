@@ -9,7 +9,7 @@ from src.common.logger import get_logger
 logger = get_logger("napcat_adapter")
 
 from src.plugin_system.apis import config_api
-from ..database import BanUser, napcat_db, is_identical
+from ..database import BanUser, db_manager, is_identical
 from . import NoticeType, ACCEPT_FORMAT
 from .message_sending import message_send_instance
 from .message_handler import message_handler
@@ -62,7 +62,7 @@ class NoticeHandler:
             return self.server_connection
         return websocket_manager.get_connection()
 
-    async def _ban_operation(self, group_id: int, user_id: Optional[int] = None, lift_time: Optional[int] = None) -> None:
+    def _ban_operation(self, group_id: int, user_id: Optional[int] = None, lift_time: Optional[int] = None) -> None:
         """
         将用户禁言记录添加到self.banned_list中
         如果是全体禁言，则user_id为0
@@ -71,16 +71,16 @@ class NoticeHandler:
             user_id = 0  # 使用0表示全体禁言
             lift_time = -1
         ban_record = BanUser(user_id=user_id, group_id=group_id, lift_time=lift_time)
-        for record in list(self.banned_list):
+        for record in self.banned_list:
             if is_identical(record, ban_record):
                 self.banned_list.remove(record)
                 self.banned_list.append(ban_record)
-                await napcat_db.create_ban_record(ban_record)  # 更新
+                db_manager.create_ban_record(ban_record)  # 作为更新
                 return
         self.banned_list.append(ban_record)
-        await napcat_db.create_ban_record(ban_record)  # 新建
+        db_manager.create_ban_record(ban_record)  # 添加到数据库
 
-    async def _lift_operation(self, group_id: int, user_id: Optional[int] = None) -> None:
+    def _lift_operation(self, group_id: int, user_id: Optional[int] = None) -> None:
         """
         从self.lifted_group_list中移除已经解除全体禁言的群
         """
@@ -88,12 +88,7 @@ class NoticeHandler:
             user_id = 0  # 使用0表示全体禁言
         ban_record = BanUser(user_id=user_id, group_id=group_id, lift_time=-1)
         self.lifted_list.append(ban_record)
-        # 从被禁言列表里移除对应记录
-        for record in list(self.banned_list):
-            if is_identical(record, ban_record):
-                self.banned_list.remove(record)
-                break
-        await napcat_db.delete_ban_record(ban_record)
+        db_manager.delete_ban_record(ban_record)  # 删除数据库中的记录
 
     async def handle_notice(self, raw_message: dict) -> None:
         notice_type = raw_message.get("notice_type")
@@ -121,9 +116,9 @@ class NoticeHandler:
                 sub_type = raw_message.get("sub_type")
                 match sub_type:
                     case NoticeType.Notify.poke:
-                        if config_api.get_plugin_config(self.plugin_config, "features.enable_poke", True) and await message_handler.check_allow_to_chat(
-                            user_id, group_id, False, False
-                        ):
+                        if config_api.get_plugin_config(
+                            self.plugin_config, "features.enable_poke", True
+                        ) and await message_handler.check_allow_to_chat(user_id, group_id, False, False):
                             logger.debug("处理戳一戳消息")
                             handled_message, user_info = await self.handle_poke_notify(raw_message, group_id, user_id)
                         else:
@@ -132,14 +127,18 @@ class NoticeHandler:
                         from src.plugin_system.core.event_manager import event_manager
                         from ...event_types import NapcatEvent
 
-                        await event_manager.trigger_event(NapcatEvent.ON_RECEIVED.FRIEND_INPUT, permission_group=PLUGIN_NAME)
+                        await event_manager.trigger_event(
+                            NapcatEvent.ON_RECEIVED.FRIEND_INPUT, permission_group=PLUGIN_NAME
+                        )
                     case _:
                         logger.warning(f"不支持的notify类型: {notice_type}.{sub_type}")
-            case NoticeType.group_msg_emoji_like:    
+            case NoticeType.group_msg_emoji_like:
                 # 该事件转移到 handle_group_emoji_like_notify函数内触发
                 if config_api.get_plugin_config(self.plugin_config, "features.enable_emoji_like", True):
                     logger.debug("处理群聊表情回复")
-                    handled_message, user_info = await self.handle_group_emoji_like_notify(raw_message,group_id,user_id)
+                    handled_message, user_info = await self.handle_group_emoji_like_notify(
+                        raw_message, group_id, user_id
+                    )
                 else:
                     logger.warning("群聊表情回复被禁用，取消群聊表情回复处理")
             case NoticeType.group_ban:
@@ -202,11 +201,9 @@ class NoticeHandler:
 
         if system_notice:
             await self.put_notice(message_base)
-            return None
         else:
             logger.debug("发送到Maibot处理通知信息")
             await message_send_instance.message_send(message_base)
-            return None
 
     async def handle_poke_notify(
         self, raw_message: dict, group_id: int, user_id: int
@@ -301,7 +298,7 @@ class NoticeHandler:
     async def handle_group_emoji_like_notify(self, raw_message: dict, group_id: int, user_id: int):
         if not group_id:
             logger.error("群ID不能为空，无法处理群聊表情回复通知")
-            return None, None  
+            return None, None
 
         user_qq_info: dict = await get_member_info(self.get_server_connection(), group_id, user_id)
         if user_qq_info:
@@ -311,37 +308,42 @@ class NoticeHandler:
             user_name = "QQ用户"
             user_cardname = "QQ用户"
             logger.debug("无法获取表情回复对方的用户昵称")
-        
+
         from src.plugin_system.core.event_manager import event_manager
         from ...event_types import NapcatEvent
 
-        target_message = await event_manager.trigger_event(NapcatEvent.MESSAGE.GET_MSG,message_id=raw_message.get("message_id",""))
-        target_message_text = target_message.get_message_result().get("data",{}).get("raw_message","")
+        target_message = await event_manager.trigger_event(
+            NapcatEvent.MESSAGE.GET_MSG, message_id=raw_message.get("message_id", "")
+        )
+        target_message_text = target_message.get_message_result().get("data", {}).get("raw_message", "")
         if not target_message:
             logger.error("未找到对应消息")
             return None, None
         if len(target_message_text) > 15:
             target_message_text = target_message_text[:15] + "..."
-        
+
         user_info: UserInfo = UserInfo(
             platform=config_api.get_plugin_config(self.plugin_config, "maibot_server.platform_name", "qq"),
             user_id=user_id,
             user_nickname=user_name,
             user_cardname=user_cardname,
         )
-        
+
         like_emoji_id = raw_message.get("likes")[0].get("emoji_id")
         await event_manager.trigger_event(
-                        NapcatEvent.ON_RECEIVED.EMOJI_LIEK, 
-                        permission_group=PLUGIN_NAME, 
-                        group_id=group_id,
-                        user_id=user_id,
-                        message_id=raw_message.get("message_id",""),
-                        emoji_id=like_emoji_id
-                        )     
-        seg_data = Seg(type="text",data=f"{user_name}使用Emoji表情{QQ_FACE.get(like_emoji_id, '')}回复了你的消息[{target_message_text}]")
+            NapcatEvent.ON_RECEIVED.EMOJI_LIEK,
+            permission_group=PLUGIN_NAME,
+            group_id=group_id,
+            user_id=user_id,
+            message_id=raw_message.get("message_id", ""),
+            emoji_id=like_emoji_id,
+        )
+        seg_data = Seg(
+            type="text",
+            data=f"{user_name}使用Emoji表情{QQ_FACE.get(like_emoji_id, '')}回复了你的消息[{target_message_text}]",
+        )
         return seg_data, user_info
-    
+
     async def handle_ban_notify(self, raw_message: dict, group_id: int) -> Tuple[Seg, UserInfo] | Tuple[None, None]:
         if not group_id:
             logger.error("群ID不能为空，无法处理禁言通知")
@@ -381,7 +383,7 @@ class NoticeHandler:
 
         if user_id == 0:  # 为全体禁言
             sub_type: str = "whole_ban"
-            await self._ban_operation(group_id)
+            self._ban_operation(group_id)
         else:  # 为单人禁言
             # 获取被禁言人的信息
             sub_type: str = "ban"
@@ -395,7 +397,7 @@ class NoticeHandler:
                 user_nickname=user_nickname,
                 user_cardname=user_cardname,
             )
-            await self._ban_operation(group_id, user_id, int(time.time() + duration))
+            self._ban_operation(group_id, user_id, int(time.time() + duration))
 
         seg_data: Seg = Seg(
             type="notify",
@@ -444,7 +446,7 @@ class NoticeHandler:
         user_id = raw_message.get("user_id")
         if user_id == 0:  # 全体禁言解除
             sub_type = "whole_lift_ban"
-            await self._lift_operation(group_id)
+            self._lift_operation(group_id)
         else:  # 单人禁言解除
             sub_type = "lift_ban"
             # 获取被解除禁言人的信息
@@ -460,7 +462,7 @@ class NoticeHandler:
                 user_nickname=user_nickname,
                 user_cardname=user_cardname,
             )
-            await self._lift_operation(group_id, user_id)
+            self._lift_operation(group_id, user_id)
 
         seg_data: Seg = Seg(
             type="notify",
@@ -471,8 +473,7 @@ class NoticeHandler:
         )
         return seg_data, operator_info
 
-    @staticmethod
-    async def put_notice(message_base: MessageBase) -> None:
+    async def put_notice(self, message_base: MessageBase) -> None:
         """
         将处理后的通知消息放入通知队列
         """
@@ -488,7 +489,7 @@ class NoticeHandler:
                 group_id = lift_record.group_id
                 user_id = lift_record.user_id
 
-                asyncio.create_task(napcat_db.delete_ban_record(lift_record))  # 从数据库中删除禁言记录
+                db_manager.delete_ban_record(lift_record)  # 从数据库中删除禁言记录
 
                 seg_message: Seg = await self.natural_lift(group_id, user_id)
 
@@ -585,8 +586,7 @@ class NoticeHandler:
                     self.banned_list.remove(ban_record)
             await asyncio.sleep(5)
 
-    @staticmethod
-    async def send_notice() -> None:
+    async def send_notice(self) -> None:
         """
         发送通知消息到Napcat
         """

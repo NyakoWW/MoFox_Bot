@@ -11,11 +11,12 @@ from src.mood.mood_manager import mood_manager  # 导入情绪管理器
 from src.chat.message_receive.chat_stream import get_chat_manager, ChatStream
 from src.chat.message_receive.message import MessageRecv, MessageRecvS4U
 from src.chat.message_receive.storage import MessageStorage
-from src.chat.heart_flow.heartflow_message_processor import HeartFCMessageReceiver
+from src.chat.message_manager import message_manager
 from src.chat.utils.prompt import Prompt, global_prompt_manager
 from src.plugin_system.core import component_registry, event_manager, global_announcement_manager
 from src.plugin_system.base import BaseCommand, EventType
 from src.mais4u.mais4u_chat.s4u_msg_processor import S4UMessageProcessor
+from src.chat.utils.utils import is_mentioned_bot_in_message
 
 # 导入反注入系统
 from src.chat.antipromptinjector import initialize_anti_injector
@@ -73,15 +74,17 @@ class ChatBot:
         self.bot = None  # bot 实例引用
         self._started = False
         self.mood_manager = mood_manager  # 获取情绪管理器单例
-        self.heartflow_message_receiver = HeartFCMessageReceiver()  # 新增
+        # 亲和力流消息处理器 - 直接使用全局afc_manager
 
         self.s4u_message_processor = S4UMessageProcessor()
 
         # 初始化反注入系统
         self._initialize_anti_injector()
 
-    @staticmethod
-    def _initialize_anti_injector():
+        # 启动消息管理器
+        self._message_manager_started = False
+
+    def _initialize_anti_injector(self):
         """初始化反注入系统"""
         try:
             initialize_anti_injector()
@@ -99,10 +102,15 @@ class ChatBot:
         if not self._started:
             logger.debug("确保ChatBot所有任务已启动")
 
+            # 启动消息管理器
+            if not self._message_manager_started:
+                await message_manager.start()
+                self._message_manager_started = True
+                logger.info("消息管理器已启动")
+
             self._started = True
 
-    @staticmethod
-    async def _process_plus_commands(message: MessageRecv):
+    async def _process_plus_commands(self, message: MessageRecv):
         """独立处理PlusCommand系统"""
         try:
             text = message.processed_plain_text
@@ -182,7 +190,7 @@ class ChatBot:
             try:
                 # 检查聊天类型限制
                 if not plus_command_instance.is_chat_type_allowed():
-                    is_group = hasattr(message, "is_group_message") and message.is_group_message
+                    is_group = message.message_info.group_info                    
                     logger.info(
                         f"PlusCommand {plus_command_class.__name__} 不支持当前聊天类型: {'群聊' if is_group else '私聊'}"
                     )
@@ -222,8 +230,7 @@ class ChatBot:
             logger.error(f"处理PlusCommand时出错: {e}")
             return False, None, True  # 出错时继续处理消息
 
-    @staticmethod
-    async def _process_commands_with_new_system(message: MessageRecv):
+    async def _process_commands_with_new_system(self, message: MessageRecv):
         # sourcery skip: use-named-expression
         """使用新插件系统处理命令"""
         try:
@@ -256,7 +263,7 @@ class ChatBot:
                 try:
                     # 检查聊天类型限制
                     if not command_instance.is_chat_type_allowed():
-                        is_group = hasattr(message, "is_group_message") and message.is_group_message
+                        is_group = message.message_info.group_info
                         logger.info(
                             f"命令 {command_class.__name__} 不支持当前聊天类型: {'群聊' if is_group else '私聊'}"
                         )
@@ -313,8 +320,7 @@ class ChatBot:
 
         return False
 
-    @staticmethod
-    async def handle_adapter_response(message: MessageRecv):
+    async def handle_adapter_response(self, message: MessageRecv):
         """处理适配器命令响应"""
         try:
             from src.plugin_system.apis.send_api import put_adapter_response
@@ -354,19 +360,7 @@ class ChatBot:
         return
 
     async def message_process(self, message_data: Dict[str, Any]) -> None:
-        """处理转化后的统一格式消息
-        这个函数本质是预处理一些数据，根据配置信息和消息内容，预处理消息，并分发到合适的消息处理器中
-        heart_flow模式：使用思维流系统进行回复
-        - 包含思维流状态管理
-        - 在回复前进行观察和状态更新
-        - 回复后更新思维流状态
-        - 消息过滤
-        - 记忆激活
-        - 意愿计算
-        - 消息生成和发送
-        - 表情包处理
-        - 性能计时
-        """
+        """处理转化后的统一格式消息"""
         try:
             # 首先处理可能的切片消息重组
             from src.utils.message_chunker import reassembler
@@ -403,9 +397,7 @@ class ChatBot:
             # logger.debug(str(message_data))
             message = MessageRecv(message_data)
 
-            if await self.handle_notice_message(message):
-                ...
-
+            message.is_mentioned, _ = is_mentioned_bot_in_message(message)
             group_info = message.message_info.group_info
             user_info = message.message_info.user_info
             if message.message_info.additional_config:
@@ -415,6 +407,7 @@ class ChatBot:
                     return
 
             get_chat_manager().register_message(message)
+
             chat = await get_chat_manager().get_or_create_stream(
                 platform=message.message_info.platform,  # type: ignore
                 user_info=user_info,  # type: ignore
@@ -426,11 +419,14 @@ class ChatBot:
             # 处理消息内容，生成纯文本
             await message.process()
 
-            # 过滤检查 (在消息处理之后进行)
-            if _check_ban_words(
-                message.processed_plain_text, chat, user_info  # type: ignore
-            ) or _check_ban_regex(
-                message.processed_plain_text, chat, user_info  # type: ignore
+            # 在这里打印[所见]日志，确保在所有处理和过滤之前记录
+            logger.info(f"\u001b[38;5;118m{message.message_info.user_info.user_nickname}:{message.processed_plain_text}\u001b[0m")
+
+            # 过滤检查
+            if _check_ban_words(message.processed_plain_text, chat, user_info) or _check_ban_regex(  # type: ignore
+                message.raw_message,  # type: ignore
+                chat,
+                user_info,  # type: ignore
             ):
                 return
 
@@ -456,7 +452,8 @@ class ChatBot:
             result = await event_manager.trigger_event(EventType.ON_MESSAGE, permission_group="SYSTEM", message=message)
             if not result.all_continue_process():
                 raise UserWarning(f"插件{result.get_summary().get('stopped_handlers', '')}于消息到达时取消了消息处理")
-
+            
+            # TODO:暂不可用
             # 确认从接口发来的message是否有自定义的prompt模板信息
             if message.message_info.template_info and not message.message_info.template_info.template_default:
                 template_group_name: Optional[str] = message.message_info.template_info.template_name  # type: ignore
@@ -470,7 +467,55 @@ class ChatBot:
                 template_group_name = None
 
             async def preprocess():
-                await self.heartflow_message_receiver.process_message(message)
+                # 存储消息到数据库
+                from .storage import MessageStorage
+
+                try:
+                    await MessageStorage.store_message(message, message.chat_stream)
+                    logger.debug(f"消息已存储到数据库: {message.message_info.message_id}")
+                except Exception as e:
+                    logger.error(f"存储消息到数据库失败: {e}")
+                    traceback.print_exc()
+
+                # 使用消息管理器处理消息（保持原有功能）
+                from src.common.data_models.database_data_model import DatabaseMessages
+
+                # 创建数据库消息对象
+                db_message = DatabaseMessages(
+                    message_id=message.message_info.message_id,
+                    time=message.message_info.time,
+                    chat_id=message.chat_stream.stream_id,
+                    processed_plain_text=message.processed_plain_text,
+                    display_message=message.processed_plain_text,
+                    is_mentioned=message.is_mentioned,
+                    is_at=message.is_at,
+                    is_emoji=message.is_emoji,
+                    is_picid=message.is_picid,
+                    is_command=message.is_command,
+                    is_notify=message.is_notify,
+                    user_id=message.message_info.user_info.user_id,
+                    user_nickname=message.message_info.user_info.user_nickname,
+                    user_cardname=message.message_info.user_info.user_cardname,
+                    user_platform=message.message_info.user_info.platform,
+                    chat_info_stream_id=message.chat_stream.stream_id,
+                    chat_info_platform=message.chat_stream.platform,
+                    chat_info_create_time=message.chat_stream.create_time,
+                    chat_info_last_active_time=message.chat_stream.last_active_time,
+                    chat_info_user_id=message.chat_stream.user_info.user_id,
+                    chat_info_user_nickname=message.chat_stream.user_info.user_nickname,
+                    chat_info_user_cardname=message.chat_stream.user_info.user_cardname,
+                    chat_info_user_platform=message.chat_stream.user_info.platform,
+                )
+
+                # 如果是群聊，添加群组信息
+                if message.chat_stream.group_info:
+                    db_message.chat_info_group_id = message.chat_stream.group_info.group_id
+                    db_message.chat_info_group_name = message.chat_stream.group_info.group_name
+                    db_message.chat_info_group_platform = message.chat_stream.group_info.platform
+
+                # 添加消息到消息管理器
+                message_manager.add_message(message.chat_stream.stream_id, db_message)
+                logger.debug(f"消息已添加到消息管理器: {message.chat_stream.stream_id}")
 
             if template_group_name:
                 async with global_prompt_manager.async_message_scope(template_group_name):

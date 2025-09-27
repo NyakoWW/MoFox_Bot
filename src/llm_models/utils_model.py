@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# -*- coding: utf-8 -*-
 """
 @desc: 该模块封装了与大语言模型（LLM）交互的所有核心逻辑。
 它被设计为一个高度容错和可扩展的系统，包含以下主要组件：
@@ -892,7 +891,7 @@ class LLMRequest:
             max_tokens=self.model_for_task.max_tokens if max_tokens is None else max_tokens,
         )
 
-        self._record_usage(model_info, response.usage, time.time() - start_time, "/chat/completions")
+        await self._record_usage(model_info, response.usage, time.time() - start_time, "/chat/completions")
 
         if not response.content and not response.tool_calls:
             if raise_when_empty:
@@ -917,14 +916,14 @@ class LLMRequest:
             embedding_input=embedding_input
         )
         
-        self._record_usage(model_info, response.usage, time.time() - start_time, "/embeddings")
+        await self._record_usage(model_info, response.usage, time.time() - start_time, "/embeddings")
         
         if not response.embedding:
             raise RuntimeError("获取embedding失败")
         
         return response.embedding, model_info.name
 
-    def _record_usage(self, model_info: ModelInfo, usage: Optional[UsageRecord], time_cost: float, endpoint: str):
+    async def _record_usage(self, model_info: ModelInfo, usage: Optional[UsageRecord], time_cost: float, endpoint: str):
         """
         记录模型使用情况。
 

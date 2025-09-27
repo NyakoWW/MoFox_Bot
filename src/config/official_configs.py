@@ -51,8 +51,12 @@ class PersonalityConfig(ValidatedConfigBase):
     personality_core: str = Field(..., description="核心人格")
     personality_side: str = Field(..., description="人格侧写")
     identity: str = Field(default="", description="身份特征")
-    background_story: str = Field(default="", description="世界观背景故事，这部分内容会作为背景知识，LLM被指导不应主动复述")
-    safety_guidelines: List[str] = Field(default_factory=list, description="安全与互动底线，Bot在任何情况下都必须遵守的原则")
+    background_story: str = Field(
+        default="", description="世界观背景故事，这部分内容会作为背景知识，LLM被指导不应主动复述"
+    )
+    safety_guidelines: List[str] = Field(
+        default_factory=list, description="安全与互动底线，Bot在任何情况下都必须遵守的原则"
+    )
     reply_style: str = Field(default="", description="表达风格")
     prompt_mode: Literal["s4u", "normal"] = Field(default="s4u", description="Prompt模式")
     compress_personality: bool = Field(default=True, description="是否压缩人格")
@@ -109,7 +113,8 @@ class ChatConfig(ValidatedConfigBase):
     talk_frequency_adjust: list[list[str]] = Field(default_factory=lambda: [], description="聊天频率调整")
     focus_value: float = Field(default=1.0, description="专注值")
     focus_mode_quiet_groups: List[str] = Field(
-        default_factory=list, description='专注模式下需要保持安静的群组列表, 格式: ["platform:group_id1", "platform:group_id2"]'
+        default_factory=list,
+        description='专注模式下需要保持安静的群组列表, 格式: ["platform:group_id1", "platform:group_id2"]',
     )
     force_reply_private: bool = Field(default=False, description="强制回复私聊")
     group_chat_mode: Literal["auto", "normal", "focus"] = Field(default="auto", description="群聊模式")
@@ -128,6 +133,31 @@ class ChatConfig(ValidatedConfigBase):
         default_factory=list, description="启用主动思考的群聊范围，格式：platform:group_id，为空则不限制"
     )
     delta_sigma: int = Field(default=120, description="采用正态分布随机时间间隔")
+
+    # 消息打断系统配置
+    interruption_enabled: bool = Field(default=True, description="是否启用消息打断系统")
+    interruption_max_limit: int = Field(default=3, ge=0, description="每个聊天流的最大打断次数")
+    interruption_probability_factor: float = Field(
+        default=0.8, ge=0.0, le=1.0, description="打断概率因子，当前打断次数/最大打断次数超过此值时触发概率下降"
+    )
+    interruption_afc_reduction: float = Field(
+        default=0.05, ge=0.0, le=1.0, description="每次连续打断降低的afc阈值数值"
+    )
+
+    # 动态消息分发系统配置
+    dynamic_distribution_enabled: bool = Field(default=True, description="是否启用动态消息分发周期调整")
+    dynamic_distribution_base_interval: float = Field(
+        default=5.0, ge=1.0, le=60.0, description="基础分发间隔（秒）"
+    )
+    dynamic_distribution_min_interval: float = Field(
+        default=1.0, ge=0.5, le=10.0, description="最小分发间隔（秒）"
+    )
+    dynamic_distribution_max_interval: float = Field(
+        default=30.0, ge=5.0, le=300.0, description="最大分发间隔（秒）"
+    )
+    dynamic_distribution_jitter_factor: float = Field(
+        default=0.2, ge=0.0, le=0.5, description="分发间隔随机扰动因子"
+    )
 
     def get_current_talk_frequency(self, chat_stream_id: Optional[str] = None) -> float:
         """
@@ -376,6 +406,7 @@ class ExpressionConfig(ValidatedConfigBase):
         # 如果都没有匹配，返回默认值
         return True, True, 1.0
 
+
 class ToolConfig(ValidatedConfigBase):
     """工具配置类"""
 
@@ -510,7 +541,6 @@ class ExperimentalConfig(ValidatedConfigBase):
     pfc_chatting: bool = Field(default=False, description="启用PFC聊天")
 
 
-
 class MaimMessageConfig(ValidatedConfigBase):
     """maim_message配置类"""
 
@@ -635,8 +665,12 @@ class SleepSystemConfig(ValidatedConfigBase):
     sleep_by_schedule: bool = Field(default=True, description="是否根据日程表进行睡觉")
     fixed_sleep_time: str = Field(default="23:00", description="固定的睡觉时间")
     fixed_wake_up_time: str = Field(default="07:00", description="固定的起床时间")
-    sleep_time_offset_minutes: int = Field(default=15, ge=0, le=60, description="睡觉时间随机偏移量范围（分钟），实际睡觉时间会在±该值范围内随机")
-    wake_up_time_offset_minutes: int = Field(default=15, ge=0, le=60, description="起床时间随机偏移量范围（分钟），实际起床时间会在±该值范围内随机")
+    sleep_time_offset_minutes: int = Field(
+        default=15, ge=0, le=60, description="睡觉时间随机偏移量范围（分钟），实际睡觉时间会在±该值范围内随机"
+    )
+    wake_up_time_offset_minutes: int = Field(
+        default=15, ge=0, le=60, description="起床时间随机偏移量范围（分钟），实际起床时间会在±该值范围内随机"
+    )
     wakeup_threshold: float = Field(default=15.0, ge=1.0, description="唤醒阈值，达到此值时会被唤醒")
     private_message_increment: float = Field(default=3.0, ge=0.1, description="私聊消息增加的唤醒度")
     group_mention_increment: float = Field(default=2.0, ge=0.1, description="群聊艾特增加的唤醒度")
@@ -651,10 +685,10 @@ class SleepSystemConfig(ValidatedConfigBase):
     # --- 失眠机制相关参数 ---
     enable_insomnia_system: bool = Field(default=True, description="是否启用失眠系统")
     insomnia_trigger_delay_minutes: List[int] = Field(
-        default_factory=lambda:[30, 60], description="入睡后触发失眠判定的延迟时间范围（分钟）"
+        default_factory=lambda: [30, 60], description="入睡后触发失眠判定的延迟时间范围（分钟）"
     )
     insomnia_duration_minutes: List[int] = Field(
-        default_factory=lambda:[15, 45], description="单次失眠状态的持续时间范围（分钟）"
+        default_factory=lambda: [15, 45], description="单次失眠状态的持续时间范围（分钟）"
     )
     sleep_pressure_threshold: float = Field(default=30.0, description="触发“压力不足型失眠”的睡眠压力阈值")
     deep_sleep_threshold: float = Field(default=80.0, description="进入“深度睡眠”的睡眠压力阈值")
@@ -690,6 +724,8 @@ class CrossContextConfig(ValidatedConfigBase):
 
     enable: bool = Field(default=False, description="是否启用跨群聊上下文共享功能")
     groups: List[ContextGroup] = Field(default_factory=list, description="上下文共享组列表")
+
+
 class CommandConfig(ValidatedConfigBase):
     """命令系统配置类"""
 
@@ -703,3 +739,34 @@ class PermissionConfig(ValidatedConfigBase):
     master_users: List[List[str]] = Field(
         default_factory=list, description="Master用户列表，格式: [[platform, user_id], ...]"
     )
+
+
+class AffinityFlowConfig(ValidatedConfigBase):
+    """亲和流配置类（兴趣度评分和人物关系系统）"""
+
+    # 兴趣评分系统参数
+    reply_action_interest_threshold: float = Field(default=0.4, description="回复动作兴趣阈值")
+    non_reply_action_interest_threshold: float = Field(default=0.2, description="非回复动作兴趣阈值")
+    high_match_interest_threshold: float = Field(default=0.8, description="高匹配兴趣阈值")
+    medium_match_interest_threshold: float = Field(default=0.5, description="中匹配兴趣阈值")
+    low_match_interest_threshold: float = Field(default=0.2, description="低匹配兴趣阈值")
+    high_match_keyword_multiplier: float = Field(default=1.5, description="高匹配关键词兴趣倍率")
+    medium_match_keyword_multiplier: float = Field(default=1.2, description="中匹配关键词兴趣倍率")
+    low_match_keyword_multiplier: float = Field(default=1.0, description="低匹配关键词兴趣倍率")
+    match_count_bonus: float = Field(default=0.1, description="匹配数关键词加成值")
+    max_match_bonus: float = Field(default=0.5, description="最大匹配数加成值")
+
+    # 回复决策系统参数
+    no_reply_threshold_adjustment: float = Field(default=0.1, description="不回复兴趣阈值调整值")
+    reply_cooldown_reduction: int = Field(default=2, description="回复后减少的不回复计数")
+    max_no_reply_count: int = Field(default=5, description="最大不回复计数次数")
+
+    # 综合评分权重
+    keyword_match_weight: float = Field(default=0.4, description="兴趣关键词匹配度权重")
+    mention_bot_weight: float = Field(default=0.3, description="提及bot分数权重")
+    relationship_weight: float = Field(default=0.3, description="人物关系分数权重")
+
+    # 提及bot相关参数
+    mention_bot_adjustment_threshold: float = Field(default=0.3, description="提及bot后的调整阈值")
+    mention_bot_interest_score: float = Field(default=0.6, description="提及bot的兴趣分")
+    base_relationship_score: float = Field(default=0.5, description="基础人物关系分")

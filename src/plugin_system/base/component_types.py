@@ -17,6 +17,7 @@ class ComponentType(Enum):
     TOOL = "tool"  # 工具组件
     SCHEDULER = "scheduler"  # 定时任务组件（预留）
     EVENT_HANDLER = "event_handler"  # 事件处理组件
+    CHATTER = "chatter"  # 聊天处理器组件
 
     def __str__(self) -> str:
         return self.value
@@ -39,8 +40,8 @@ class ActionActivationType(Enum):
 # 聊天模式枚举
 class ChatMode(Enum):
     """聊天模式枚举"""
-
-    FOCUS = "focus"  # Focus聊天模式
+    
+    FOCUS = "focus"  # 专注模式
     NORMAL = "normal"  # Normal聊天模式
     PROACTIVE = "proactive"  # 主动思考模式
     PRIORITY = "priority"  # 优先级聊天模式
@@ -54,8 +55,8 @@ class ChatMode(Enum):
 class ChatType(Enum):
     """聊天类型枚举，用于限制插件在不同聊天环境中的使用"""
 
-    GROUP = "group"  # 仅群聊可用
     PRIVATE = "private"  # 仅私聊可用
+    GROUP = "group"  # 仅群聊可用
     ALL = "all"  # 群聊和私聊都可用
 
     def __str__(self):
@@ -69,7 +70,7 @@ class EventType(Enum):
     """
 
     ON_START = "on_start"  # 启动事件，用于调用按时任务
-    ON_STOP ="on_stop"
+    ON_STOP = "on_stop"
     ON_MESSAGE = "on_message"
     ON_PLAN = "on_plan"
     POST_LLM = "post_llm"
@@ -208,6 +209,17 @@ class EventHandlerInfo(ComponentInfo):
     def __post_init__(self):
         super().__post_init__()
         self.component_type = ComponentType.EVENT_HANDLER
+
+
+@dataclass
+class ChatterInfo(ComponentInfo):
+    """聊天处理器组件信息"""
+
+    chat_type_allow: ChatType = ChatType.ALL  # 允许的聊天类型
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.component_type = ComponentType.CHATTER
 
 
 @dataclass

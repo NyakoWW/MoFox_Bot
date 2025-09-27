@@ -55,7 +55,17 @@ class ChatStreams(Base):
     user_cardname = Column(Text, nullable=True)
     energy_value = Column(Float, nullable=True, default=5.0)
     sleep_pressure = Column(Float, nullable=True, default=0.0)
-    focus_energy = Column(Float, nullable=True, default=1.0)
+    focus_energy = Column(Float, nullable=True, default=0.5)
+    # 动态兴趣度系统字段
+    base_interest_energy = Column(Float, nullable=True, default=0.5)
+    message_interest_total = Column(Float, nullable=True, default=0.0)
+    message_count = Column(Integer, nullable=True, default=0)
+    action_count = Column(Integer, nullable=True, default=0)
+    reply_count = Column(Integer, nullable=True, default=0)
+    last_interaction_time = Column(Float, nullable=True, default=None)
+    consecutive_no_reply = Column(Integer, nullable=True, default=0)
+    # 消息打断系统字段
+    interruption_count = Column(Integer, nullable=True, default=0)
 
     __table_args__ = (
         Index("idx_chatstreams_stream_id", "stream_id"),
@@ -165,11 +175,16 @@ class Messages(Base):
     is_command = Column(Boolean, nullable=False, default=False)
     is_notify = Column(Boolean, nullable=False, default=False)
 
+    # 兴趣度系统字段
+    actions = Column(Text, nullable=True)  # JSON格式存储动作列表
+    should_reply = Column(Boolean, nullable=True, default=False)
+
     __table_args__ = (
         Index("idx_messages_message_id", "message_id"),
         Index("idx_messages_chat_id", "chat_id"),
         Index("idx_messages_time", "time"),
         Index("idx_messages_user_id", "user_id"),
+        Index("idx_messages_should_reply", "should_reply"),
     )
 
 
@@ -297,6 +312,26 @@ class PersonInfo(Base):
     __table_args__ = (
         Index("idx_personinfo_person_id", "person_id"),
         Index("idx_personinfo_user_id", "user_id"),
+    )
+
+
+class BotPersonalityInterests(Base):
+    """机器人人格兴趣标签模型"""
+
+    __tablename__ = "bot_personality_interests"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    personality_id = Column(get_string_field(100), nullable=False, index=True)
+    personality_description = Column(Text, nullable=False)
+    interest_tags = Column(Text, nullable=False)  # JSON格式存储的兴趣标签列表
+    embedding_model = Column(get_string_field(100), nullable=False, default="text-embedding-ada-002")
+    version = Column(Integer, nullable=False, default=1)
+    last_updated = Column(DateTime, nullable=False, default=datetime.datetime.now, index=True)
+
+    __table_args__ = (
+        Index("idx_botpersonality_personality_id", "personality_id"),
+        Index("idx_botpersonality_version", "version"),
+        Index("idx_botpersonality_last_updated", "last_updated"),
     )
 
 
@@ -721,4 +756,24 @@ class UserPermissions(Base):
         Index("idx_user_platform_id", "platform", "user_id"),
         Index("idx_user_permission", "platform", "user_id", "permission_node"),
         Index("idx_permission_granted", "permission_node", "granted"),
+    )
+
+
+class UserRelationships(Base):
+    """用户关系模型 - 存储用户与bot的关系数据"""
+
+    __tablename__ = "user_relationships"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(get_string_field(100), nullable=False, unique=True, index=True)  # 用户ID
+    user_name = Column(get_string_field(100), nullable=True)  # 用户名
+    relationship_text = Column(Text, nullable=True)  # 关系印象描述
+    relationship_score = Column(Float, nullable=False, default=0.3)  # 关系分数(0-1)
+    last_updated = Column(Float, nullable=False, default=time.time)  # 最后更新时间
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)  # 创建时间
+
+    __table_args__ = (
+        Index("idx_user_relationship_id", "user_id"),
+        Index("idx_relationship_score", "relationship_score"),
+        Index("idx_relationship_updated", "last_updated"),
     )

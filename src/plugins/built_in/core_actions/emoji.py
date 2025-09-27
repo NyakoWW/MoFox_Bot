@@ -33,7 +33,7 @@ class EmojiAction(BaseAction):
 
     # 动作基本信息
     action_name = "emoji"
-    action_description = "发送表情包辅助表达情绪"
+    action_description = "作为一条全新的消息，发送一个符合当前情景的表情包来生动地表达情绪。"
 
     # LLM判断提示词
     llm_judge_prompt = """
@@ -70,7 +70,9 @@ class EmojiAction(BaseAction):
 
             # 2. 获取所有有效的表情包对象
             emoji_manager = get_emoji_manager()
-            all_emojis_obj: list[MaiEmoji] = [e for e in emoji_manager.emoji_objects if not e.is_deleted and e.description]
+            all_emojis_obj: list[MaiEmoji] = [
+                e for e in emoji_manager.emoji_objects if not e.is_deleted and e.description
+            ]
             if not all_emojis_obj:
                 logger.warning(f"{self.log_prefix} 无法获取任何带有描述的有效表情包")
                 return False, "无法获取任何带有描述的有效表情包"
@@ -91,12 +93,12 @@ class EmojiAction(BaseAction):
             # 4. 准备情感数据和后备列表
             emotion_map = {}
             all_emojis_data = []
-            
+
             for emoji in all_emojis_obj:
                 b64 = image_path_to_base64(emoji.full_path)
                 if not b64:
                     continue
-                
+
                 desc = emoji.description
                 emotions = emoji.emotion
                 all_emojis_data.append((b64, desc))
@@ -122,10 +124,10 @@ class EmojiAction(BaseAction):
                     emoji_base64, emoji_description = random.choice(all_emojis_data)
                 else:
                     # 获取最近的5条消息内容用于判断
-                    recent_messages = await message_api.get_recent_messages(chat_id=self.chat_id, limit=5)
+                    recent_messages = message_api.get_recent_messages(chat_id=self.chat_id, limit=5)
                     messages_text = ""
                     if recent_messages:
-                        messages_text = await message_api.build_readable_messages(
+                        messages_text = message_api.build_readable_messages(
                             messages=recent_messages,
                             timestamp_mode="normal_no_YMD",
                             truncate=False,
@@ -150,10 +152,10 @@ class EmojiAction(BaseAction):
 
                     # 调用LLM
                     models = llm_api.get_available_models()
-                    chat_model_config = models.get("planner")
+                    chat_model_config = models.get("utils")
                     if not chat_model_config:
-                        logger.error(f"{self.log_prefix} 未找到'planner'模型配置，无法调用LLM")
-                        return False, "未找到'planner'模型配置"
+                        logger.error(f"{self.log_prefix} 未找到'utils'模型配置，无法调用LLM")
+                        return False, "未找到'utils'模型配置"
 
                     success, chosen_emotion, _, _ = await llm_api.generate_with_model(
                         prompt, model_config=chat_model_config, request_type="emoji"
@@ -168,23 +170,25 @@ class EmojiAction(BaseAction):
 
                         # 使用模糊匹配来查找最相关的情感标签
                         matched_key = next((key for key in emotion_map if chosen_emotion in key), None)
-                        
+
                         if matched_key:
                             emoji_base64, emoji_description = random.choice(emotion_map[matched_key])
-                            logger.info(f"{self.log_prefix} 找到匹配情感 '{chosen_emotion}' (匹配到: '{matched_key}') 的表情包: {emoji_description}")
+                            logger.info(
+                                f"{self.log_prefix} 找到匹配情感 '{chosen_emotion}' (匹配到: '{matched_key}') 的表情包: {emoji_description}"
+                            )
                         else:
                             logger.warning(
                                 f"{self.log_prefix} LLM选择的情感 '{chosen_emotion}' 不在可用列表中, 将随机选择一个表情包"
                             )
                             emoji_base64, emoji_description = random.choice(all_emojis_data)
-            
+
             elif global_config.emoji.emoji_selection_mode == "description":
                 # --- 详细描述选择模式 ---
                 # 获取最近的5条消息内容用于判断
-                recent_messages = await message_api.get_recent_messages(chat_id=self.chat_id, limit=5)
+                recent_messages = message_api.get_recent_messages(chat_id=self.chat_id, limit=5)
                 messages_text = ""
                 if recent_messages:
-                    messages_text = await message_api.build_readable_messages(
+                    messages_text = message_api.build_readable_messages(
                         messages=recent_messages,
                         timestamp_mode="normal_no_YMD",
                         truncate=False,
@@ -208,10 +212,10 @@ class EmojiAction(BaseAction):
 
                 # 调用LLM
                 models = llm_api.get_available_models()
-                chat_model_config = models.get("planner")
+                chat_model_config = models.get("utils")
                 if not chat_model_config:
-                    logger.error(f"{self.log_prefix} 未找到'planner'模型配置，无法调用LLM")
-                    return False, "未找到'planner'模型配置"
+                    logger.error(f"{self.log_prefix} 未找到'utils'模型配置，无法调用LLM")
+                    return False, "未找到'utils'模型配置"
 
                 success, chosen_description, _, _ = await llm_api.generate_with_model(
                     prompt, model_config=chat_model_config, request_type="emoji"
@@ -226,15 +230,23 @@ class EmojiAction(BaseAction):
                     logger.info(f"{self.log_prefix} LLM选择的描述: {chosen_description}")
 
                     # 简单关键词匹配
-                    matched_emoji = next((item for item in all_emojis_data if chosen_description.lower() in item[1].lower() or item[1].lower() in chosen_description.lower()), None)
-                    
+                    matched_emoji = next(
+                        (
+                            item
+                            for item in all_emojis_data
+                            if chosen_description.lower() in item[1].lower()
+                            or item[1].lower() in chosen_description.lower()
+                        ),
+                        None,
+                    )
+
                     # 如果包含匹配失败，尝试关键词匹配
                     if not matched_emoji:
-                        keywords = ['惊讶', '困惑', '呆滞', '震惊', '懵', '无语', '萌', '可爱']
+                        keywords = ["惊讶", "困惑", "呆滞", "震惊", "懵", "无语", "萌", "可爱"]
                         for keyword in keywords:
                             if keyword in chosen_description:
                                 for item in all_emojis_data:
-                                    if any(k in item[1] for k in ['呆', '萌', '惊', '困惑', '无语']):
+                                    if any(k in item[1] for k in ["呆", "萌", "惊", "困惑", "无语"]):
                                         matched_emoji = item
                                         break
                                 if matched_emoji:
@@ -255,7 +267,9 @@ class EmojiAction(BaseAction):
 
             if not success:
                 logger.error(f"{self.log_prefix} 表情包发送失败")
-                await self.store_action_info(action_build_into_prompt = True,action_prompt_display ="发送了一个表情包,但失败了",action_done= False)
+                await self.store_action_info(
+                    action_build_into_prompt=True, action_prompt_display=f"发送了一个表情包,但失败了", action_done=False
+                )
                 return False, "表情包发送失败"
 
             # 发送成功后，记录到历史
@@ -263,8 +277,10 @@ class EmojiAction(BaseAction):
                 add_emoji_to_history(self.chat_id, emoji_description)
             except Exception as e:
                 logger.error(f"{self.log_prefix} 添加表情到历史记录时出错: {e}")
-            
-            await self.store_action_info(action_build_into_prompt = True,action_prompt_display ="发送了一个表情包",action_done= True)
+
+            await self.store_action_info(
+                action_build_into_prompt=True, action_prompt_display=f"发送了一个表情包", action_done=True
+            )
 
             return True, f"发送表情包: {emoji_description}"
 

@@ -7,7 +7,7 @@ import numpy as np
 
 from collections import Counter
 from maim_message import UserInfo
-from typing import Optional, Tuple, Dict, List, Any, Coroutine
+from typing import Optional, Tuple, Dict, List, Any
 
 from src.common.logger import get_logger
 from src.common.message_repository import find_messages, count_messages
@@ -332,17 +332,17 @@ def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese
 
     if global_config.response_splitter.enable and enable_splitter:
         logger.info(f"回复分割器已启用，模式: {global_config.response_splitter.split_mode}。")
-        
+
         split_mode = global_config.response_splitter.split_mode
-        
+
         if split_mode == "llm" and "[SPLIT]" in cleaned_text:
             logger.debug("检测到 [SPLIT] 标记，使用 LLM 自定义分割。")
             split_sentences_raw = cleaned_text.split("[SPLIT]")
             split_sentences = [s.strip() for s in split_sentences_raw if s.strip()]
         else:
             if split_mode == "llm":
-                logger.debug("未检测到 [SPLIT] 标记，回退到基于标点的传统模式进行分割。")
-                split_sentences = split_into_sentences_w_remove_punctuation(cleaned_text)
+                logger.debug("未检测到 [SPLIT] 标记，本次不进行分割。")
+                split_sentences = [cleaned_text]
             else:  # mode == "punctuation"
                 logger.debug("使用基于标点的传统模式进行分割。")
                 split_sentences = split_into_sentences_w_remove_punctuation(cleaned_text)
@@ -352,6 +352,8 @@ def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese
 
     sentences = []
     for sentence in split_sentences:
+        # 清除开头可能存在的空行
+        sentence = sentence.lstrip("\n").rstrip()
         if global_config.chinese_typo.enable and enable_chinese_typo:
             typoed_text, typo_corrections = typo_generator.create_typo_sentence(sentence)
             sentences.append(typoed_text)
@@ -540,8 +542,7 @@ def get_western_ratio(paragraph):
     return western_count / len(alnum_chars)
 
 
-def count_messages_between(start_time: float, end_time: float, stream_id: str) -> tuple[int, int] | tuple[
-    Coroutine[Any, Any, int], int]:
+def count_messages_between(start_time: float, end_time: float, stream_id: str) -> tuple[int, int]:
     """计算两个时间点之间的消息数量和文本总长度
 
     Args:
@@ -619,7 +620,7 @@ def translate_timestamp_to_human_readable(timestamp: float, mode: str = "normal"
         return time.strftime("%H:%M:%S", time.localtime(timestamp))
 
 
-async def get_chat_type_and_target_info(chat_id: str) -> Tuple[bool, Optional[Dict]]:
+def get_chat_type_and_target_info(chat_id: str) -> Tuple[bool, Optional[Dict]]:
     """
     获取聊天类型（是否群聊）和私聊对象信息。
 
@@ -663,8 +664,7 @@ async def get_chat_type_and_target_info(chat_id: str) -> Tuple[bool, Optional[Di
                     if person_id:
                         # get_value is async, so await it directly
                         person_info_manager = get_person_info_manager()
-                        person_data = await person_info_manager.get_values(person_id, ["person_name"])
-                        person_name = person_data.get("person_name")
+                        person_name = person_info_manager.get_value_sync(person_id, "person_name")
 
                     target_info["person_id"] = person_id
                     target_info["person_name"] = person_name
@@ -695,25 +695,9 @@ def assign_message_ids(messages: List[Any]) -> List[Dict[str, Any]]:
     """
     result = []
     used_ids = set()
-    len_i = len(messages)
-    if len_i > 100:
-        a = 10
-        b = 99
-    else:
-        a = 1
-        b = 9
-
     for i, message in enumerate(messages):
-        # 生成唯一的简短ID
-        while True:
-            # 使用索引+随机数生成简短ID
-            random_suffix = random.randint(a, b)
-            message_id = f"m{i + 1}{random_suffix}"
-
-            if message_id not in used_ids:
-                used_ids.add(message_id)
-                break
-
+        # 使用简单的索引作为ID
+        message_id = f"m{i + 1}"
         result.append({"id": message_id, "message": message})
 
     return result

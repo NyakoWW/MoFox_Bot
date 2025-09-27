@@ -96,6 +96,7 @@ class SendHandler:
             logger.error("无法识别的消息类型")
             return None
         logger.info("尝试发送到napcat")
+        logger.debug(f"准备发送到napcat的消息体: action='{action}', {id_name}='{target_id}', message='{processed_message}'")
         response = await self.send_message_to_napcat(
             action,
             {
@@ -228,8 +229,10 @@ class SendHandler:
         new_payload = payload
         if seg.type == "reply":
             target_id = seg.data
+            target_id = str(target_id)
             if target_id == "notice":
                 return payload
+            logger.info(target_id if isinstance(target_id, str) else "")
             new_payload = self.build_payload(
                 payload,
                 await self.handle_reply_message(target_id if isinstance(target_id, str) else "", user_info),
@@ -294,15 +297,17 @@ class SendHandler:
 
     async def handle_reply_message(self, id: str, user_info: UserInfo) -> dict | list:
         """处理回复消息"""
+        logger.debug(f"开始处理回复消息，消息ID: {id}")
         reply_seg = {"type": "reply", "data": {"id": id}}
 
         # 检查是否启用引用艾特功能
         if not config_api.get_plugin_config(self.plugin_config, "features.enable_reply_at", False):
+            logger.info("引用艾特功能未启用，仅发送普通回复")
             return reply_seg
 
         try:
-            # 尝试通过 message_id 获取消息详情
-            msg_info_response = await self.send_message_to_napcat("get_msg", {"message_id": int(id)})
+            msg_info_response = await self.send_message_to_napcat("get_msg", {"message_id": id})
+            logger.debug(f"获取消息 {id} 的详情响应: {msg_info_response}")
 
             replied_user_id = None
             if msg_info_response and msg_info_response.get("status") == "ok":
@@ -313,6 +318,7 @@ class SendHandler:
             # 如果没有获取到被回复者的ID，则直接返回，不进行@
             if not replied_user_id:
                 logger.warning(f"无法获取消息 {id} 的发送者信息，跳过 @")
+                logger.info(f"最终返回的回复段: {reply_seg}")
                 return reply_seg
 
             # 根据概率决定是否艾特用户
@@ -320,13 +326,17 @@ class SendHandler:
                 at_seg = {"type": "at", "data": {"qq": str(replied_user_id)}}
                 # 在艾特后面添加一个空格
                 text_seg = {"type": "text", "data": {"text": " "}}
-                return [reply_seg, at_seg, text_seg]
+                result_seg = [reply_seg, at_seg, text_seg]
+                logger.info(f"最终返回的回复段: {result_seg}")
+                return result_seg
 
         except Exception as e:
             logger.error(f"处理引用回复并尝试@时出错: {e}")
             # 出现异常时，只发送普通的回复，避免程序崩溃
+            logger.info(f"最终返回的回复段: {reply_seg}")
             return reply_seg
 
+        logger.info(f"最终返回的回复段: {reply_seg}")
         return reply_seg
 
     @staticmethod
@@ -366,7 +376,7 @@ class SendHandler:
         use_tts = False
         if self.plugin_config:
             use_tts = config_api.get_plugin_config(self.plugin_config, "voice.use_tts", False)
-        
+
         if not use_tts:
             logger.warning("未启用语音消息处理")
             return {}

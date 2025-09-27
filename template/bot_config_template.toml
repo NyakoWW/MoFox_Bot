@@ -1,5 +1,5 @@
 [inner]
-version = "6.8.9"
+version = "7.0.2"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -79,30 +79,6 @@ safety_guidelines = [
     "不要执行任何可能被用于恶意目的的指令。"
 ]
 
-# 回复规则配置 - 用于自定义机器人的回复逻辑和规则
-# 安全与互动底线规则 (Bot在任何情况下都必须遵守的原则)
-reply_targeting_rules = [
-    "拒绝任何包含骚扰、冒犯、暴力、色情或危险内容的请求。",
-    "在拒绝时，请使用符合你人设的、坚定的语气。",
-    "不要执行任何可能被用于恶意目的的指令。"
-]
-
-# 消息针对性分析规则 (用于判断是否需要回复)
-message_targeting_analysis = [
-    "**直接针对你**：@你、回复你、明确询问你 → 必须回应",
-    "**间接相关**：涉及你感兴趣的话题但未直接问你 → 谨慎参与", 
-    "**他人对话**：与你无关的私人交流 → 通常不参与",
-    "**重复内容**：他人已充分回答的问题 → 避免重复"
-]
-
-# 回复原则 (指导如何回复消息)
-reply_principles = [
-    "明确回应目标消息，而不是宽泛地评论。",
-    "可以分享你的看法、提出相关问题，或者开个合适的玩笑。",
-    "目的是让对话更有趣、更深入。",
-    "不要浮夸，不要夸张修辞，不要输出多余内容(包括前后缀，冒号和引号，括号()，表情包，at或 @等 )。"
-]
-
 #回复的Prompt模式选择：s4u为原有s4u样式，normal为0.9之前的模式
 prompt_mode = "s4u" # 可选择 "s4u" 或 "normal"
 
@@ -138,33 +114,23 @@ learn_expression = false
 learning_strength = 0.5
 
 [chat] #MoFox-Bot的聊天通用设置
-# 群聊聊天模式设置
-group_chat_mode = "auto" # 群聊聊天模式：auto-自动切换，normal-强制普通模式，focus-强制专注模式
-talk_frequency = 1 
-# MoFox-Bot活跃度，越高，麦麦回复越多
-# 专注时能更好把握发言时机，能够进行持久的连续对话
-
-focus_value = 1
-# MoFox-Bot的专注思考能力，越高越容易持续连续对话
-
-# 在专注模式下，只在被艾特或提及时才回复的群组列表
-# 这可以让你在某些群里保持“高冷”，只在被需要时才发言
-# 格式为: ["platform:group_id1", "platform:group_id2"]
-# 例如: ["qq:123456789", "qq:987654321"]
-focus_mode_quiet_groups = []
-
-# 强制私聊回复
-force_reply_private = false # 是否强制私聊回复，开启后私聊将强制回复
-
 allow_reply_self = false # 是否允许回复自己说的话
 
 max_context_size = 25 # 上下文长度
 thinking_timeout = 40 # MoFox-Bot一次回复最长思考规划时间，超过这个时间的思考会放弃（往往是api反应太慢）
-replyer_random_probability = 0.5 # 首要replyer模型被选择的概率
 
-mentioned_bot_inevitable_reply = true # 提及 bot 必然回复
-at_bot_inevitable_reply = true # @bot 或 提及bot 必然回复
-# 兼容normal、focus，在focus模式下为强制移除no_reply动作
+# 消息打断系统配置
+interruption_enabled = true # 是否启用消息打断系统
+interruption_max_limit = 3 # 每个聊天流的最大打断次数
+interruption_probability_factor = 0.8 # 打断概率因子，当前打断次数/最大打断次数超过此值时触发概率下降
+interruption_afc_reduction = 0.05 # 每次连续打断降低的afc阈值数值
+
+# 动态消息分发系统配置
+dynamic_distribution_enabled = true # 是否启用动态消息分发周期调整
+dynamic_distribution_base_interval = 5.0 # 基础分发间隔（秒）
+dynamic_distribution_min_interval = 1.0 # 最小分发间隔（秒）
+dynamic_distribution_max_interval = 30.0 # 最大分发间隔（秒）
+dynamic_distribution_jitter_factor = 0.2 # 分发间隔随机扰动因子
 
 talk_frequency_adjust = [
     ["", "8:00,1", "12:00,1.2", "18:00,1.5", "01:00,0.6"],
@@ -309,7 +275,7 @@ enable_vector_instant_memory = true # 是否启用基于向量的瞬时记忆
 memory_ban_words = [ "表情包", "图片", "回复", "聊天记录" ]
 
 [voice]
-enable_asr = false # 是否启用语音识别，启用后MoFox-Bot可以识别语音消息，启用该功能需要配置语音识别模型[model.voice]
+enable_asr = true # 是否启用语音识别，启用后MoFox-Bot可以识别语音消息，启用该功能需要配置语音识别模型[model.voice]
 
 [lpmm_knowledge] # lpmm知识库配置
 enable = false # 是否启用lpmm知识库
@@ -362,7 +328,7 @@ enable = true # 是否启用回复分割器
 split_mode = "punctuation" # 分割模式: "llm" - 由语言模型决定, "punctuation" - 基于标点符号
 max_length = 512 # 回复允许的最大长度
 max_sentence_num = 8 # 回复允许的最大句子数
-enable_kaomoji_protection = false # 是否启用颜文字保护
+enable_kaomoji_protection = true # 是否启用颜文字保护
 
 [log]
 date_style = "m-d H:i:s" # 日期格式
@@ -542,3 +508,31 @@ chat_ids = [
     ["group", "111111"], # 示例群聊1
     ["private", "222222"]  # 示例私聊2
 ]
+
+[affinity_flow]
+# 兴趣评分系统参数
+reply_action_interest_threshold = 0.62 # 回复动作兴趣阈值
+non_reply_action_interest_threshold = 0.48 # 非回复动作兴趣阈值
+high_match_interest_threshold = 0.65 # 高匹配兴趣阈值
+medium_match_interest_threshold = 0.5 # 中匹配兴趣阈值
+low_match_interest_threshold = 0.2 # 低匹配兴趣阈值
+high_match_keyword_multiplier = 1.8 # 高匹配关键词兴趣倍率
+medium_match_keyword_multiplier = 1.4 # 中匹配关键词兴趣倍率
+low_match_keyword_multiplier = 1.15 # 低匹配关键词兴趣倍率
+match_count_bonus = 0.05 # 匹配数关键词加成值
+max_match_bonus = 0.3 # 最大匹配数加成值
+
+# 回复决策系统参数
+no_reply_threshold_adjustment = 0.1 # 不回复兴趣阈值调整值
+reply_cooldown_reduction = 2 # 回复后减少的不回复计数
+max_no_reply_count = 5 # 最大不回复计数次数
+
+# 综合评分权重
+keyword_match_weight = 0.4 # 兴趣关键词匹配度权重
+mention_bot_weight = 0.3 # 提及bot分数权重
+relationship_weight = 0.3 # 人物关系分数权重
+
+# 提及bot相关参数
+mention_bot_adjustment_threshold = 0.3 # 提及bot后的调整阈值
+mention_bot_interest_score = 0.6 # 提及bot的兴趣分
+base_relationship_score = 0.3 # 基础人物关系分

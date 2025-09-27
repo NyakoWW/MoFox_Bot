@@ -80,7 +80,7 @@ def message_dict_to_message_recv(message_dict: Dict[str, Any]) -> Optional[Messa
 
     message_info = {
         "platform": message_dict.get("chat_info_platform", ""),
-        "message_id": message_dict.get("message_id"),
+        "message_id": message_dict.get("message_id") or message_dict.get("chat_info_message_id") or message_dict.get("id"),
         "time": message_dict.get("time"),
         "group_info": group_info,
         "user_info": user_info,
@@ -89,15 +89,16 @@ def message_dict_to_message_recv(message_dict: Dict[str, Any]) -> Optional[Messa
         "template_info": template_info,
     }
 
-    message_dict = {
+    new_message_dict = {
         "message_info": message_info,
         "raw_message": message_dict.get("processed_plain_text"),
         "processed_plain_text": message_dict.get("processed_plain_text"),
     }
 
-    message_recv = MessageRecv(message_dict)
+    message_recv = MessageRecv(new_message_dict)
 
     logger.info(f"[SendAPI] 找到匹配的回复消息，发送者: {message_dict.get('user_nickname', '')}")
+    logger.info(message_recv)
     return message_recv
 
 
@@ -246,7 +247,7 @@ async def text_to_stream(
     typing: bool = False,
     reply_to: str = "",
     reply_to_message: Optional[Dict[str, Any]] = None,
-    set_reply: bool = False,
+    set_reply: bool = True,
     storage_message: bool = True,
 ) -> bool:
     """向指定流发送文本消息
@@ -275,7 +276,7 @@ async def text_to_stream(
 
 
 async def emoji_to_stream(
-    emoji_base64: str, stream_id: str, storage_message: bool = True, set_reply: bool = False
+    emoji_base64: str, stream_id: str, storage_message: bool = True, set_reply: bool = True
 ) -> bool:
     """向指定流发送表情包
 
@@ -293,7 +294,7 @@ async def emoji_to_stream(
 
 
 async def image_to_stream(
-    image_base64: str, stream_id: str, storage_message: bool = True, set_reply: bool = False
+    image_base64: str, stream_id: str, storage_message: bool = True, set_reply: bool = True
 ) -> bool:
     """向指定流发送图片
 
@@ -315,7 +316,7 @@ async def command_to_stream(
     stream_id: str,
     storage_message: bool = True,
     display_message: str = "",
-    set_reply: bool = False,
+    set_reply: bool = True,
 ) -> bool:
     """向指定流发送命令
 
@@ -340,7 +341,7 @@ async def custom_to_stream(
     typing: bool = False,
     reply_to: str = "",
     reply_to_message: Optional[Dict[str, Any]] = None,
-    set_reply: bool = False,
+    set_reply: bool = True,
     storage_message: bool = True,
     show_log: bool = True,
 ) -> bool:

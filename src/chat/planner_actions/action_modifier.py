@@ -7,8 +7,9 @@ from typing import List, Any, Dict, TYPE_CHECKING, Tuple
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
-from src.chat.message_receive.chat_stream import get_chat_manager, ChatMessageContext
-from src.chat.planner_actions.action_manager import ActionManager
+from src.chat.message_receive.chat_stream import get_chat_manager
+from src.common.data_models.message_manager_data_model import StreamContext
+from src.chat.planner_actions.action_manager import ChatterActionManager
 from src.chat.utils.chat_message_builder import get_raw_msg_before_timestamp_with_chat, build_readable_messages
 from src.plugin_system.base.component_types import ActionInfo, ActionActivationType
 from src.plugin_system.core.global_announcement_manager import global_announcement_manager
@@ -27,7 +28,7 @@ class ActionModifier:
     支持并行判定和智能缓存优化。
     """
 
-    def __init__(self, action_manager: ActionManager, chat_id: str):
+    def __init__(self, action_manager: ChatterActionManager, chat_id: str):
         """初始化动作处理器"""
         self.chat_id = chat_id
         self.chat_stream: ChatStream = get_chat_manager().get_stream(self.chat_id)  # type: ignore
@@ -124,8 +125,9 @@ class ActionModifier:
                     logger.debug(f"{self.log_prefix}阶段一移除动作: {disabled_action_name}，原因: 用户自行禁用")
 
         # === 第二阶段：检查动作的关联类型 ===
-        chat_context = self.chat_stream.context
-        type_mismatched_actions = self._check_action_associated_types(all_actions, chat_context)
+        chat_context = self.chat_stream.stream_context
+        current_actions_s2 = self.action_manager.get_using_actions()
+        type_mismatched_actions = self._check_action_associated_types(current_actions_s2, chat_context)
 
         if type_mismatched_actions:
             removals_s2.extend(type_mismatched_actions)
@@ -140,11 +142,12 @@ class ActionModifier:
             logger.debug(f"{self.log_prefix}开始激活类型判定阶段")
 
             # 获取当前使用的动作集（经过第一阶段处理）
-            current_using_actions = self.action_manager.get_using_actions()
+            # 在第三阶段开始前，再次获取最新的动作列表
+            current_actions_s3 = self.action_manager.get_using_actions()
 
             # 获取因激活类型判定而需要移除的动作
             removals_s3 = await self._get_deactivated_actions_by_type(
-                current_using_actions,
+                current_actions_s3,
                 chat_content,
             )
 
@@ -164,7 +167,7 @@ class ActionModifier:
 
         logger.info(f"{self.log_prefix} 当前可用动作: {available_actions_text}||移除: {removals_summary}")
 
-    def _check_action_associated_types(self, all_actions: Dict[str, ActionInfo], chat_context: ChatMessageContext):
+    def _check_action_associated_types(self, all_actions: Dict[str, ActionInfo], chat_context: StreamContext):
         type_mismatched_actions: List[Tuple[str, str]] = []
         for action_name, action_info in all_actions.items():
             if action_info.associated_types and not chat_context.check_types(action_info.associated_types):

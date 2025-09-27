@@ -43,7 +43,8 @@ from src.config.official_configs import (
     CrossContextConfig,
     PermissionConfig,
     CommandConfig,
-    PlanningSystemConfig
+    PlanningSystemConfig,
+    AffinityFlowConfig,
 )
 
 from .api_ada_configs import (
@@ -66,7 +67,7 @@ TEMPLATE_DIR = os.path.join(PROJECT_ROOT, "template")
 
 # 考虑到，实际上配置文件中的mai_version是不会自动更新的,所以采用硬编码
 # 对该字段的更新，请严格参照语义化版本规范：https://semver.org/lang/zh-CN/
-MMC_VERSION = "0.10.0-alpha-2"
+MMC_VERSION = "0.11.0-alpha-1"
 
 
 def get_key_comment(toml_table, key):
@@ -417,6 +418,7 @@ class Config(ValidatedConfigBase):
     cross_context: CrossContextConfig = Field(
         default_factory=lambda: CrossContextConfig(), description="跨群聊上下文共享配置"
     )
+    affinity_flow: AffinityFlowConfig = Field(default_factory=lambda: AffinityFlowConfig(), description="亲和流配置")
 
 
 class APIAdapterConfig(ValidatedConfigBase):

@@ -350,6 +350,10 @@ MODULE_COLORS = {
     "memory": "\033[38;5;117m",  # 天蓝色
     "hfc": "\033[38;5;81m",  # 稍微暗一些的青色，保持可读
     "action_manager": "\033[38;5;208m",  # 橙色，不与replyer重复
+    "message_manager": "\033[38;5;27m",  # 深蓝色，消息管理器
+    "chatter_manager": "\033[38;5;129m",  # 紫色，聊天管理器
+    "chatter_interest_scoring": "\033[38;5;214m",  # 橙黄色，兴趣评分
+    "plan_executor": "\033[38;5;172m",  # 橙褐色，计划执行器
     # 关系系统
     "relation": "\033[38;5;139m",  # 柔和的紫色，不刺眼
     # 聊天相关模块
@@ -551,6 +555,10 @@ MODULE_ALIASES = {
     "llm_models": "模型",
     "person_info": "人物",
     "chat_stream": "聊天流",
+    "message_manager": "消息管理",
+    "chatter_manager": "聊天管理",
+    "chatter_interest_scoring": "兴趣评分",
+    "plan_executor": "计划执行",
     "planner": "规划器",
     "replyer": "言语",
     "config": "配置",

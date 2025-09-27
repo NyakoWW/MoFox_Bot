@@ -1,35 +1,40 @@
 # 再用这个就写一行注释来混提交的我直接全部🌿飞😡
 import asyncio
+import time
 import signal
 import sys
-import time
+from functools import partial
+import traceback
+from typing import Dict, Any
 
 from maim_message import MessageServer
-from rich.traceback import install
 
-from src.chat.emoji_system.emoji_manager import get_emoji_manager
-from src.chat.memory_system.Hippocampus import hippocampus_manager
-from src.chat.message_receive.bot import chat_bot
-from src.chat.message_receive.chat_stream import get_chat_manager
-from src.chat.utils.statistic import OnlineTimeRecordTask, StatisticOutputTask
-from src.common.logger import get_logger
-# 导入消息API和traceback模块
-from src.common.message import get_global_api
 from src.common.remote import TelemetryHeartBeatTask
-from src.common.server import get_global_server, Server
-from src.config.config import global_config
-from src.individuality.individuality import get_individuality, Individuality
 from src.manager.async_task_manager import async_task_manager
+from src.chat.utils.statistic import OnlineTimeRecordTask, StatisticOutputTask
+from src.chat.emoji_system.emoji_manager import get_emoji_manager
+from src.chat.message_receive.chat_stream import get_chat_manager
+from src.config.config import global_config
+from src.chat.message_receive.bot import chat_bot
+from src.common.logger import get_logger
+from src.individuality.individuality import get_individuality, Individuality
+from src.common.server import get_global_server, Server
 from src.mood.mood_manager import mood_manager
-from src.plugin_system.base.component_types import EventType
+from rich.traceback import install
+from src.schedule.schedule_manager import schedule_manager
+from src.schedule.monthly_plan_manager import monthly_plan_manager
 from src.plugin_system.core.event_manager import event_manager
-from src.plugin_system.core.plugin_hot_reload import hot_reload_manager
+from src.plugin_system.base.component_types import EventType
+# from src.api.main import start_api_server
+
 # 导入新的插件管理器和热重载管理器
 from src.plugin_system.core.plugin_manager import plugin_manager
-from src.schedule.monthly_plan_manager import monthly_plan_manager
-from src.schedule.schedule_manager import schedule_manager
+from src.plugin_system.core.plugin_hot_reload import hot_reload_manager
 
-# from src.api.main import start_api_server
+# 导入消息API和traceback模块
+from src.common.message import get_global_api
+
+from src.chat.memory_system.Hippocampus import hippocampus_manager
 
 if not global_config.memory.enable_memory:
     import src.chat.memory_system.Hippocampus as hippocampus_module
@@ -38,11 +43,7 @@ if not global_config.memory.enable_memory:
         def initialize(self):
             pass
 
-        async def initialize_async(self):
-            pass
-
-        @staticmethod
-        def get_hippocampus():
+        def get_hippocampus(self):
             return None
 
         async def build_memory(self):
@@ -54,9 +55,9 @@ if not global_config.memory.enable_memory:
         async def consolidate_memory(self):
             pass
 
-        @staticmethod
         async def get_memory_from_text(
-                text: str,
+            self,
+            text: str,
             max_memory_num: int = 3,
             max_memory_length: int = 2,
             max_depth: int = 3,
@@ -64,24 +65,20 @@ if not global_config.memory.enable_memory:
         ) -> list:
             return []
 
-        @staticmethod
         async def get_memory_from_topic(
-                valid_keywords: list[str], max_memory_num: int = 3, max_memory_length: int = 2, max_depth: int = 3
+            self, valid_keywords: list[str], max_memory_num: int = 3, max_memory_length: int = 2, max_depth: int = 3
         ) -> list:
             return []
 
-        @staticmethod
         async def get_activate_from_text(
-                text: str, max_depth: int = 3, fast_retrieval: bool = False
+            self, text: str, max_depth: int = 3, fast_retrieval: bool = False
         ) -> tuple[float, list[str]]:
             return 0.0, []
 
-        @staticmethod
-        def get_memory_from_keyword(keyword: str, max_depth: int = 2) -> list:
+        def get_memory_from_keyword(self, keyword: str, max_depth: int = 2) -> list:
             return []
 
-        @staticmethod
-        def get_all_node_names() -> list:
+        def get_all_node_names(self) -> list:
             return []
 
     hippocampus_module.hippocampus_manager = MockHippocampusManager()
@@ -91,6 +88,20 @@ if not global_config.memory.enable_memory:
 install(extra_lines=3)
 
 logger = get_logger("main")
+
+
+def _task_done_callback(task: asyncio.Task, message_id: str, start_time: float):
+    """后台任务完成时的回调函数"""
+    end_time = time.time()
+    duration = end_time - start_time
+    try:
+        task.result()  # 如果任务有异常，这里会重新抛出
+        logger.debug(f"消息 {message_id} 的后台任务 (ID: {id(task)}) 已成功完成, 耗时: {duration:.2f}s")
+    except asyncio.CancelledError:
+        logger.warning(f"消息 {message_id} 的后台任务 (ID: {id(task)}) 被取消, 耗时: {duration:.2f}s")
+    except Exception:
+        logger.error(f"处理消息 {message_id} 的后台任务 (ID: {id(task)}) 出现未捕获的异常, 耗时: {duration:.2f}s:")
+        logger.error(traceback.format_exc())
 
 
 class MainSystem:
@@ -117,15 +128,28 @@ class MainSystem:
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
-    @staticmethod
-    def _cleanup():
+    def _cleanup(self):
         """清理资源"""
+        try:
+            # 停止消息管理器
+            from src.chat.message_manager import message_manager
+            import asyncio
+
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(message_manager.stop())
+            else:
+                loop.run_until_complete(message_manager.stop())
+            logger.info("🛑 消息管理器已停止")
+        except Exception as e:
+            logger.error(f"停止消息管理器时出错: {e}")
+
         try:
             # 停止消息重组器
             from src.plugin_system.core.event_manager import event_manager
             from src.plugin_system import EventType
-            import asyncio
-            asyncio.run(event_manager.trigger_event(EventType.ON_STOP,permission_group="SYSTEM"))
+
+            asyncio.run(event_manager.trigger_event(EventType.ON_STOP, permission_group="SYSTEM"))
             from src.utils.message_chunker import reassembler
 
             loop = asyncio.get_event_loop()
@@ -158,6 +182,20 @@ class MainSystem:
                 logger.info("🛑 记忆管理器已停止")
         except Exception as e:
             logger.error(f"停止记忆管理器时出错: {e}")
+
+    async def _message_process_wrapper(self, message_data: Dict[str, Any]):
+        """并行处理消息的包装器"""
+        try:
+            start_time = time.time()
+            message_id = message_data.get("message_info", {}).get("message_id", "UNKNOWN")
+            # 创建后台任务
+            task = asyncio.create_task(chat_bot.message_process(message_data))
+            logger.debug(f"已为消息 {message_id} 创建后台处理任务 (ID: {id(task)})")
+            # 添加一个回调函数，当任务完成时，它会被调用
+            task.add_done_callback(partial(_task_done_callback, message_id=message_id, start_time=start_time))
+        except Exception:
+            logger.error("在创建消息处理任务时发生严重错误:")
+            logger.error(traceback.format_exc())
 
     async def initialize(self):
         """初始化系统组件"""
@@ -211,7 +249,7 @@ MoFox_Bot(第三方修改版)
 
         # 添加统计信息输出任务
         await async_task_manager.add_task(StatisticOutputTask())
-        
+
         # 添加遥测心跳任务
         await async_task_manager.add_task(TelemetryHeartBeatTask())
 
@@ -223,7 +261,6 @@ MoFox_Bot(第三方修改版)
         from src.plugin_system.apis.permission_api import permission_api
 
         permission_manager = PermissionManager()
-        await permission_manager.initialize()
         permission_api.set_permission_manager(permission_manager)
         logger.info("权限管理器初始化成功")
 
@@ -244,6 +281,18 @@ MoFox_Bot(第三方修改版)
         get_emoji_manager().initialize()
         logger.info("表情包管理器初始化成功")
 
+        # 初始化回复后关系追踪系统
+        try:
+            from src.plugins.built_in.affinity_flow_chatter.interest_scoring import chatter_interest_scoring_system
+            from src.plugins.built_in.affinity_flow_chatter.relationship_tracker import ChatterRelationshipTracker
+
+            relationship_tracker = ChatterRelationshipTracker(interest_scoring_system=chatter_interest_scoring_system)
+            chatter_interest_scoring_system.relationship_tracker = relationship_tracker
+            logger.info("回复后关系追踪系统初始化成功")
+        except Exception as e:
+            logger.error(f"回复后关系追踪系统初始化失败: {e}")
+            relationship_tracker = None
+
         # 启动情绪管理器
         await mood_manager.start()
         logger.info("情绪管理器初始化成功")
@@ -256,11 +305,12 @@ MoFox_Bot(第三方修改版)
         logger.info("聊天管理器初始化成功")
 
         # 初始化记忆系统
-        await self.hippocampus_manager.initialize_async()
+        self.hippocampus_manager.initialize()
         logger.info("记忆系统初始化成功")
 
         # 初始化LPMM知识库
         from src.chat.knowledge.knowledge_lib import initialize_lpmm_knowledge
+
         initialize_lpmm_knowledge()
         logger.info("LPMM知识库初始化成功")
 
@@ -276,13 +326,19 @@ MoFox_Bot(第三方修改版)
         # await asyncio.sleep(0.5) #防止logger输出飞了
 
         # 将bot.py中的chat_bot.message_process消息处理函数注册到api.py的消息处理基类中
-        self.app.register_message_handler(chat_bot.message_process)
+        self.app.register_message_handler(self._message_process_wrapper)
 
         # 启动消息重组器的清理任务
         from src.utils.message_chunker import reassembler
 
         await reassembler.start_cleanup_task()
         logger.info("消息重组器已启动")
+
+        # 启动消息管理器
+        from src.chat.message_manager import message_manager
+
+        await message_manager.start()
+        logger.info("消息管理器已启动")
 
         # 初始化个体特征
         await self.individuality.initialize()
@@ -291,7 +347,7 @@ MoFox_Bot(第三方修改版)
         if global_config.planning_system.monthly_plan_enable:
             logger.info("正在初始化月度计划管理器...")
             try:
-                await monthly_plan_manager.initialize()
+                await monthly_plan_manager.start_monthly_plan_generation()
                 logger.info("月度计划管理器初始化成功")
             except Exception as e:
                 logger.error(f"月度计划管理器初始化失败: {e}")
@@ -299,7 +355,8 @@ MoFox_Bot(第三方修改版)
         # 初始化日程管理器
         if global_config.planning_system.schedule_enable:
             logger.info("日程表功能已启用，正在初始化管理器...")
-            await schedule_manager.initialize()
+            await schedule_manager.load_or_generate_today_schedule()
+            await schedule_manager.start_daily_schedule_generation()
             logger.info("日程表管理器初始化成功。")
 
         try:

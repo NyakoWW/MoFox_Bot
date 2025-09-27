@@ -94,10 +94,51 @@ class PersonInfoManager:
 
         if "-" in platform:
             platform = platform.split("-")[1]
-
+        # 在此处打一个补丁，如果platform为qq，尝试生成id后检查是否存在，如果不存在，则将平台换为napcat后再次检查，如果存在，则更新原id为platform为qq的id
         components = [platform, str(user_id)]
         key = "_".join(components)
-        return hashlib.md5(key.encode()).hexdigest()
+
+        # 如果不是 qq 平台，直接返回计算的 id
+        if platform != "qq":
+            return hashlib.md5(key.encode()).hexdigest()
+
+        qq_id = hashlib.md5(key.encode()).hexdigest()
+
+        # 对于 qq 平台，先检查该 person_id 是否已存在；如果存在直接返回
+        def _db_check_and_migrate_sync(p_id: str, raw_user_id: str):
+            try:
+                with get_db_session() as session:
+                    # 检查 qq_id 是否存在
+                    existing_qq = session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id)).scalar()
+                    if existing_qq:
+                        return p_id
+
+                    # 如果 qq_id 不存在，尝试使用 napcat 作为平台生成对应 id 并检查
+                    nap_components = ["napcat", str(raw_user_id)]
+                    nap_key = "_".join(nap_components)
+                    nap_id = hashlib.md5(nap_key.encode()).hexdigest()
+
+                    existing_nap = session.execute(select(PersonInfo).where(PersonInfo.person_id == nap_id)).scalar()
+                    if not existing_nap:
+                        # napcat 也不存在，返回 qq_id（未命中）
+                        return p_id
+
+                    # napcat 存在，迁移该记录：更新 person_id 与 platform -> qq
+                    try:
+                        # 更新现有 napcat 记录
+                        existing_nap.person_id = p_id
+                        existing_nap.platform = "qq"
+                        existing_nap.user_id = str(raw_user_id)
+                        session.commit()
+                        return p_id
+                    except Exception:
+                        session.rollback()
+                        return p_id
+            except Exception as e:
+                logger.error(f"检查/迁移 napcat->qq 时出错: {e}")
+                return p_id
+
+        return _db_check_and_migrate_sync(qq_id, user_id)
 
     async def is_person_known(self, platform: str, user_id: int):
         """判断是否认识某人"""
@@ -127,7 +168,28 @@ class PersonInfoManager:
         except Exception as e:
             logger.error(f"根据用户名 {person_name} 获取用户ID时出错 (SQLAlchemy): {e}")
             return ""
-
+        
+    @staticmethod
+    async def first_knowing_some_one(platform: str, user_id: str, user_nickname: str, user_cardname: str):
+        """判断是否认识某人"""
+        person_id = PersonInfoManager.get_person_id(platform, user_id)
+        # 生成唯一的 person_name
+        person_info_manager = get_person_info_manager()
+        unique_nickname = await person_info_manager._generate_unique_person_name(user_nickname)
+        data = {
+            "platform": platform,
+            "user_id": user_id,
+            "nickname": user_nickname,
+            "konw_time": int(time.time()),
+            "person_name": unique_nickname,  # 使用唯一的 person_name
+        }
+        # 先创建用户基本信息，使用安全创建方法避免竞态条件
+        await person_info_manager._safe_create_person_info(person_id=person_id, data=data)
+        # 更新昵称
+        await person_info_manager.update_one_field(
+            person_id=person_id, field_name="nickname", value=user_nickname, data=data
+        )
+        
     @staticmethod
     async def create_person_info(person_id: str, data: Optional[dict] = None):
         """创建一个项"""
@@ -155,16 +217,16 @@ class PersonInfoManager:
         # Ensure person_id is correctly set from the argument
         final_data["person_id"] = person_id
         # 你们的英文注释是何意味？
-        
+
         # 检查并修复关键字段为None的情况喵
         if final_data.get("user_id") is None:
             logger.warning(f"user_id为None，使用'unknown'作为默认值 person_id={person_id}")
             final_data["user_id"] = "unknown"
-        
+
         if final_data.get("platform") is None:
             logger.warning(f"platform为None，使用'unknown'作为默认值 person_id={person_id}")
             final_data["platform"] = "unknown"
-        
+
         # 这里的目的是为了防止在识别出错的情况下有一个最小回退，不只是针对@消息识别成视频后的报错问题
 
         # Serialize JSON fields
@@ -215,12 +277,12 @@ class PersonInfoManager:
 
         # Ensure person_id is correctly set from the argument
         final_data["person_id"] = person_id
-        
+
         # 检查并修复关键字段为None的情况
         if final_data.get("user_id") is None:
             logger.warning(f"user_id为None，使用'unknown'作为默认值 person_id={person_id}")
             final_data["user_id"] = "unknown"
-        
+
         if final_data.get("platform") is None:
             logger.warning(f"platform为None，使用'unknown'作为默认值 person_id={person_id}")
             final_data["platform"] = "unknown"
@@ -315,12 +377,12 @@ class PersonInfoManager:
                 creation_data["platform"] = data["platform"]
             if data and "user_id" in data:
                 creation_data["user_id"] = data["user_id"]
-            
+
             # 额外检查关键字段，如果为None则使用默认值
             if creation_data.get("user_id") is None:
                 logger.warning(f"创建用户时user_id为None，使用'unknown'作为默认值 person_id={person_id}")
                 creation_data["user_id"] = "unknown"
-            
+
             if creation_data.get("platform") is None:
                 logger.warning(f"创建用户时platform为None，使用'unknown'作为默认值 person_id={person_id}")
                 creation_data["platform"] = "unknown"
