@@ -298,7 +298,7 @@ class ChatterActionManager:
 
             # 通过message_manager更新消息的动作记录并刷新focus_energy
             if chat_stream.stream_id in message_manager.stream_contexts:
-                message_manager.add_action_and_refresh_energy(
+                message_manager.add_action(
                     stream_id=chat_stream.stream_id,
                     message_id=target_message_id,
                     action=action_name

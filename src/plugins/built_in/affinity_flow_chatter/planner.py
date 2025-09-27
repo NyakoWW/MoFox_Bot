@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 from src.plugins.built_in.affinity_flow_chatter.plan_executor import ChatterPlanExecutor
 from src.plugins.built_in.affinity_flow_chatter.plan_filter import ChatterPlanFilter
 from src.plugins.built_in.affinity_flow_chatter.plan_generator import ChatterPlanGenerator
-from src.chat.interest_system import interest_manager
+from src.plugins.built_in.affinity_flow_chatter.interest_scoring import chatter_interest_scoring_system
 from src.mood.mood_manager import mood_manager
 
 
@@ -109,10 +109,7 @@ class ChatterActionPlanner:
                 # 获取用户ID，优先从user_info.user_id获取，其次从user_id属性获取
                 user_id = None
                 first_message = unread_messages[0]
-                if hasattr(first_message, 'user_info') and hasattr(first_message.user_info, 'user_id'):
-                    user_id = getattr(first_message.user_info, 'user_id', None)
-                elif hasattr(first_message, 'user_id'):
-                    user_id = getattr(first_message, 'user_id', None)
+                user_id = first_message.user_info.user_id
 
                 # 构建计算上下文
                 calc_context = {
@@ -123,11 +120,12 @@ class ChatterActionPlanner:
                 # 为每条消息计算兴趣度
                 for message in unread_messages:
                     try:
-                        # 使用新的兴趣度管理器计算
-                        message_interest = interest_manager.calculate_message_interest(
-                            message=message.__dict__,
-                            context=calc_context
+                        # 使用插件内部的兴趣度评分系统计算
+                        interest_score = await chatter_interest_scoring_system._calculate_single_message_score(
+                            message=message,
+                            bot_nickname=global_config.bot.nickname
                         )
+                        message_interest = interest_score.total_score
 
                         # 更新消息的兴趣度
                         message.interest_value = message_interest
@@ -140,7 +138,7 @@ class ChatterActionPlanner:
                         # 更新StreamContext中的消息信息并刷新focus_energy
                         if context:
                             from src.chat.message_manager.message_manager import message_manager
-                            message_manager.update_message_and_refresh_energy(
+                            message_manager.update_message(
                                 stream_id=self.chat_id,
                                 message_id=message.message_id,
                                 interest_value=message_interest,
@@ -154,10 +152,7 @@ class ChatterActionPlanner:
                             logger.debug(f"已更新数据库中消息 {message.message_id} 的兴趣度为: {message_interest:.3f}")
                         except Exception as e:
                             logger.warning(f"更新数据库消息兴趣度失败: {e}")
-
-                        # 更新话题兴趣度
-                        interest_manager.update_topic_interest(message.__dict__, message_interest)
-
+                     
                         # 记录最高分
                         if message_interest > score:
                             score = message_interest

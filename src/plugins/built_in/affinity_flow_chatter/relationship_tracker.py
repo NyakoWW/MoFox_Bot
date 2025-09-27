@@ -29,9 +29,6 @@ class ChatterRelationshipTracker:
         self.relationship_history: List[Dict] = []
         self.interest_scoring_system = interest_scoring_system
 
-        # 数据库访问 - 使用SQLAlchemy
-        pass
-
         # 用户关系缓存 (user_id -> {"relationship_text": str, "relationship_score": float, "last_tracked": float})
         self.user_relationship_cache: Dict[str, Dict] = {}
         self.cache_expiry_hours = 1  # 缓存过期时间(小时)

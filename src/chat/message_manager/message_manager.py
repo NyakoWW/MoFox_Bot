@@ -18,7 +18,7 @@ from src.plugin_system.base.component_types import ChatMode
 from .sleep_manager.sleep_manager import SleepManager
 from .sleep_manager.wakeup_manager import WakeUpManager
 from src.config.config import global_config
-from . import context_manager
+from .context_manager import context_manager
 
 if TYPE_CHECKING:
     from src.common.data_models.message_manager_data_model import StreamContext
@@ -46,7 +46,7 @@ class MessageManager:
         self.wakeup_manager = WakeUpManager(self.sleep_manager)
 
         # 初始化上下文管理器
-        self.context_manager = context_manager.context_manager
+        self.context_manager = context_manager
 
     async def start(self):
         """启动消息管理器"""
@@ -84,11 +84,9 @@ class MessageManager:
         if not context:
             # 创建新的流上下文
             from src.common.data_models.message_manager_data_model import StreamContext
-            new_context = StreamContext(stream_id=stream_id)
-            success = self.context_manager.add_stream_context(stream_id, new_context)
-            if not success:
-                logger.error(f"无法为流 {stream_id} 创建上下文")
-                return
+            context = StreamContext(stream_id=stream_id)
+            # 将创建的上下文添加到管理器
+            self.context_manager.add_stream_context(stream_id, context)
 
         # 使用 context_manager 添加消息
         success = self.context_manager.add_message_to_context(stream_id, message)
@@ -98,7 +96,7 @@ class MessageManager:
         else:
             logger.warning(f"添加消息到聊天流 {stream_id} 失败")
 
-    def update_message_and_refresh_energy(
+    def update_message(
         self,
         stream_id: str,
         message_id: str,
@@ -112,7 +110,7 @@ class MessageManager:
         if context:
             context.update_message_info(message_id, interest_value, actions, should_reply)
 
-    def add_action_and_refresh_energy(self, stream_id: str, message_id: str, action: str):
+    def add_action(self, stream_id: str, message_id: str, action: str):
         """添加动作到消息"""
         # 使用 context_manager 添加动作到消息
         context = self.context_manager.get_stream_context(stream_id)

@@ -387,22 +387,27 @@ class ChatterPlanFilter:
         interest_scores = {}
 
         try:
-            from src.chat.interest_system import interest_manager
+            from .interest_scoring import chatter_interest_scoring_system
+            from src.common.data_models.database_data_model import DatabaseMessages
 
-            # 使用新的兴趣度管理系统计算评分
+            # 使用插件内部的兴趣度评分系统计算评分
             for msg_dict in messages:
                 try:
-                    # 构建计算上下文
-                    calc_context = {
-                        "stream_id": msg_dict.get("chat_id", ""),
-                        "user_id": msg_dict.get("user_id"),
-                    }
+                    # 将字典转换为DatabaseMessages对象
+                    db_message = DatabaseMessages(
+                        message_id=msg_dict.get("message_id", ""),
+                        user_info=msg_dict.get("user_info", {}),
+                        processed_plain_text=msg_dict.get("processed_plain_text", ""),
+                        key_words=msg_dict.get("key_words", "[]"),
+                        is_mentioned=msg_dict.get("is_mentioned", False)
+                    )
 
                     # 计算消息兴趣度
-                    interest_score = interest_manager.calculate_message_interest(
-                        message=msg_dict,
-                        context=calc_context
+                    interest_score_obj = await chatter_interest_scoring_system._calculate_single_message_score(
+                        message=db_message,
+                        bot_nickname=global_config.bot.nickname
                     )
+                    interest_score = interest_score_obj.total_score
 
                     # 构建兴趣度字典
                     interest_scores[msg_dict.get("message_id", "")] = interest_score

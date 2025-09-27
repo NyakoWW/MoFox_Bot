@@ -310,21 +310,19 @@ class ChatStream:
         self._focus_energy = max(0.0, min(1.0, value))
 
     def _get_user_relationship_score(self) -> float:
-        """从新的兴趣度管理系统获取用户关系分"""
+        """获取用户关系分"""
+        # 使用插件内部的兴趣度评分系统
         try:
-            # 使用新的兴趣度管理系统
-            from src.chat.interest_system import interest_manager
+            from src.plugins.built_in.affinity_flow_chatter.interest_scoring import chatter_interest_scoring_system
 
             if self.user_info and hasattr(self.user_info, "user_id"):
                 user_id = str(self.user_info.user_id)
-                # 获取用户交互历史作为关系分的基础
-                interaction_calc = interest_manager.calculators.get(
-                    interest_manager.InterestSourceType.USER_INTERACTION
-                )
-                if interaction_calc:
-                    return interaction_calc.calculate({"user_id": user_id})
-        except Exception:
-            pass
+                relationship_score = chatter_interest_scoring_system._calculate_relationship_score(user_id)
+                logger.debug(f"ChatStream {self.stream_id}: 用户关系分 = {relationship_score:.3f}")
+                return max(0.0, min(1.0, relationship_score))
+
+        except Exception as e:
+            logger.warning(f"ChatStream {self.stream_id}: 插件内部关系分计算失败: {e}")
 
         # 默认基础分
         return 0.3
