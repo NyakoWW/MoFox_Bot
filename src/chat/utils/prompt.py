@@ -483,7 +483,8 @@ class Prompt:
 
     async def _build_expression_habits(self) -> Dict[str, Any]:
         """构建表达习惯"""
-        if not global_config.expression.enable_expression:
+        use_expression, _, _ = global_config.expression.get_expression_config_for_chat(self.parameters.chat_id)
+        if not use_expression:
             return {"expression_habits_block": ""}
 
         try:
