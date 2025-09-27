@@ -1,5 +1,6 @@
 import asyncio
 import os
+import shutil
 import sys
 import orjson
 import datetime
@@ -35,6 +36,21 @@ RAW_DATA_PATH = os.path.join(ROOT_PATH, "data", "lpmm_raw_data")
 OPENIE_OUTPUT_DIR = os.path.join(ROOT_PATH, "data", "openie")
 TEMP_DIR = os.path.join(ROOT_PATH, "temp", "lpmm_cache")
 file_lock = Lock()
+
+# --- 缓存清理 ---
+
+def clear_cache():
+    """清理 lpmm_learning_tool.py 生成的缓存文件"""
+    logger.info("--- 开始清理缓存 ---")
+    if os.path.exists(TEMP_DIR):
+        try:
+            shutil.rmtree(TEMP_DIR)
+            logger.info(f"成功删除缓存目录: {TEMP_DIR}")
+        except OSError as e:
+            logger.error(f"删除缓存时出错: {e}")
+    else:
+        logger.info("缓存目录不存在，无需清理。")
+    logger.info("--- 缓存清理完成 ---")
 
 # --- 模块一：数据预处理 ---
 
@@ -274,6 +290,7 @@ def main():
     print("3. [数据导入] -> 从 openie 文件夹自动导入最新知识")
     print("4. [全流程] -> 按顺序执行 1 -> 2 -> 3")
     print("5. [指定导入] -> 从特定的 openie.json 文件导入知识")
+    print("6. [清理缓存] -> 删除所有已提取信息的缓存")
     print("0. [退出]")
     print("-" * 30)
     choice = input("请输入你的选择 (0-5): ").strip()
@@ -293,6 +310,8 @@ def main():
             asyncio.run(import_data())
     elif choice == "5":
         import_from_specific_file()
+    elif choice == "6":
+        clear_cache()
     elif choice == "0":
         sys.exit(0)
     else:
