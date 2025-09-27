@@ -55,7 +55,7 @@ class ExampleAction(BaseAction):
 | voiceurl | 语音URL消息 | str: wav格式语音的URL |
 | music | 音乐消息 | str: 这首歌在网易云音乐的音乐id |
 | videourl | 视频URL消息 | str: 视频的URL |
-| file | 文件消息 | str: 文件的路径 |
+| file | 文件消息 | str: 文件的路径 | 
 
 **请知悉，对于不同的处理器，其支持的消息类型可能会有所不同。在开发时请注意。**
 
