@@ -149,7 +149,7 @@ class MaiEmoji:
             # --- 数据库操作 ---
             try:
                 # 准备数据库记录 for emoji collection
-                with get_db_session() as session:
+                async with get_db_session() as session:
                     emotion_str = ",".join(self.emotion) if self.emotion else ""
 
                     emoji = Emoji(
@@ -167,7 +167,7 @@ class MaiEmoji:
                         last_used_time=self.last_used_time,
                     )
                     session.add(emoji)
-                    session.commit()
+                    await session.commit()
 
                     logger.info(f"[注册] 表情包信息保存到数据库: {self.filename} ({self.emotion})")
 
@@ -203,17 +203,18 @@ class MaiEmoji:
 
             # 2. 删除数据库记录
             try:
-                with get_db_session() as session:
-                    will_delete_emoji = session.execute(
+                async with get_db_session() as session:
+                    result = await session.execute(
                         select(Emoji).where(Emoji.emoji_hash == self.hash)
-                    ).scalar_one_or_none()
+                    )
+                    will_delete_emoji = result.scalar_one_or_none()
                     if will_delete_emoji is None:
                         logger.warning(f"[删除] 数据库中未找到哈希值为 {self.hash} 的表情包记录。")
                         result = 0  # Indicate no DB record was deleted
                     else:
-                        session.delete(will_delete_emoji)
+                        await session.delete(will_delete_emoji)
                         result = 1  # Successfully deleted one record
-                        session.commit()
+                        await session.commit()
             except Exception as e:
                 logger.error(f"[错误] 删除数据库记录时出错: {str(e)}")
                 result = 0
@@ -424,17 +425,19 @@ class EmojiManager:
     #     if not self._initialized:
     #         raise RuntimeError("EmojiManager not initialized")
 
-    def record_usage(self, emoji_hash: str) -> None:
+    async def record_usage(self, emoji_hash: str) -> None:
         """记录表情使用次数"""
         try:
-            with get_db_session() as session:
-                emoji_update = session.execute(select(Emoji).where(Emoji.emoji_hash == emoji_hash)).scalar_one_or_none()
+            async with get_db_session() as session:
+                stmt = select(Emoji).where(Emoji.emoji_hash == emoji_hash)
+                result = await session.execute(stmt)
+                emoji_update = result.scalar_one_or_none()
                 if emoji_update is None:
                     logger.error(f"记录表情使用失败: 未找到 hash 为 {emoji_hash} 的表情包")
                 else:
                     emoji_update.usage_count += 1
                 emoji_update.last_used_time = time.time()  # Update last used time
-                session.commit()
+                await session.commit()
         except Exception as e:
             logger.error(f"记录表情使用失败: {str(e)}")
 
@@ -521,7 +524,7 @@ class EmojiManager:
 
             # 7. 获取选中的表情包并更新使用记录
             selected_emoji = candidate_emojis[selected_index]
-            self.record_usage(selected_emoji.hash)
+            await self.record_usage(selected_emoji.hash)
             _time_end = time.time()
 
             logger.info(f"找到匹配描述的表情包: {selected_emoji.description}, 耗时: {(_time_end - _time_start):.2f}s")
@@ -657,10 +660,11 @@ class EmojiManager:
     async def get_all_emoji_from_db(self) -> None:
         """获取所有表情包并初始化为MaiEmoji类对象，更新 self.emoji_objects"""
         try:
-            with get_db_session() as session:
+            async with get_db_session() as session:
                 logger.debug("[数据库] 开始加载所有表情包记录 ...")
 
-                emoji_instances = session.execute(select(Emoji)).scalars().all()
+                result = await session.execute(select(Emoji))
+                emoji_instances = result.scalars().all()
                 emoji_objects, load_errors = _to_emoji_objects(emoji_instances)
 
             # 更新内存中的列表和数量
@@ -686,14 +690,16 @@ class EmojiManager:
             list[MaiEmoji]: 表情包对象列表
         """
         try:
-            with get_db_session() as session:
+            async with get_db_session() as session:
                 if emoji_hash:
-                    query = session.execute(select(Emoji).where(Emoji.emoji_hash == emoji_hash)).scalars().all()
+                    result = await session.execute(select(Emoji).where(Emoji.emoji_hash == emoji_hash))
+                    query = result.scalars().all()
                 else:
                     logger.warning(
                         "[查询] 未提供 hash，将尝试加载所有表情包，建议使用 get_all_emoji_from_db 更新管理器状态。"
                     )
-                    query = session.execute(select(Emoji)).scalars().all()
+                    result = await session.execute(select(Emoji))
+                    query = result.scalars().all()
 
                 emoji_instances = query
                 emoji_objects, load_errors = _to_emoji_objects(emoji_instances)
@@ -770,10 +776,10 @@ class EmojiManager:
 
             # 如果内存中没有，从数据库查找
             try:
-                with get_db_session() as session:
-                    emoji_record = session.execute(
-                        select(Emoji).where(Emoji.emoji_hash == emoji_hash)
-                    ).scalar_one_or_none()
+                async with get_db_session() as session:
+                    stmt = select(Emoji).where(Emoji.emoji_hash == emoji_hash)
+                    result = await session.execute(stmt)
+                    emoji_record = result.scalar_one_or_none()
                 if emoji_record and emoji_record.description:
                     logger.info(f"[缓存命中] 从数据库获取表情包描述: {emoji_record.description[:50]}...")
                     return emoji_record.description
@@ -939,12 +945,13 @@ class EmojiManager:
             # 2. 检查数据库中是否已存在该表情包的描述，实现复用
             existing_description = None
             try:
-                with get_db_session() as session:
-                    existing_image = (
-                        session.query(Images)
-                        .filter((Images.emoji_hash == image_hash) & (Images.type == "emoji"))
-                        .one_or_none()
+                async with get_db_session() as session:
+                    stmt = select(Images).where(
+                        Images.emoji_hash == image_hash,
+                        Images.type == "emoji"
                     )
+                    result = await session.execute(stmt)
+                    existing_image = result.scalar_one_or_none()
                     if existing_image and existing_image.description:
                         existing_description = existing_image.description
                         logger.info(f"[复用描述] 找到已有详细描述: {existing_description[:50]}...")

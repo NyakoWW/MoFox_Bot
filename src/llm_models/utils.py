@@ -161,7 +161,7 @@ class LLMUsageRecorder:
         session = None
         try:
             # 使用 SQLAlchemy 会话创建记录
-            with get_db_session() as session:
+            async with get_db_session() as session:
                 usage_record = LLMUsage(
                     model_name=model_info.model_identifier,
                     model_assign_name=model_info.name,
@@ -172,14 +172,14 @@ class LLMUsageRecorder:
                     prompt_tokens=model_usage.prompt_tokens or 0,
                     completion_tokens=model_usage.completion_tokens or 0,
                     total_tokens=model_usage.total_tokens or 0,
-                    cost=total_cost or 0.0,
+                    cost=1.0,
                     time_cost=round(time_cost or 0.0, 3),
                     status="success",
                     timestamp=datetime.now(),  # SQLAlchemy 会处理 DateTime 字段
                 )
 
                 session.add(usage_record)
-                session.commit()
+                await session.commit()
 
             logger.debug(
                 f"Token使用情况 - 模型: {model_usage.model_name}, "
