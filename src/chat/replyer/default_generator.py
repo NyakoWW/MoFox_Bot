@@ -690,7 +690,7 @@ class DefaultReplyer:
             if chat_stream:
                 stream_context = chat_stream.context_manager
                 # 使用真正的已读和未读消息
-                read_messages = stream_context.history_messages  # 已读消息
+                read_messages = stream_context.context.history_messages  # 已读消息
                 unread_messages = stream_context.get_unread_messages()  # 未读消息
 
                 # 构建已读历史消息 prompt
@@ -706,7 +706,7 @@ class DefaultReplyer:
                 else:
                     # 如果没有已读消息，则从数据库加载最近的上下文
                     logger.info("暂无已读历史消息，正在从数据库加载上下文...")
-                    fallback_messages = get_raw_msg_before_timestamp_with_chat(
+                    fallback_messages = await get_raw_msg_before_timestamp_with_chat(
                         chat_id=chat_id,
                         timestamp=time.time(),
                         limit=global_config.chat.max_context_size,
@@ -1063,13 +1063,13 @@ class DefaultReplyer:
                 action_descriptions += f"- {action_name}: {action_description}\n"
             action_descriptions += "\n"
 
-        message_list_before_now_long = get_raw_msg_before_timestamp_with_chat(
+        message_list_before_now_long = await get_raw_msg_before_timestamp_with_chat(
             chat_id=chat_id,
             timestamp=time.time(),
             limit=global_config.chat.max_context_size * 2,
         )
 
-        message_list_before_short = get_raw_msg_before_timestamp_with_chat(
+        message_list_before_short = await get_raw_msg_before_timestamp_with_chat(
             chat_id=chat_id,
             timestamp=time.time(),
             limit=int(global_config.chat.max_context_size * 0.33),
@@ -1322,7 +1322,7 @@ class DefaultReplyer:
         else:
             mood_prompt = ""
 
-        message_list_before_now_half = get_raw_msg_before_timestamp_with_chat(
+        message_list_before_now_half = await get_raw_msg_before_timestamp_with_chat(
             chat_id=chat_id,
             timestamp=time.time(),
             limit=min(int(global_config.chat.max_context_size * 0.33), 15),

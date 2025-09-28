@@ -329,11 +329,11 @@ class ChatterPlanFilter:
             stream_context = chat_stream.context_manager
 
             # 获取真正的已读和未读消息
-            read_messages = stream_context.history_messages  # 已读消息存储在history_messages中
+            read_messages = stream_context.context.history_messages  # 已读消息存储在history_messages中
             if not read_messages:
                 from src.common.data_models.database_data_model import DatabaseMessages
                 # 如果内存中没有已读消息（比如刚启动），则从数据库加载最近的上下文
-                fallback_messages_dicts = get_raw_msg_before_timestamp_with_chat(
+                fallback_messages_dicts = await get_raw_msg_before_timestamp_with_chat(
                     chat_id=plan.chat_id,
                     timestamp=time.time(),
                     limit=global_config.chat.max_context_size,

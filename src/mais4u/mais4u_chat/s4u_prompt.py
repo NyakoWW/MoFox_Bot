@@ -184,7 +184,7 @@ class PromptBuilder:
 
     @staticmethod
     async def build_chat_history_prompts(chat_stream: ChatStream, message: MessageRecvS4U):
-        message_list_before_now = get_raw_msg_before_timestamp_with_chat(
+        message_list_before_now = await get_raw_msg_before_timestamp_with_chat(
             chat_id=chat_stream.stream_id,
             timestamp=time.time(),
             limit=300,
@@ -261,7 +261,7 @@ class PromptBuilder:
             for msg in all_msg_seg_list:
                 core_msg_str += msg
 
-        all_dialogue_prompt = get_raw_msg_before_timestamp_with_chat(
+        all_dialogue_prompt = await get_raw_msg_before_timestamp_with_chat(
             chat_id=chat_stream.stream_id,
             timestamp=time.time(),
             limit=20,

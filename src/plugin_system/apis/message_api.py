@@ -263,9 +263,9 @@ def get_messages_before_time(timestamp: float, limit: int = 0, filter_mai: bool 
     return get_raw_msg_before_timestamp(timestamp, limit)
 
 
-def get_messages_before_time_in_chat(
+async def get_messages_before_time_in_chat(
     chat_id: str, timestamp: float, limit: int = 0, filter_mai: bool = False
-) -> Coroutine[Any, Any, list[dict[str, Any]]]:
+) -> list[dict[str, Any]]:
     """
     获取指定聊天中指定时间戳之前的消息
 
@@ -290,8 +290,8 @@ def get_messages_before_time_in_chat(
     if not isinstance(chat_id, str):
         raise ValueError("chat_id 必须是字符串类型")
     if filter_mai:
-        return filter_mai_messages(get_raw_msg_before_timestamp_with_chat(chat_id, timestamp, limit))
-    return get_raw_msg_before_timestamp_with_chat(chat_id, timestamp, limit)
+        return await filter_mai_messages(await get_raw_msg_before_timestamp_with_chat(chat_id, timestamp, limit))
+    return await get_raw_msg_before_timestamp_with_chat(chat_id, timestamp, limit)
 
 
 def get_messages_before_time_for_users(timestamp: float, person_ids: List[str], limit: int = 0) -> Coroutine[

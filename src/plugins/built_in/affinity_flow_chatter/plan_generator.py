@@ -124,7 +124,7 @@ class ChatterPlanGenerator:
         """
         try:
             # 获取最近的消息记录
-            raw_messages = get_raw_msg_before_timestamp_with_chat(
+            raw_messages = await get_raw_msg_before_timestamp_with_chat(
                 chat_id=self.chat_id, timestamp=time.time(), limit=global_config.memory.short_memory_length
             )
 

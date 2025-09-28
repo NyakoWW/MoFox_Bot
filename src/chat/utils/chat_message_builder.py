@@ -12,6 +12,8 @@ from src.person_info.person_info import PersonInfoManager, get_person_info_manag
 from src.chat.utils.utils import translate_timestamp_to_human_readable, assign_message_ids
 from src.common.database.sqlalchemy_database_api import get_db_session
 from sqlalchemy import select, and_
+from src.common.logger import get_logger
+logger = get_logger("chat_message_builder")
 
 install(extra_lines=3)
 
@@ -458,13 +460,13 @@ def get_raw_msg_before_timestamp(timestamp: float, limit: int = 0) -> List[Dict[
     return find_messages(message_filter=filter_query, sort=sort_order, limit=limit)
 
 
-def get_raw_msg_before_timestamp_with_chat(chat_id: str, timestamp: float, limit: int = 0) -> List[Dict[str, Any]]:
+async def get_raw_msg_before_timestamp_with_chat(chat_id: str, timestamp: float, limit: int = 0) -> List[Dict[str, Any]]:
     """获取指定时间戳之前的消息，按时间升序排序，返回消息列表
     limit: 限制返回的消息数量，0为不限制
     """
     filter_query = {"chat_id": chat_id, "time": {"$lt": timestamp}}
     sort_order = [("time", 1)]
-    return find_messages(message_filter=filter_query, sort=sort_order, limit=limit)
+    return await find_messages(message_filter=filter_query, sort=sort_order, limit=limit)
 
 
 def get_raw_msg_before_timestamp_with_users(timestamp: float, person_ids: list, limit: int = 0) -> List[Dict[str, Any]]:
@@ -826,10 +828,11 @@ async def build_pic_mapping_info(pic_id_mapping: Dict[str, str]) -> str:
             async with get_db_session() as session:
                 result = await session.execute(select(Images).where(Images.image_id == pic_id))
                 image = result.scalar_one_or_none()
-                if image and image.description:  # type: ignore
+                if image and hasattr(image, 'description') and image.description:
                     description = image.description
-        except Exception:
+        except Exception as e:
             # 如果查询失败，保持默认描述
+            logger.debug(f"[chat_message_builder] 查询图片描述失败: {e}")
             pass
 
         mapping_lines.append(f"[{display_name}] 的内容：{description}")

@@ -212,7 +212,7 @@ class MessageManager:
                 return
 
             context = chat_stream.stream_context
-
+            
             # 获取未读消息
             unread_messages = chat_stream.context_manager.get_unread_messages()
             if not unread_messages:

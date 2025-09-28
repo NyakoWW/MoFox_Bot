@@ -174,8 +174,8 @@ class InstantMemory:
                             )
                         )).scalars()
                     else:
-                        query = result = await session.execute(select(Memory).where(Memory.chat_id == self.chat_id))
-                        result.scalars()
+                        result = await session.execute(select(Memory).where(Memory.chat_id == self.chat_id))
+                        query = result.scalars()
                 for mem in query:
                     # 对每条记忆
                     mem_keywords_str = mem.keywords or "[]"

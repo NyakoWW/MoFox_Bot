@@ -66,9 +66,6 @@ class ChatStream:
         self._focus_energy = 0.5  # 内部存储的focus_energy值
         self.no_reply_consecutive = 0
 
-        # 自动加载历史消息
-        self._load_history_messages()
-
     def __deepcopy__(self, memo):
         """自定义深拷贝方法，避免复制不可序列化的 asyncio.Task 对象"""
         import copy
@@ -379,119 +376,6 @@ class ChatStream:
 
         # 默认基础分
         return 0.3
-
-    def _load_history_messages(self):
-        """从数据库加载历史消息到StreamContext"""
-        try:
-            from src.common.database.sqlalchemy_models import Messages
-            from src.common.database.sqlalchemy_database_api import get_db_session
-            from src.common.data_models.database_data_model import DatabaseMessages
-            from sqlalchemy import select, desc
-            import asyncio
-
-            async def _load_history_messages_async():
-                """异步加载并转换历史消息到 stream_context（在事件循环中运行）。"""
-                try:
-                    async with get_db_session() as session:
-                        stmt = (
-                            select(Messages)
-                            .where(Messages.chat_info_stream_id == self.stream_id)
-                            .order_by(desc(Messages.time))
-                            .limit(global_config.chat.max_context_size)
-                        )
-                        result = await session.execute(stmt)
-                        db_messages = result.scalars().all()
-
-                    # 转换为DatabaseMessages对象并添加到StreamContext
-                    for db_msg in db_messages:
-                        try:
-                            import orjson
-
-                            actions = None
-                            if db_msg.actions:
-                                try:
-                                    actions = orjson.loads(db_msg.actions)
-                                except (orjson.JSONDecodeError, TypeError):
-                                    actions = None
-
-                            db_message = DatabaseMessages(
-                                message_id=db_msg.message_id,
-                                time=db_msg.time,
-                                chat_id=db_msg.chat_id,
-                                reply_to=db_msg.reply_to,
-                                interest_value=db_msg.interest_value,
-                                key_words=db_msg.key_words,
-                                key_words_lite=db_msg.key_words_lite,
-                                is_mentioned=db_msg.is_mentioned,
-                                processed_plain_text=db_msg.processed_plain_text,
-                                display_message=db_msg.display_message,
-                                priority_mode=db_msg.priority_mode,
-                                priority_info=db_msg.priority_info,
-                                additional_config=db_msg.additional_config,
-                                is_emoji=db_msg.is_emoji,
-                                is_picid=db_msg.is_picid,
-                                is_command=db_msg.is_command,
-                                is_notify=db_msg.is_notify,
-                                user_id=db_msg.user_id,
-                                user_nickname=db_msg.user_nickname,
-                                user_cardname=db_msg.user_cardname,
-                                user_platform=db_msg.user_platform,
-                                chat_info_group_id=db_msg.chat_info_group_id,
-                                chat_info_group_name=db_msg.chat_info_group_name,
-                                chat_info_group_platform=db_msg.chat_info_group_platform,
-                                chat_info_user_id=db_msg.chat_info_user_id,
-                                chat_info_user_nickname=db_msg.chat_info_user_nickname,
-                                chat_info_user_cardname=db_msg.chat_info_user_cardname,
-                                chat_info_user_platform=db_msg.chat_info_user_platform,
-                                chat_info_stream_id=db_msg.chat_info_stream_id,
-                                chat_info_platform=db_msg.chat_info_platform,
-                                chat_info_create_time=db_msg.chat_info_create_time,
-                                chat_info_last_active_time=db_msg.chat_info_last_active_time,
-                                actions=actions,
-                                should_reply=getattr(db_msg, "should_reply", False) or False,
-                            )
-
-                            logger.debug(
-                                f"加载历史消息 {db_message.message_id} - interest_value: {db_message.interest_value}"
-                            )
-
-                            db_message.is_read = True
-                            self.stream_context.history_messages.append(db_message)
-
-                        except Exception as e:
-                            logger.warning(f"转换消息 {getattr(db_msg, 'message_id', '<unknown>')} 失败: {e}")
-                            continue
-
-                    if self.stream_context.history_messages:
-                        logger.info(
-                            f"已从数据库加载 {len(self.stream_context.history_messages)} 条历史消息到聊天流 {self.stream_id}"
-                        )
-
-                except Exception as e:
-                    logger.warning(f"异步加载历史消息失败: {e}")
-
-            # 在已有事件循环中，避免调用 asyncio.run()
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                # 没有运行的事件循环，安全地运行并等待完成
-                asyncio.run(_load_history_messages_async())
-            else:
-                # 如果事件循环正在运行，在后台创建任务
-                if loop.is_running():
-                    try:
-                        asyncio.create_task(_load_history_messages_async())
-                    except Exception as e:
-                        # 如果无法创建任务，退回到阻塞运行
-                        logger.warning(f"无法在事件循环中创建后台任务，尝试阻塞运行: {e}")
-                        asyncio.run(_load_history_messages_async())
-                else:
-                    # loop 存在但未运行，使用 asyncio.run
-                    asyncio.run(_load_history_messages_async())
-
-        except Exception as e:
-            logger.error(f"加载历史消息失败: {e}")
-
 
 class ChatManager:
     """聊天管理器，管理所有聊天流"""

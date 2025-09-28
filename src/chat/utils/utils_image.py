@@ -308,8 +308,8 @@ class ImageManager:
 
             async with get_db_session() as session:
                 # 优先检查Images表中是否已有完整的描述
-                existing_image = result = await session.execute(select(Images).where(Images.emoji_hash == image_hash))
-                result.scalar()
+                result = await session.execute(select(Images).where(Images.emoji_hash == image_hash))
+                existing_image = result.scalar()
                 if existing_image:
                     # 更新计数
                     if hasattr(existing_image, "count") and existing_image.count is not None:
@@ -528,8 +528,8 @@ class ImageManager:
             image_bytes = base64.b64decode(image_base64)
             image_hash = hashlib.md5(image_bytes).hexdigest()
             async with get_db_session() as session:
-                existing_image = result = await session.execute(select(Images).where(Images.emoji_hash == image_hash))
-                result.scalar()
+                result = await session.execute(select(Images).where(Images.emoji_hash == image_hash))
+                existing_image = result.scalar()
                 if existing_image:
                     # 检查是否缺少必要字段，如果缺少则创建新记录
                     if (
