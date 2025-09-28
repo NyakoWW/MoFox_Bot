@@ -684,8 +684,11 @@ class DefaultReplyer:
             from src.chat.message_manager.message_manager import message_manager
 
             # 获取聊天流的上下文
-            stream_context = message_manager.stream_contexts.get(chat_id)
-            if stream_context:
+            from src.plugin_system.apis.chat_api import get_chat_manager
+            chat_manager = get_chat_manager()
+            chat_stream = chat_manager.get_stream(chat_id)
+            if chat_stream:
+                stream_context = chat_stream.context_manager
                 # 使用真正的已读和未读消息
                 read_messages = stream_context.history_messages  # 已读消息
                 unread_messages = stream_context.get_unread_messages()  # 未读消息
@@ -693,7 +696,7 @@ class DefaultReplyer:
                 # 构建已读历史消息 prompt
                 read_history_prompt = ""
                 if read_messages:
-                    read_content = build_readable_messages(
+                    read_content = await build_readable_messages(
                         [msg.flatten() for msg in read_messages[-50:]],  # 限制数量
                         replace_bot_name=True,
                         timestamp_mode="normal_no_YMD",
@@ -716,7 +719,7 @@ class DefaultReplyer:
                         ]
 
                         if filtered_fallback_messages:
-                            read_content = build_readable_messages(
+                            read_content = await build_readable_messages(
                                 filtered_fallback_messages,
                                 replace_bot_name=True,
                                 timestamp_mode="normal_no_YMD",
@@ -754,7 +757,7 @@ class DefaultReplyer:
                         if platform and user_id:
                             person_id = PersonInfoManager.get_person_id(platform, user_id)
                             person_info_manager = get_person_info_manager()
-                            sender_name = person_info_manager.get_value_sync(person_id, "person_name") or "未知用户"
+                            sender_name = person_info_manager.get_value(person_id, "person_name") or "未知用户"
                         else:
                             sender_name = "未知用户"
 
@@ -819,7 +822,7 @@ class DefaultReplyer:
         # 构建已读历史消息 prompt
         read_history_prompt = ""
         if read_messages:
-            read_content = build_readable_messages(
+            read_content = await build_readable_messages(
                 read_messages[-50:],
                 replace_bot_name=True,
                 timestamp_mode="normal_no_YMD",
@@ -853,7 +856,7 @@ class DefaultReplyer:
                 if platform and user_id:
                     person_id = PersonInfoManager.get_person_id(platform, user_id)
                     person_info_manager = get_person_info_manager()
-                    sender_name = person_info_manager.get_value_sync(person_id, "person_name") or "未知用户"
+                    sender_name = person_info_manager.get_value(person_id, "person_name") or "未知用户"
                 else:
                     sender_name = "未知用户"
 
@@ -1027,7 +1030,7 @@ class DefaultReplyer:
 
             # 检查是否是bot自己的名字，如果是则替换为"(你)"
             bot_user_id = str(global_config.bot.qq_account)
-            current_user_id = person_info_manager.get_value_sync(person_id, "user_id")
+            current_user_id = person_info_manager.get_value(person_id, "user_id")
             current_platform = reply_message.get("chat_info_platform")
 
             if current_user_id == bot_user_id and current_platform == global_config.bot.platform:
@@ -1046,7 +1049,7 @@ class DefaultReplyer:
             target = "(无消息内容)"
 
         person_info_manager = get_person_info_manager()
-        person_id = person_info_manager.get_person_id_by_person_name(sender)
+        person_id = await person_info_manager.get_person_id_by_person_name(sender)
         platform = chat_stream.platform
 
         target = replace_user_references_sync(target, chat_stream.platform, replace_bot_name=True)
@@ -1071,7 +1074,7 @@ class DefaultReplyer:
             timestamp=time.time(),
             limit=int(global_config.chat.max_context_size * 0.33),
         )
-        chat_talking_prompt_short = build_readable_messages(
+        chat_talking_prompt_short = await build_readable_messages(
             message_list_before_short,
             replace_bot_name=True,
             merge_messages=False,
@@ -1324,7 +1327,7 @@ class DefaultReplyer:
             timestamp=time.time(),
             limit=min(int(global_config.chat.max_context_size * 0.33), 15),
         )
-        chat_talking_prompt_half = build_readable_messages(
+        chat_talking_prompt_half = await build_readable_messages(
             message_list_before_now_half,
             replace_bot_name=True,
             merge_messages=False,
@@ -1523,7 +1526,7 @@ class DefaultReplyer:
 
         # 获取用户ID
         person_info_manager = get_person_info_manager()
-        person_id = person_info_manager.get_person_id_by_person_name(sender)
+        person_id = await person_info_manager.get_person_id_by_person_name(sender)
         if not person_id:
             logger.warning(f"未找到用户 {sender} 的ID，跳过信息提取")
             return f"你完全不认识{sender}，不理解ta的相关信息。"

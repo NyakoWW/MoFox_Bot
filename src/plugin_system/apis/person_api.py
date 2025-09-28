@@ -134,7 +134,7 @@ async def is_person_known(platform: str, user_id: int) -> bool:
         return False
 
 
-def get_person_id_by_name(person_name: str) -> str:
+async def get_person_id_by_name(person_name: str) -> str:
     """根据用户名获取person_id
 
     Args:
@@ -148,7 +148,7 @@ def get_person_id_by_name(person_name: str) -> str:
     """
     try:
         person_info_manager = get_person_info_manager()
-        return person_info_manager.get_person_id_by_person_name(person_name)
+        return await person_info_manager.get_person_id_by_person_name(person_name)
     except Exception as e:
         logger.error(f"[PersonAPI] 根据用户名获取person_id失败: person_name={person_name}, error={e}")
         return ""

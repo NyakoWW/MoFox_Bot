@@ -494,7 +494,7 @@ class Prompt:
             chat_history = ""
             if self.parameters.message_list_before_now_long:
                 recent_messages = self.parameters.message_list_before_now_long[-10:]
-                chat_history = build_readable_messages(
+                chat_history = await build_readable_messages(
                     recent_messages, replace_bot_name=True, timestamp_mode="normal", truncate=True
                 )
 
@@ -535,7 +535,7 @@ class Prompt:
             chat_history = ""
             if self.parameters.message_list_before_now_long:
                 recent_messages = self.parameters.message_list_before_now_long[-20:]
-                chat_history = build_readable_messages(
+                chat_history = await build_readable_messages(
                     recent_messages, replace_bot_name=True, timestamp_mode="normal", truncate=True
                 )
 
@@ -589,7 +589,7 @@ class Prompt:
             chat_history = ""
             if self.parameters.message_list_before_now_long:
                 recent_messages = self.parameters.message_list_before_now_long[-15:]
-                chat_history = build_readable_messages(
+                chat_history = await build_readable_messages(
                     recent_messages, replace_bot_name=True, timestamp_mode="normal", truncate=True
                 )
 
@@ -863,7 +863,7 @@ class Prompt:
 
         # 获取用户ID
         person_info_manager = get_person_info_manager()
-        person_id = person_info_manager.get_person_id_by_person_name(sender)
+        person_id = await person_info_manager.get_person_id_by_person_name(sender)
         if not person_id:
             logger.warning(f"未找到用户 {sender} 的ID，跳过信息提取")
             return f"你完全不认识{sender}，不理解ta的相关信息。"
@@ -904,7 +904,7 @@ class Prompt:
         return ""
 
     @staticmethod
-    def parse_reply_target_id(reply_to: str) -> str:
+    async def parse_reply_target_id(reply_to: str) -> str:
         """
         解析回复目标中的用户ID
 
@@ -924,9 +924,9 @@ class Prompt:
 
         # 获取用户ID
         person_info_manager = get_person_info_manager()
-        person_id = person_info_manager.get_person_id_by_person_name(sender)
+        person_id = await person_info_manager.get_person_id_by_person_name(sender)
         if person_id:
-            user_id = person_info_manager.get_value_sync(person_id, "user_id")
+            user_id = person_info_manager.get_value(person_id, "user_id")
             return str(user_id) if user_id else ""
 
         return ""
