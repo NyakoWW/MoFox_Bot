@@ -84,6 +84,7 @@ async def generate_reply(
     return_prompt: bool = False,
     request_type: str = "generator_api",
     from_plugin: bool = True,
+    read_mark: float = 0.0,
 ) -> Tuple[bool, List[Tuple[str, Any]], Optional[str]]:
     """生成回复
 
@@ -129,6 +130,7 @@ async def generate_reply(
             from_plugin=from_plugin,
             stream_id=chat_stream.stream_id if chat_stream else chat_id,
             reply_message=reply_message,
+            read_mark=read_mark,
         )
         if not success:
             logger.warning("[GeneratorAPI] 回复生成失败")

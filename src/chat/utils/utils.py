@@ -341,9 +341,9 @@ def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese
             split_sentences = [s.strip() for s in split_sentences_raw if s.strip()]
         else:
             if split_mode == "llm":
-                logger.debug("未检测到 [SPLIT] 标记，本次不进行分割。")
-                split_sentences = [cleaned_text]
-            else: # mode == "punctuation"
+                logger.debug("未检测到 [SPLIT] 标记，回退到基于标点的传统模式进行分割。")
+                split_sentences = split_into_sentences_w_remove_punctuation(cleaned_text)
+            else:  # mode == "punctuation"
                 logger.debug("使用基于标点的传统模式进行分割。")
                 split_sentences = split_into_sentences_w_remove_punctuation(cleaned_text)
     else:
@@ -619,7 +619,7 @@ def translate_timestamp_to_human_readable(timestamp: float, mode: str = "normal"
         return time.strftime("%H:%M:%S", time.localtime(timestamp))
 
 
-def get_chat_type_and_target_info(chat_id: str) -> Tuple[bool, Optional[Dict]]:
+async def get_chat_type_and_target_info(chat_id: str) -> Tuple[bool, Optional[Dict]]:
     """
     获取聊天类型（是否群聊）和私聊对象信息。
 
@@ -663,7 +663,8 @@ def get_chat_type_and_target_info(chat_id: str) -> Tuple[bool, Optional[Dict]]:
                     if person_id:
                         # get_value is async, so await it directly
                         person_info_manager = get_person_info_manager()
-                        person_name = person_info_manager.get_value(person_id, "person_name")
+                        person_data = await person_info_manager.get_values(person_id, ["person_name"])
+                        person_name = person_data.get("person_name")
 
                     target_info["person_id"] = person_id
                     target_info["person_name"] = person_name

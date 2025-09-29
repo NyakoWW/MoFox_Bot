@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Optional
 
 from json_repair import repair_json
 
-from . import planner_prompts
 from src.chat.memory_system.Hippocampus import hippocampus_manager
 from src.chat.utils.chat_message_builder import (
     build_readable_actions,
@@ -47,12 +46,12 @@ class PlanFilter:
         try:
             prompt, used_message_id_list = await self._build_prompt(plan)
             plan.llm_prompt = prompt
-            logger.debug(f"墨墨在这里加了日志 -> LLM prompt: {prompt}")
+            logger.info(f"规划器原始提示词: {prompt}")
 
             llm_content, _ = await self.planner_llm.generate_response_async(prompt=prompt)
 
             if llm_content:
-                logger.debug(f"墨墨在这里加了日志 -> LLM a原始返回: {llm_content}")
+                logger.info(f"规划器原始返回: {llm_content}")
                 parsed_json = orjson.loads(repair_json(llm_content))
                 logger.debug(f"墨墨在这里加了日志 -> 解析后的 JSON: {parsed_json}")
                 
