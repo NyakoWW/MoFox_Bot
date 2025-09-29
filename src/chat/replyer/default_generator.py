@@ -28,8 +28,8 @@ from src.chat.utils.chat_message_builder import (
     replace_user_references_sync,
 )
 from src.chat.express.expression_selector import expression_selector
-from src.chat.memory_system.memory_activator import MemoryActivator
-from src.chat.memory_system.vector_instant_memory import VectorInstantMemoryV2
+# 旧记忆系统已被移除
+# 旧记忆系统已被移除
 from src.mood.mood_manager import mood_manager
 from src.person_info.person_info import get_person_info_manager
 from src.plugin_system.base.component_types import ActionInfo, EventType
@@ -231,9 +231,12 @@ class DefaultReplyer:
         self.is_group_chat, self.chat_target_info = get_chat_type_and_target_info(self.chat_stream.stream_id)
 
         self.heart_fc_sender = HeartFCSender()
-        self.memory_activator = MemoryActivator()
-        # 使用纯向量瞬时记忆系统V2，支持自定义保留时间
-        self.instant_memory = VectorInstantMemoryV2(chat_id=self.chat_stream.stream_id, retention_hours=1)
+        # 使用新的增强记忆系统
+        # from src.chat.memory_system.enhanced_memory_activator import EnhancedMemoryActivator
+        # self.memory_activator = EnhancedMemoryActivator()
+        self.memory_activator = None  # 暂时禁用记忆激活器
+        # 旧的即时记忆系统已被移除，现在使用增强记忆系统
+        # self.instant_memory = VectorInstantMemoryV2(chat_id=self.chat_stream.stream_id, retention_hours=1)
 
         from src.plugin_system.core.tool_use import ToolExecutor  # 延迟导入ToolExecutor，不然会循环依赖
 
@@ -459,90 +462,65 @@ class DefaultReplyer:
 
         instant_memory = None
 
-        running_memories = await self.memory_activator.activate_memory_with_chat_history(
-            target_message=target, chat_history_prompt=chat_history
-        )
+        # 使用新的增强记忆系统检索记忆
+        running_memories = []
+        instant_memory = None
 
         if global_config.memory.enable_instant_memory:
-            # 使用异步记忆包装器（最优化的非阻塞模式）
             try:
-                from src.chat.memory_system.async_instant_memory_wrapper import get_async_instant_memory
+                # 使用新的增强记忆系统
+                from src.chat.memory_system.enhanced_memory_integration import recall_memories, remember_message
 
-                # 获取异步记忆包装器
-                async_memory = get_async_instant_memory(self.chat_stream.stream_id)
-
-                # 后台存储聊天历史（完全非阻塞）
-                async_memory.store_memory_background(chat_history)
-
-                # 快速检索记忆，最大超时2秒
-                instant_memory = await async_memory.get_memory_with_fallback(target, max_timeout=2.0)
-
-                logger.info(f"异步瞬时记忆：{instant_memory}")
-
-            except ImportError:
-                # 如果异步包装器不可用，尝试使用异步记忆管理器
-                try:
-                    from src.chat.memory_system.async_memory_optimizer import (
-                        retrieve_memory_nonblocking,
-                        store_memory_nonblocking,
+                # 异步存储聊天历史（非阻塞）
+                asyncio.create_task(
+                    remember_message(
+                        message=chat_history,
+                        user_id=str(self.chat_stream.stream_id),
+                        chat_id=self.chat_stream.stream_id
                     )
+                )
 
-                    # 异步存储聊天历史（非阻塞）
-                    asyncio.create_task(
-                        store_memory_nonblocking(chat_id=self.chat_stream.stream_id, content=chat_history)
-                    )
+                # 检索相关记忆
+                enhanced_memories = await recall_memories(
+                    query=target,
+                    user_id=str(self.chat_stream.stream_id),
+                    chat_id=self.chat_stream.stream_id
+                )
 
-                    # 尝试从缓存获取瞬时记忆
-                    instant_memory = await retrieve_memory_nonblocking(chat_id=self.chat_stream.stream_id, query=target)
+                # 转换格式以兼容现有代码
+                running_memories = []
+                if enhanced_memories and enhanced_memories.get("has_memories"):
+                    for memory in enhanced_memories.get("memories", []):
+                        running_memories.append({
+                            'content': memory.get("content", ""),
+                            'score': memory.get("confidence", 0.0),
+                            'memory_type': memory.get("type", "unknown")
+                        })
 
-                    # 如果没有缓存结果，快速检索一次
-                    if instant_memory is None:
-                        try:
-                            instant_memory = await asyncio.wait_for(
-                                self.instant_memory.get_memory_for_context(target), timeout=1.5
-                            )
-                        except asyncio.TimeoutError:
-                            logger.warning("瞬时记忆检索超时，使用空结果")
-                            instant_memory = ""
+                # 构建瞬时记忆字符串
+                if enhanced_memories and enhanced_memories.get("has_memories"):
+                    instant_memory = "\\n".join([
+                        f"{memory.get('content', '')} (相似度: {memory.get('confidence', 0.0):.2f})"
+                        for memory in enhanced_memories.get("memories", [])[:3]  # 取前3条
+                    ])
 
-                    logger.info(f"向量瞬时记忆：{instant_memory}")
-
-                except ImportError:
-                    # 最后的fallback：使用原有逻辑但加上超时控制
-                    logger.warning("异步记忆系统不可用，使用带超时的同步方式")
-
-                    # 异步存储聊天历史
-                    asyncio.create_task(self.instant_memory.store_message(chat_history))
-
-                    # 带超时的记忆检索
-                    try:
-                        instant_memory = await asyncio.wait_for(
-                            self.instant_memory.get_memory_for_context(target),
-                            timeout=1.0,  # 最保守的1秒超时
-                        )
-                    except asyncio.TimeoutError:
-                        logger.warning("瞬时记忆检索超时，跳过记忆获取")
-                        instant_memory = ""
-                    except Exception as e:
-                        logger.error(f"瞬时记忆检索失败: {e}")
-                        instant_memory = ""
-
-                    logger.info(f"同步瞬时记忆：{instant_memory}")
+                logger.info(f"增强记忆系统检索到 {len(running_memories)} 条记忆")
 
             except Exception as e:
-                logger.error(f"瞬时记忆系统异常: {e}")
+                logger.warning(f"增强记忆系统检索失败: {e}")
+                running_memories = []
                 instant_memory = ""
 
         # 构建记忆字符串，即使某种记忆为空也要继续
         memory_str = ""
         has_any_memory = False
 
-        # 添加长期记忆
+        # 添加长期记忆（来自增强记忆系统）
         if running_memories:
             if not memory_str:
                 memory_str = "以下是当前在聊天中，你回忆起的记忆：\n"
             for running_memory in running_memories:
-                memory_str += f"- {running_memory['content']}\n"
+                memory_str += f"- {running_memory['content']} (类型: {running_memory['memory_type']}, 相似度: {running_memory['score']:.2f})\n"
             has_any_memory = True
 
         # 添加瞬时记忆

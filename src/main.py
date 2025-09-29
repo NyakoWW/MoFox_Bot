@@ -34,54 +34,8 @@ from src.plugin_system.core.plugin_hot_reload import hot_reload_manager
 # 导入消息API和traceback模块
 from src.common.message import get_global_api
 
-from src.chat.memory_system.Hippocampus import hippocampus_manager
-
-if not global_config.memory.enable_memory:
-    import src.chat.memory_system.Hippocampus as hippocampus_module
-
-    class MockHippocampusManager:
-        def initialize(self):
-            pass
-
-        def get_hippocampus(self):
-            return None
-
-        async def build_memory(self):
-            pass
-
-        async def forget_memory(self, percentage: float = 0.005):
-            pass
-
-        async def consolidate_memory(self):
-            pass
-
-        async def get_memory_from_text(
-            self,
-            text: str,
-            max_memory_num: int = 3,
-            max_memory_length: int = 2,
-            max_depth: int = 3,
-            fast_retrieval: bool = False,
-        ) -> list:
-            return []
-
-        async def get_memory_from_topic(
-            self, valid_keywords: list[str], max_memory_num: int = 3, max_memory_length: int = 2, max_depth: int = 3
-        ) -> list:
-            return []
-
-        async def get_activate_from_text(
-            self, text: str, max_depth: int = 3, fast_retrieval: bool = False
-        ) -> tuple[float, list[str]]:
-            return 0.0, []
-
-        def get_memory_from_keyword(self, keyword: str, max_depth: int = 2) -> list:
-            return []
-
-        def get_all_node_names(self) -> list:
-            return []
-
-    hippocampus_module.hippocampus_manager = MockHippocampusManager()
+# 导入增强记忆系统管理器
+from src.chat.memory_system.enhanced_memory_manager import enhanced_memory_manager
 
 # 插件系统现在使用统一的插件加载器
 
@@ -106,7 +60,8 @@ def _task_done_callback(task: asyncio.Task, message_id: str, start_time: float):
 
 class MainSystem:
     def __init__(self):
-        self.hippocampus_manager = hippocampus_manager
+        # 使用增强记忆系统
+        self.enhanced_memory_manager = enhanced_memory_manager
 
         self.individuality: Individuality = get_individuality()
 
@@ -169,19 +124,18 @@ class MainSystem:
             logger.error(f"停止热重载系统时出错: {e}")
 
         try:
-            # 停止异步记忆管理器
+            # 停止增强记忆系统
             if global_config.memory.enable_memory:
-                from src.chat.memory_system.async_memory_optimizer import async_memory_manager
                 import asyncio
 
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
-                    asyncio.create_task(async_memory_manager.shutdown())
+                    asyncio.create_task(self.enhanced_memory_manager.shutdown())
                 else:
-                    loop.run_until_complete(async_memory_manager.shutdown())
-                logger.info("🛑 记忆管理器已停止")
+                    loop.run_until_complete(self.enhanced_memory_manager.shutdown())
+                logger.info("🛑 增强记忆系统已停止")
         except Exception as e:
-            logger.error(f"停止记忆管理器时出错: {e}")
+            logger.error(f"停止增强记忆系统时出错: {e}")
 
     async def _message_process_wrapper(self, message_data: Dict[str, Any]):
         """并行处理消息的包装器"""
@@ -304,9 +258,11 @@ MoFox_Bot(第三方修改版)
 
         logger.info("聊天管理器初始化成功")
 
-        # 初始化记忆系统
-        self.hippocampus_manager.initialize()
-        logger.info("记忆系统初始化成功")
+        # 初始化增强记忆系统
+        await self.enhanced_memory_manager.initialize()
+        logger.info("增强记忆系统初始化成功")
+
+        # 老记忆系统已完全删除
 
         # 初始化LPMM知识库
         from src.chat.knowledge.knowledge_lib import initialize_lpmm_knowledge
@@ -314,14 +270,8 @@ MoFox_Bot(第三方修改版)
         initialize_lpmm_knowledge()
         logger.info("LPMM知识库初始化成功")
 
-        # 初始化异步记忆管理器
-        try:
-            from src.chat.memory_system.async_memory_optimizer import async_memory_manager
-
-            await async_memory_manager.initialize()
-            logger.info("记忆管理器初始化成功")
-        except Exception as e:
-            logger.error(f"记忆管理器初始化失败: {e}")
+        # 异步记忆管理器已禁用，增强记忆系统有内置的优化机制
+        logger.info("异步记忆管理器已禁用 - 使用增强记忆系统内置优化")
 
         # await asyncio.sleep(0.5) #防止logger输出飞了
 
@@ -376,81 +326,12 @@ MoFox_Bot(第三方修改版)
                 self.server.run(),
             ]
 
-            # 添加记忆系统相关任务
-            tasks.extend(
-                [
-                    self.build_memory_task(),
-                    self.forget_memory_task(),
-                    self.consolidate_memory_task(),
-                ]
-            )
+            # 增强记忆系统不需要定时任务，已禁用原有记忆系统的定时任务
+            logger.info("原有记忆系统定时任务已禁用 - 使用增强记忆系统")
 
             await asyncio.gather(*tasks)
 
-    async def build_memory_task(self):
-        """记忆构建任务"""
-        while True:
-            await asyncio.sleep(global_config.memory.memory_build_interval)
-
-            try:
-                # 使用异步记忆管理器进行非阻塞记忆构建
-                from src.chat.memory_system.async_memory_optimizer import build_memory_nonblocking
-
-                logger.info("正在启动记忆构建")
-
-                # 定义构建完成的回调函数
-                def build_completed(result):
-                    if result:
-                        logger.info("记忆构建完成")
-                    else:
-                        logger.warning("记忆构建失败")
-
-                # 启动异步构建，不等待完成
-                task_id = await build_memory_nonblocking()
-                logger.info(f"记忆构建任务已提交：{task_id}")
-
-            except ImportError:
-                # 如果异步优化器不可用，使用原有的同步方式（但在单独的线程中运行）
-                logger.warning("记忆优化器不可用，使用线性运行执行记忆构建")
-
-                def sync_build_memory():
-                    """在线程池中执行同步记忆构建"""
-                    try:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        result = loop.run_until_complete(self.hippocampus_manager.build_memory())
-                        logger.info("记忆构建完成")
-                        return result
-                    except Exception as e:
-                        logger.error(f"记忆构建失败: {e}")
-                        return None
-                    finally:
-                        loop.close()
-
-                # 在线程池中执行记忆构建
-                asyncio.get_event_loop().run_in_executor(None, sync_build_memory)
-
-            except Exception as e:
-                logger.error(f"记忆构建任务启动失败: {e}")
-                # fallback到原有的同步方式
-                logger.info("正在进行记忆构建（同步模式）")
-                await self.hippocampus_manager.build_memory()  # type: ignore
-
-    async def forget_memory_task(self):
-        """记忆遗忘任务"""
-        while True:
-            await asyncio.sleep(global_config.memory.forget_memory_interval)
-            logger.info("[记忆遗忘] 开始遗忘记忆...")
-            await self.hippocampus_manager.forget_memory(percentage=global_config.memory.memory_forget_percentage)  # type: ignore
-            logger.info("[记忆遗忘] 记忆遗忘完成")
-
-    async def consolidate_memory_task(self):
-        """记忆整合任务"""
-        while True:
-            await asyncio.sleep(global_config.memory.consolidate_memory_interval)
-            logger.info("[记忆整合] 开始整合记忆...")
-            await self.hippocampus_manager.consolidate_memory()  # type: ignore
-            logger.info("[记忆整合] 记忆整合完成")
+    # 老记忆系统的定时任务已删除 - 增强记忆系统使用内置的维护机制
 
 
 async def main():

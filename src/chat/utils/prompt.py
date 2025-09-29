@@ -371,28 +371,35 @@ class Prompt:
                 tasks.append(self._build_cross_context())
                 task_names.append("cross_context")
 
-            # 性能优化
-            base_timeout = 10.0
-            task_timeout = 2.0
-            timeout_seconds = min(
-                max(base_timeout, len(tasks) * task_timeout),
-                30.0,
-            )
+            # 性能优化 - 为不同任务设置不同的超时时间
+            task_timeouts = {
+                "memory_block": 5.0,      # 记忆系统可能较慢，单独设置超时
+                "tool_info": 3.0,         # 工具信息中等速度
+                "relation_info": 2.0,     # 关系信息通常较快
+                "knowledge_info": 3.0,    # 知识库查询中等速度
+                "cross_context": 2.0,     # 上下文处理通常较快
+                "expression_habits": 1.5, # 表达习惯处理很快
+            }
 
-            max_concurrent_tasks = 5
-            if len(tasks) > max_concurrent_tasks:
-                results = []
-                for i in range(0, len(tasks), max_concurrent_tasks):
-                    batch_tasks = tasks[i : i + max_concurrent_tasks]
+            # 分别处理每个任务，避免慢任务影响快任务
+            results = []
+            for i, task in enumerate(tasks):
+                task_name = task_names[i] if i < len(task_names) else f"task_{i}"
+                task_timeout = task_timeouts.get(task_name, 2.0)  # 默认2秒
 
-                    batch_results = await asyncio.wait_for(
-                        asyncio.gather(*batch_tasks, return_exceptions=True), timeout=timeout_seconds
-                    )
-                    results.extend(batch_results)
-            else:
-                results = await asyncio.wait_for(
-                    asyncio.gather(*tasks, return_exceptions=True), timeout=timeout_seconds
-                )
+                try:
+                    result = await asyncio.wait_for(task, timeout=task_timeout)
+                    results.append(result)
+                    logger.debug(f"构建任务{task_name}完成 ({task_timeout}s)")
+                except asyncio.TimeoutError:
+                    logger.warning(f"构建任务{task_name}超时 ({task_timeout}s)，使用默认值")
+                    # 为超时任务提供默认值
+                    default_result = self._get_default_result_for_task(task_name)
+                    results.append(default_result)
+                except Exception as e:
+                    logger.error(f"构建任务{task_name}失败: {str(e)}")
+                    default_result = self._get_default_result_for_task(task_name)
+                    results.append(default_result)
 
             # 处理结果
             context_data = {}
@@ -528,8 +535,7 @@ class Prompt:
             return {"memory_block": ""}
 
         try:
-            from src.chat.memory_system.memory_activator import MemoryActivator
-            from src.chat.memory_system.async_instant_memory_wrapper import get_async_instant_memory
+            from src.chat.memory_system.enhanced_memory_activator import enhanced_memory_activator
 
             # 获取聊天历史
             chat_history = ""
@@ -539,15 +545,38 @@ class Prompt:
                     recent_messages, replace_bot_name=True, timestamp_mode="normal", truncate=True
                 )
 
-            # 激活长期记忆
-            memory_activator = MemoryActivator()
-            running_memories = await memory_activator.activate_memory_with_chat_history(
-                target_message=self.parameters.target, chat_history_prompt=chat_history
-            )
+            # 并行执行记忆查询以提高性能
+            import asyncio
 
-            # 获取即时记忆
-            async_memory_wrapper = get_async_instant_memory(self.parameters.chat_id)
-            instant_memory = await async_memory_wrapper.get_memory_with_fallback(self.parameters.target)
+            # 创建记忆查询任务
+            memory_tasks = [
+                enhanced_memory_activator.activate_memory_with_chat_history(
+                    target_message=self.parameters.target, chat_history_prompt=chat_history
+                ),
+                enhanced_memory_activator.get_instant_memory(
+                    target_message=self.parameters.target, chat_id=self.parameters.chat_id
+                )
+            ]
+
+            # 等待所有记忆查询完成（最多3秒）
+            try:
+                running_memories, instant_memory = await asyncio.wait_for(
+                    asyncio.gather(*memory_tasks, return_exceptions=True),
+                    timeout=3.0
+                )
+
+                # 处理可能的异常结果
+                if isinstance(running_memories, Exception):
+                    logger.warning(f"长期记忆查询失败: {running_memories}")
+                    running_memories = []
+                if isinstance(instant_memory, Exception):
+                    logger.warning(f"即时记忆查询失败: {instant_memory}")
+                    instant_memory = None
+
+            except asyncio.TimeoutError:
+                logger.warning("记忆查询超时，使用部分结果")
+                running_memories = []
+                instant_memory = None
 
             # 构建记忆块
             memory_parts = []
@@ -869,6 +898,32 @@ class Prompt:
             return f"你完全不认识{sender}，不理解ta的相关信息。"
 
         return await relationship_fetcher.build_relation_info(person_id, points_num=5)
+
+    def _get_default_result_for_task(self, task_name: str) -> Dict[str, Any]:
+        """
+        为超时的任务提供默认结果
+
+        Args:
+            task_name: 任务名称
+
+        Returns:
+            Dict: 默认结果
+        """
+        defaults = {
+            "memory_block": {"memory_block": ""},
+            "tool_info": {"tool_info_block": ""},
+            "relation_info": {"relation_info_block": ""},
+            "knowledge_info": {"knowledge_prompt": ""},
+            "cross_context": {"cross_context_block": ""},
+            "expression_habits": {"expression_habits_block": ""},
+        }
+
+        if task_name in defaults:
+            logger.info(f"为超时任务 {task_name} 提供默认值")
+            return defaults[task_name]
+        else:
+            logger.warning(f"未知任务类型 {task_name}，返回空结果")
+            return {}
 
     @staticmethod
     async def build_cross_context(chat_id: str, prompt_mode: str, target_user_info: Optional[Dict[str, Any]]) -> str:

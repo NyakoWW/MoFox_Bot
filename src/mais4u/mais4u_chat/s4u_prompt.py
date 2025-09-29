@@ -4,7 +4,8 @@ from src.chat.utils.prompt import Prompt, global_prompt_manager
 from src.chat.utils.chat_message_builder import build_readable_messages, get_raw_msg_before_timestamp_with_chat
 import time
 from src.chat.utils.utils import get_recent_group_speaker
-from src.chat.memory_system.Hippocampus import hippocampus_manager
+# 旧的Hippocampus系统已被移除，现在使用增强记忆系统
+# from src.chat.memory_system.enhanced_memory_manager import enhanced_memory_manager
 import random
 from datetime import datetime
 import asyncio
@@ -171,16 +172,26 @@ class PromptBuilder:
 
     @staticmethod
     async def build_memory_block(text: str) -> str:
-        related_memory = await hippocampus_manager.get_memory_from_text(
-            text=text, max_memory_num=2, max_memory_length=2, max_depth=3, fast_retrieval=False
-        )
+        # 使用新的增强记忆系统检索记忆
+        try:
+            from src.chat.memory_system.enhanced_memory_integration import recall_memories
 
-        related_memory_info = ""
-        if related_memory:
-            for memory in related_memory:
-                related_memory_info += memory[1]
-            return await global_prompt_manager.format_prompt("memory_prompt", memory_info=related_memory_info)
-        return ""
+            enhanced_memories = await recall_memories(
+                query=text,
+                user_id="system",  # 系统查询
+                chat_id="system"
+            )
+
+            related_memory_info = ""
+            if enhanced_memories and enhanced_memories.get("has_memories"):
+                for memory in enhanced_memories.get("memories", []):
+                    related_memory_info += memory.get("content", "") + " "
+                return await global_prompt_manager.format_prompt("memory_prompt", memory_info=related_memory_info.strip())
+            return ""
+
+        except Exception as e:
+            logger.warning(f"增强记忆系统检索失败: {e}")
+            return ""
 
     @staticmethod
     async def build_chat_history_prompts(chat_stream: ChatStream, message: MessageRecvS4U):
