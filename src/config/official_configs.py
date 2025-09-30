@@ -459,6 +459,40 @@ class MemoryConfig(ValidatedConfigBase):
     enable_llm_instant_memory: bool = Field(default=True, description="启用基于LLM的瞬时记忆")
     enable_vector_instant_memory: bool = Field(default=True, description="启用基于向量的瞬时记忆")
 
+    # 增强记忆系统配置
+    enable_enhanced_memory: bool = Field(default=True, description="启用增强记忆系统")
+    enhanced_memory_auto_save: bool = Field(default=True, description="自动保存增强记忆")
+
+    # 记忆构建配置
+    min_memory_length: int = Field(default=10, description="最小记忆长度")
+    max_memory_length: int = Field(default=500, description="最大记忆长度")
+    memory_value_threshold: float = Field(default=0.7, description="记忆价值阈值")
+
+    # 向量存储配置
+    vector_dimension: int = Field(default=768, description="向量维度")
+    vector_similarity_threshold: float = Field(default=0.8, description="向量相似度阈值")
+
+    # 多阶段检索配置
+    metadata_filter_limit: int = Field(default=100, description="元数据过滤阶段返回数量")
+    vector_search_limit: int = Field(default=50, description="向量搜索阶段返回数量")
+    semantic_rerank_limit: int = Field(default=20, description="语义重排序阶段返回数量")
+    final_result_limit: int = Field(default=10, description="最终结果数量")
+
+    # 检索权重配置
+    vector_weight: float = Field(default=0.4, description="向量相似度权重")
+    semantic_weight: float = Field(default=0.3, description="语义相似度权重")
+    context_weight: float = Field(default=0.2, description="上下文权重")
+    recency_weight: float = Field(default=0.1, description="时效性权重")
+
+    # 记忆融合配置
+    fusion_similarity_threshold: float = Field(default=0.85, description="融合相似度阈值")
+    deduplication_window_hours: int = Field(default=24, description="去重时间窗口（小时）")
+
+    # 缓存配置
+    enable_memory_cache: bool = Field(default=True, description="启用记忆缓存")
+    cache_ttl_seconds: int = Field(default=300, description="缓存生存时间（秒）")
+    max_cache_size: int = Field(default=1000, description="最大缓存大小")
+
 
 class MoodConfig(ValidatedConfigBase):
     """情绪配置类"""

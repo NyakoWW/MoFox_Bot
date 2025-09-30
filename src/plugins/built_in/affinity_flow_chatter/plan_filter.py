@@ -11,7 +11,8 @@ from typing import Any, Dict, List, Optional
 
 from json_repair import repair_json
 
-from src.chat.memory_system.Hippocampus import hippocampus_manager
+# 旧的Hippocampus系统已被移除，现在使用增强记忆系统
+# from src.chat.memory_system.enhanced_memory_manager import enhanced_memory_manager
 from src.chat.utils.chat_message_builder import (
     build_readable_actions,
     build_readable_messages_with_id,
@@ -602,14 +603,32 @@ class ChatterPlanFilter:
             else:
                 keywords.append("晚上")
 
-            retrieved_memories = await hippocampus_manager.get_memory_from_topic(
-                valid_keywords=keywords, max_memory_num=5, max_memory_length=1
-            )
+            # 使用新的增强记忆系统检索记忆
+            try:
+                from src.chat.memory_system.enhanced_memory_integration import recall_memories
 
-            if not retrieved_memories:
+                # 将关键词转换为查询字符串
+                query = " ".join(keywords)
+                enhanced_memories = await recall_memories(
+                    query=query,
+                    user_id="system",  # 系统查询
+                    chat_id="system"
+                )
+
+                if not enhanced_memories:
+                    return "最近没有什么特别的记忆。"
+
+                # 转换格式以兼容现有代码
+                retrieved_memories = []
+                if enhanced_memories and enhanced_memories.get("has_memories"):
+                    for memory in enhanced_memories.get("memories", []):
+                        retrieved_memories.append((memory.get("type", "unknown"), memory.get("content", "")))
+
+                memory_statements = [f"关于'{topic}', 你记得'{memory_item}'。" for topic, memory_item in retrieved_memories]
+
+            except Exception as e:
+                logger.warning(f"增强记忆系统检索失败，使用默认回复: {e}")
                 return "最近没有什么特别的记忆。"
-
-            memory_statements = [f"关于'{topic}', 你记得'{memory_item}'。" for topic, memory_item in retrieved_memories]
             return " ".join(memory_statements)
         except Exception as e:
             logger.error(f"获取长期记忆时出错: {e}")

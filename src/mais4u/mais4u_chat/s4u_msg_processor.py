@@ -2,7 +2,8 @@ import asyncio
 import math
 from typing import Tuple
 
-from src.chat.memory_system.Hippocampus import hippocampus_manager
+# 旧的Hippocampus系统已被移除，现在使用增强记忆系统
+# from src.chat.memory_system.enhanced_memory_manager import enhanced_memory_manager
 from src.chat.message_receive.message import MessageRecv, MessageRecvS4U
 from maim_message.message_base import GroupInfo
 from src.chat.message_receive.storage import MessageStorage
@@ -40,11 +41,31 @@ async def _calculate_interest(message: MessageRecv) -> Tuple[float, bool]:
 
     if global_config.memory.enable_memory:
         with Timer("记忆激活"):
-            interested_rate, _ = await hippocampus_manager.get_activate_from_text(
-                message.processed_plain_text,
-                fast_retrieval=True,
-            )
-            logger.debug(f"记忆激活率: {interested_rate:.2f}")
+            # 使用新的增强记忆系统计算兴趣度
+            try:
+                from src.chat.memory_system.enhanced_memory_integration import recall_memories
+
+                # 检索相关记忆来估算兴趣度
+                enhanced_memories = await recall_memories(
+                    query=message.processed_plain_text,
+                    user_id=str(message.user_info.user_id),
+                    chat_id=message.chat_id
+                )
+
+                # 基于检索结果计算兴趣度
+                if enhanced_memories:
+                    # 有相关记忆，兴趣度基于相似度计算
+                    max_score = max(score for _, score in enhanced_memories)
+                    interested_rate = min(max_score, 1.0)  # 限制在0-1之间
+                else:
+                    # 没有相关记忆，给予基础兴趣度
+                    interested_rate = 0.1
+
+                logger.debug(f"增强记忆系统兴趣度: {interested_rate:.2f}")
+
+            except Exception as e:
+                logger.warning(f"增强记忆系统兴趣度计算失败: {e}")
+                interested_rate = 0.1  # 默认基础兴趣度
 
     text_len = len(message.processed_plain_text)
     # 根据文本长度分布调整兴趣度，采用分段函数实现更精确的兴趣度计算
