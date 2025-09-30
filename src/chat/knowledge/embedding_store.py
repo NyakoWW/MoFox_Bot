@@ -26,6 +26,7 @@ from rich.progress import (
     TextColumn,
 )
 from src.config.config import global_config
+from src.common.config_helpers import resolve_embedding_dimension
 
 
 install(extra_lines=3)
@@ -504,7 +505,10 @@ class EmbeddingStore:
         # L2归一化
         faiss.normalize_L2(embeddings)
         # 构建索引
-        self.faiss_index = faiss.IndexFlatIP(global_config.lpmm_knowledge.embedding_dimension)
+        embedding_dim = resolve_embedding_dimension(global_config.lpmm_knowledge.embedding_dimension)
+        if not embedding_dim:
+            embedding_dim = global_config.lpmm_knowledge.embedding_dimension
+        self.faiss_index = faiss.IndexFlatIP(embedding_dim)
         self.faiss_index.add(embeddings)
 
     def search_top_k(self, query: List[float], k: int) -> List[Tuple[str, float]]:

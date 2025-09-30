@@ -241,12 +241,12 @@ class EnhancedMemoryManager:
             return []
 
         try:
-            result = await self.enhanced_system.process_conversation_memory(
-                conversation_text=conversation_text,
-                context=context,
-                user_id=user_id,
-                timestamp=timestamp
-            )
+            payload_context = dict(context or {})
+            payload_context.setdefault("conversation_text", conversation_text)
+            if timestamp is not None:
+                payload_context.setdefault("timestamp", timestamp)
+
+            result = await self.enhanced_system.process_conversation_memory(payload_context)
 
             # 从结果中提取记忆块
             memory_chunks = []
@@ -274,7 +274,7 @@ class EnhancedMemoryManager:
         try:
             relevant_memories = await self.enhanced_system.retrieve_relevant_memories(
                 query=query_text,
-                user_id=user_id,
+                user_id=None,
                 context=context or {},
                 limit=limit
             )
@@ -303,6 +303,9 @@ class EnhancedMemoryManager:
     def _format_memory_chunk(self, memory: MemoryChunk) -> Tuple[str, Dict[str, Any]]:
         """将记忆块转换为更易读的文本描述"""
         structure = memory.content.to_dict()
+        if memory.display:
+            return self._clean_text(memory.display), structure
+
         subject = structure.get("subject")
         predicate = structure.get("predicate") or ""
         obj = structure.get("object")

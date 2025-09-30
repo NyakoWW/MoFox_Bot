@@ -266,8 +266,12 @@ class MemoryFusionEngine:
         consistency_score = 0.0
 
         # 主语一致性
-        if mem1.content.subject == mem2.content.subject:
-            consistency_score += 0.4
+        subjects1 = set(mem1.subjects)
+        subjects2 = set(mem2.subjects)
+        if subjects1 or subjects2:
+            overlap = len(subjects1 & subjects2)
+            union_count = max(len(subjects1 | subjects2), 1)
+            consistency_score += (overlap / union_count) * 0.4
 
         # 谓语相似性
         predicate_sim = self._calculate_text_similarity(mem1.content.predicate, mem2.content.predicate)

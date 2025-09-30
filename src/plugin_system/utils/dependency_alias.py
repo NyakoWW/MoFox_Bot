@@ -91,7 +91,6 @@ INSTALL_NAME_TO_IMPORT_NAME = {
     "pyusb": "usb",  # USB访问
     "pybluez": "bluetooth",  # 蓝牙通信 (可能因平台而异)
     "psutil": "psutil",  # 系统信息和进程管理
-    "watchdog": "watchdog",  # 文件系统事件监控
     "python-gnupg": "gnupg",  # GnuPG的Python接口
     # ============== 加密与安全 (Cryptography & Security) ==============
     "pycrypto": "Crypto",  # 加密库 (较旧)

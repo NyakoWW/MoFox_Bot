@@ -7,7 +7,7 @@
 import time
 import uuid
 import orjson
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any, Union, Iterable
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from enum import Enum
@@ -52,17 +52,20 @@ class ImportanceLevel(Enum):
 
 @dataclass
 class ContentStructure:
-    """主谓宾三元组结构"""
-    subject: str                    # 主语（通常为用户）
-    predicate: str                  # 谓语（动作、状态、关系）
-    object: Union[str, Dict]        # 宾语（对象、属性、值）
+    """主谓宾结构，包含自然语言描述"""
+
+    subject: Union[str, List[str]]
+    predicate: str
+    object: Union[str, Dict]
+    display: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式"""
         return {
             "subject": self.subject,
             "predicate": self.predicate,
-            "object": self.object
+            "object": self.object,
+            "display": self.display
         }
 
     @classmethod
@@ -71,16 +74,25 @@ class ContentStructure:
         return cls(
             subject=data.get("subject", ""),
             predicate=data.get("predicate", ""),
-            object=data.get("object", "")
+            object=data.get("object", ""),
+            display=data.get("display", "")
         )
+
+    def to_subject_list(self) -> List[str]:
+        """将主语转换为列表形式"""
+        if isinstance(self.subject, list):
+            return [s for s in self.subject if isinstance(s, str) and s.strip()]
+        if isinstance(self.subject, str) and self.subject.strip():
+            return [self.subject.strip()]
+        return []
 
     def __str__(self) -> str:
         """字符串表示"""
-        if isinstance(self.object, dict):
-            object_str = str(self.object)
-        else:
-            object_str = str(self.object)
-        return f"{self.subject} {self.predicate} {object_str}"
+        if self.display:
+            return self.display
+        subjects = "、".join(self.to_subject_list()) or str(self.subject)
+        object_str = self.object if isinstance(self.object, str) else str(self.object)
+        return f"{subjects} {self.predicate} {object_str}".strip()
 
 
 @dataclass
@@ -236,8 +248,18 @@ class MemoryChunk:
 
     @property
     def text_content(self) -> str:
-        """获取文本内容"""
+        """获取文本内容（优先使用display）"""
         return str(self.content)
+
+    @property
+    def display(self) -> str:
+        """获取展示文本"""
+        return self.content.display or str(self.content)
+
+    @property
+    def subjects(self) -> List[str]:
+        """获取主语列表"""
+        return self.content.to_subject_list()
 
     def update_access(self):
         """更新访问信息"""
@@ -415,16 +437,42 @@ class MemoryChunk:
         confidence_icon = "●" * self.metadata.confidence.value
         importance_icon = "★" * self.metadata.importance.value
 
-        return f"{emoji} [{self.memory_type.value}] {self.text_content} {confidence_icon} {importance_icon}"
+        return f"{emoji} [{self.memory_type.value}] {self.display} {confidence_icon} {importance_icon}"
 
     def __repr__(self) -> str:
         """调试表示"""
         return f"MemoryChunk(id={self.memory_id[:8]}..., type={self.memory_type.value}, user={self.user_id})"
 
 
+def _build_display_text(subjects: Iterable[str], predicate: str, obj: Union[str, Dict]) -> str:
+    """根据主谓宾生成自然语言描述"""
+    subjects_clean = [s.strip() for s in subjects if s and isinstance(s, str)]
+    subject_part = "、".join(subjects_clean) if subjects_clean else "对话参与者"
+
+    if isinstance(obj, dict):
+        object_candidates = []
+        for key, value in obj.items():
+            if isinstance(value, (str, int, float)):
+                object_candidates.append(f"{key}:{value}")
+            elif isinstance(value, list):
+                compact = "、".join(str(item) for item in value[:3])
+                object_candidates.append(f"{key}:{compact}")
+        object_part = "，".join(object_candidates) if object_candidates else str(obj)
+    else:
+        object_part = str(obj).strip()
+
+    predicate_clean = predicate.strip()
+    if not predicate_clean:
+        return f"{subject_part} {object_part}".strip()
+
+    if object_part:
+        return f"{subject_part}{predicate_clean}{object_part}".strip()
+    return f"{subject_part}{predicate_clean}".strip()
+
+
 def create_memory_chunk(
     user_id: str,
-    subject: str,
+    subject: Union[str, List[str]],
     predicate: str,
     obj: Union[str, Dict],
     memory_type: MemoryType,
@@ -432,6 +480,7 @@ def create_memory_chunk(
     source_context: Optional[str] = None,
     importance: ImportanceLevel = ImportanceLevel.NORMAL,
     confidence: ConfidenceLevel = ConfidenceLevel.MEDIUM,
+    display: Optional[str] = None,
     **kwargs
 ) -> MemoryChunk:
     """便捷的内存块创建函数"""
@@ -447,10 +496,22 @@ def create_memory_chunk(
         source_context=source_context
     )
 
+    subjects: List[str]
+    if isinstance(subject, list):
+        subjects = [s for s in subject if isinstance(s, str) and s.strip()]
+        subject_payload: Union[str, List[str]] = subjects
+    else:
+        cleaned = subject.strip() if isinstance(subject, str) else ""
+        subjects = [cleaned] if cleaned else []
+        subject_payload = cleaned
+
+    display_text = display or _build_display_text(subjects, predicate, obj)
+
     content = ContentStructure(
-        subject=subject,
+        subject=subject_payload,
         predicate=predicate,
-        object=obj
+        object=obj,
+        display=display_text
     )
 
     chunk = MemoryChunk(

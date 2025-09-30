@@ -114,12 +114,9 @@ class MemoryIntegrationLayer:
 
     async def process_conversation(
         self,
-        conversation_text: str,
-        context: Dict[str, Any],
-        user_id: str,
-        timestamp: Optional[float] = None
+        context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """处理对话记忆"""
+        """处理对话记忆，仅使用上下文信息"""
         if not self._initialized or not self.enhanced_memory:
             return {"success": False, "error": "Memory system not available"}
 
@@ -128,13 +125,12 @@ class MemoryIntegrationLayer:
         self.integration_stats["enhanced_queries"] += 1
 
         try:
+            payload_context = dict(context or {})
+            conversation_text = payload_context.get("conversation_text") or payload_context.get("message_content") or ""
+            logger.debug("集成层收到记忆构建请求，文本长度=%d", len(conversation_text))
+
             # 直接使用增强记忆系统处理
-            result = await self.enhanced_memory.process_conversation_memory(
-                conversation_text=conversation_text,
-                context=context,
-                user_id=user_id,
-                timestamp=timestamp
-            )
+            result = await self.enhanced_memory.process_conversation_memory(payload_context)
 
             # 更新统计
             processing_time = time.time() - start_time
@@ -156,7 +152,7 @@ class MemoryIntegrationLayer:
     async def retrieve_relevant_memories(
         self,
         query: str,
-        user_id: str,
+        user_id: Optional[str] = None,
         context: Optional[Dict[str, Any]] = None,
         limit: Optional[int] = None
     ) -> List[MemoryChunk]:
@@ -168,7 +164,7 @@ class MemoryIntegrationLayer:
             limit = limit or self.config.max_retrieval_results
             memories = await self.enhanced_memory.retrieve_relevant_memories(
                 query=query,
-                user_id=user_id,
+                user_id=None,
                 context=context or {},
                 limit=limit
             )

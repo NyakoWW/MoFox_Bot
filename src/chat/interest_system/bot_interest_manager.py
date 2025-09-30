@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from src.common.logger import get_logger
 from src.config.config import global_config
+from src.common.config_helpers import resolve_embedding_dimension
 from src.common.data_models.bot_interest_data_model import BotPersonalityInterests, BotInterestTag, InterestMatchResult
 
 logger = get_logger("bot_interest_manager")
@@ -28,7 +29,9 @@ class BotInterestManager:
         # Embedding客户端配置
         self.embedding_request = None
         self.embedding_config = None
-        self.embedding_dimension = 1024  # 默认BGE-M3 embedding维度
+        configured_dim = resolve_embedding_dimension()
+        self.embedding_dimension = int(configured_dim) if configured_dim else 0
+        self._detected_embedding_dimension: Optional[int] = None
 
     @property
     def is_initialized(self) -> bool:
@@ -82,8 +85,11 @@ class BotInterestManager:
 
         logger.info("📋 找到embedding模型配置")
         self.embedding_config = model_config.model_task_config.embedding
-        self.embedding_dimension = 1024  # BGE-M3的维度
-        logger.info(f"📐 使用模型维度: {self.embedding_dimension}")
+
+        if self.embedding_dimension:
+            logger.info(f"📐 配置的embedding维度: {self.embedding_dimension}")
+        else:
+            logger.info("📐 未在配置中检测到embedding维度，将根据首次返回的向量自动识别")
 
         # 创建LLMRequest实例用于embedding
         self.embedding_request = LLMRequest(model_set=self.embedding_config, request_type="interest_embedding")
@@ -350,7 +356,27 @@ class BotInterestManager:
 
         if embedding and len(embedding) > 0:
             self.embedding_cache[text] = embedding
-            logger.debug(f"✅ Embedding获取成功，维度: {len(embedding)}, 模型: {model_name}")
+
+            current_dim = len(embedding)
+            if self._detected_embedding_dimension is None:
+                self._detected_embedding_dimension = current_dim
+                if self.embedding_dimension and self.embedding_dimension != current_dim:
+                    logger.warning(
+                        "⚠️ 实际embedding维度(%d)与配置值(%d)不一致，请在 model_config.model_task_config.embedding.embedding_dimension 中同步更新",
+                        current_dim,
+                        self.embedding_dimension,
+                    )
+                else:
+                    self.embedding_dimension = current_dim
+                logger.info(f"📏 检测到embedding维度: {current_dim}")
+            elif current_dim != self.embedding_dimension:
+                logger.warning(
+                    "⚠️ 收到的embedding维度发生变化: 之前=%d, 当前=%d。请确认模型配置是否正确。",
+                    self.embedding_dimension,
+                    current_dim,
+                )
+
+            logger.debug(f"✅ Embedding获取成功，维度: {current_dim}, 模型: {model_name}")
             return embedding
         else:
             raise RuntimeError(f"❌ 返回的embedding为空: {embedding}")

@@ -20,6 +20,7 @@ from pathlib import Path
 from src.common.logger import get_logger
 from src.llm_models.utils_model import LLMRequest
 from src.config.config import model_config, global_config
+from src.common.config_helpers import resolve_embedding_dimension
 from src.chat.memory_system.memory_chunk import MemoryChunk
 
 logger = get_logger(__name__)
@@ -36,12 +37,12 @@ except ImportError:
 @dataclass
 class VectorStorageConfig:
     """向量存储配置"""
-    dimension: int = 768
+    dimension: int = 1024
     similarity_threshold: float = 0.8
     index_type: str = "flat"  # flat, ivf, hnsw
     max_index_size: int = 100000
     storage_path: str = "data/memory_vectors"
-    auto_save_interval: int = 100  # 每N次操作自动保存
+    auto_save_interval: int = 10  # 每N次操作自动保存
     enable_compression: bool = True
 
 
@@ -50,6 +51,15 @@ class VectorStorageManager:
 
     def __init__(self, config: Optional[VectorStorageConfig] = None):
         self.config = config or VectorStorageConfig()
+
+        resolved_dimension = resolve_embedding_dimension(self.config.dimension)
+        if resolved_dimension and resolved_dimension != self.config.dimension:
+            logger.info(
+                "向量存储维度调整: 使用嵌入模型配置的维度 %d (原始配置: %d)",
+                resolved_dimension,
+                self.config.dimension,
+            )
+            self.config.dimension = resolved_dimension
         self.storage_path = Path(self.config.storage_path)
         self.storage_path.mkdir(parents=True, exist_ok=True)
 
@@ -116,6 +126,32 @@ class VectorStorageManager:
                 request_type="memory.embedding"
             )
             logger.info("✅ 嵌入模型初始化完成")
+
+    async def generate_query_embedding(self, query_text: str) -> Optional[List[float]]:
+        """生成查询向量，用于记忆召回"""
+        if not query_text:
+            return None
+
+        try:
+            await self.initialize_embedding_model()
+
+            embedding, _ = await self.embedding_model.get_embedding(query_text)
+            if not embedding:
+                return None
+
+            if len(embedding) != self.config.dimension:
+                logger.warning(
+                    "查询向量维度不匹配: 期望 %d, 实际 %d",
+                    self.config.dimension,
+                    len(embedding)
+                )
+                return None
+
+            return self._normalize_vector(embedding)
+
+        except Exception as exc:
+            logger.error(f"❌ 生成查询向量失败: {exc}", exc_info=True)
+            return None
 
     async def store_memories(self, memories: List[MemoryChunk]):
         """存储记忆向量"""
@@ -213,7 +249,7 @@ class VectorStorageManager:
                             results[memory_id] = embedding
                         else:
                             logger.warning(
-                                "嵌入向量维度不匹配: 期望 %d, 实际 %d (memory_id=%s)",
+                                "嵌入向量维度不匹配: 期望 %d, 实际 %d (memory_id=%s)。请检查模型嵌入配置 model_config.model_task_config.embedding.embedding_dimension 或 LPMM 任务定义。",
                                 self.config.dimension,
                                 len(embedding) if embedding else 0,
                                 memory_id,
@@ -299,14 +335,32 @@ class VectorStorageManager:
 
     async def search_similar_memories(
         self,
-        query_vector: List[float],
+        query_vector: Optional[List[float]] = None,
+        *,
+        query_text: Optional[str] = None,
         limit: int = 10,
-        user_id: Optional[str] = None
+        scope_id: Optional[str] = None
     ) -> List[Tuple[str, float]]:
         """搜索相似记忆"""
         start_time = time.time()
 
         try:
+            if query_vector is None:
+                if not query_text:
+                    return []
+
+                query_vector = await self.generate_query_embedding(query_text)
+                if not query_vector:
+                    return []
+
+            scope_filter: Optional[str] = None
+            if isinstance(scope_id, str):
+                normalized_scope = scope_id.strip().lower()
+                if normalized_scope and normalized_scope not in {"global", "global_memory"}:
+                    scope_filter = scope_id
+            elif scope_id:
+                scope_filter = str(scope_id)
+
             # 规范化查询向量
             query_vector = self._normalize_vector(query_vector)
 
@@ -341,10 +395,9 @@ class VectorStorageManager:
 
                 memory_id = self.index_to_memory_id.get(index)
                 if memory_id:
-                    # 应用用户过滤
-                    if user_id:
+                    if scope_filter:
                         memory = self.memory_cache.get(memory_id)
-                        if memory and memory.user_id != user_id:
+                        if memory and str(memory.user_id) != scope_filter:
                             continue
 
                     similarity = max(0.0, min(1.0, distance))  # 确保在0-1范围内
@@ -481,8 +534,14 @@ class VectorStorageManager:
             # 保存映射关系
             mapping_file = self.storage_path / "id_mapping.json"
             mapping_data = {
-                "memory_id_to_index": self.memory_id_to_index,
-                "index_to_memory_id": self.index_to_memory_id
+                "memory_id_to_index": {
+                    str(memory_id): int(index)
+                    for memory_id, index in self.memory_id_to_index.items()
+                },
+                "index_to_memory_id": {
+                    str(index): memory_id
+                    for index, memory_id in self.index_to_memory_id.items()
+                }
             }
             with open(mapping_file, 'w', encoding='utf-8') as f:
                 f.write(orjson.dumps(mapping_data, option=orjson.OPT_INDENT_2).decode('utf-8'))
@@ -529,8 +588,17 @@ class VectorStorageManager:
             if mapping_file.exists():
                 with open(mapping_file, 'r', encoding='utf-8') as f:
                     mapping_data = orjson.loads(f.read())
-                self.memory_id_to_index = mapping_data.get("memory_id_to_index", {})
-                self.index_to_memory_id = mapping_data.get("index_to_memory_id", {})
+                raw_memory_to_index = mapping_data.get("memory_id_to_index", {})
+                self.memory_id_to_index = {
+                    str(memory_id): int(index)
+                    for memory_id, index in raw_memory_to_index.items()
+                }
+
+                raw_index_to_memory = mapping_data.get("index_to_memory_id", {})
+                self.index_to_memory_id = {
+                    int(index): memory_id
+                    for index, memory_id in raw_index_to_memory.items()
+                }
 
             # 加载FAISS索引（如果可用）
             if FAISS_AVAILABLE:

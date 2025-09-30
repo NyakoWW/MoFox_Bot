@@ -50,7 +50,6 @@ reportportal-client
 scikit-learn
 seaborn
 structlog
-watchdog
 httpx
 requests
 beautifulsoup4
