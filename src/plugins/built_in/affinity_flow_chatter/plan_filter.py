@@ -784,7 +784,7 @@ class ChatterPlanFilter:
                         message_obj = item.get("message")
                         if isinstance(message_obj, dict):
                             orig_mid = message_obj.get("message_id") or message_obj.get("id")
-                            orig_number = re.sub(r'[^0-9]', '', orig_mid)
+                            orig_number = re.sub(r'[^0-9]', '', str(orig_mid)) if orig_mid else ""
                             if orig_number == number_part:
                                 logger.debug(f"模糊匹配成功(消息对象): {candidate} -> {orig_mid}")
                                 return message_obj
