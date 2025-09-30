@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional, Union
 from src.common.logger import get_logger
 from src.llm_models.utils_model import LLMRequest
 from src.config.config import global_config, model_config
+from src.common.config_helpers import resolve_embedding_dimension
 from src.common.database.sqlalchemy_models import CacheEntries
 from src.common.database.sqlalchemy_database_api import db_query, db_save
 from src.common.vector_db import vector_db_service
@@ -40,7 +41,11 @@ class CacheManager:
 
             # L1 缓存 (内存)
             self.l1_kv_cache: Dict[str, Dict[str, Any]] = {}
-            embedding_dim = global_config.lpmm_knowledge.embedding_dimension
+            embedding_dim = resolve_embedding_dimension(global_config.lpmm_knowledge.embedding_dimension)
+            if not embedding_dim:
+                embedding_dim = global_config.lpmm_knowledge.embedding_dimension
+
+            self.embedding_dimension = embedding_dim
             self.l1_vector_index = faiss.IndexFlatIP(embedding_dim)
             self.l1_vector_id_to_key: Dict[int, str] = {}
 
@@ -72,7 +77,7 @@ class CacheManager:
                     embedding_array = embedding_array.flatten()
 
                 # 检查维度是否符合预期
-                expected_dim = global_config.lpmm_knowledge.embedding_dimension
+                expected_dim = getattr(CacheManager, "embedding_dimension", None) or global_config.lpmm_knowledge.embedding_dimension
                 if embedding_array.shape[0] != expected_dim:
                     logger.warning(f"嵌入向量维度不匹配: 期望 {expected_dim}, 实际 {embedding_array.shape[0]}")
                     return None

@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Literal, Union
+from typing import List, Dict, Any, Literal, Union, Optional
 from pydantic import Field
 from threading import Lock
 
@@ -105,6 +105,11 @@ class TaskConfig(ValidatedConfigBase):
     max_tokens: int = Field(default=800, description="任务最大输出token数")
     temperature: float = Field(default=0.7, description="模型温度")
     concurrency_count: int = Field(default=1, description="并发请求数量")
+    embedding_dimension: Optional[int] = Field(
+        default=None,
+        description="嵌入模型输出向量维度，仅在嵌入任务中使用",
+        ge=1,
+    )
 
     @classmethod
     def validate_model_list(cls, v):
