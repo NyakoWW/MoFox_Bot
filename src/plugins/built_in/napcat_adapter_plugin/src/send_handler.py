@@ -156,7 +156,10 @@ class SendHandler:
             logger.error("命令或参数缺失")
             return None
 
+        logger.info(f"准备向 Napcat 发送命令: command='{command}', args_dict='{args_dict}'")
         response = await self.send_message_to_napcat(command, args_dict)
+        logger.info(f"收到 Napcat 的命令响应: {response}")
+
         if response.get("status") == "ok":
             logger.info(f"命令 {command_name} 执行成功")
         else:
@@ -530,12 +533,14 @@ class SendHandler:
         Returns:
             Tuple[CommandType, Dict[str, Any]]
         """
+        logger.info(f"开始处理表情回应命令, 接收到参数: {args}")
         try:
             message_id = int(args["message_id"])
             emoji_id = int(args["emoji_id"])
             set_like = str(args["set"])
-        except:
-            raise ValueError("缺少必需参数: message_id 或 emoji_id")
+        except (KeyError, ValueError) as e:
+            logger.error(f"处理表情回应命令时发生错误: {e}, 原始参数: {args}")
+            raise ValueError(f"缺少必需参数或参数类型错误: {e}")
 
         return (
             CommandType.SET_EMOJI_LIKE.value,
