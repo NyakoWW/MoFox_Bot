@@ -443,21 +443,6 @@ class MemoryConfig(ValidatedConfigBase):
 
     enable_memory: bool = Field(default=True, description="启用记忆")
     memory_build_interval: int = Field(default=600, description="记忆构建间隔")
-    memory_build_distribution: list[float] = Field(
-        default_factory=lambda: [6.0, 3.0, 0.6, 32.0, 12.0, 0.4], description="记忆构建分布"
-    )
-    memory_build_sample_num: int = Field(default=8, description="记忆构建样本数量")
-    memory_build_sample_length: int = Field(default=40, description="记忆构建样本长度")
-    memory_compress_rate: float = Field(default=0.1, description="记忆压缩率")
-    forget_memory_interval: int = Field(default=1000, description="遗忘记忆间隔")
-    memory_forget_time: int = Field(default=24, description="记忆遗忘时间")
-    memory_forget_percentage: float = Field(default=0.01, description="记忆遗忘百分比")
-    consolidate_memory_interval: int = Field(default=1000, description="记忆巩固间隔")
-    consolidation_similarity_threshold: float = Field(default=0.7, description="巩固相似性阈值")
-    consolidate_memory_percentage: float = Field(default=0.01, description="巩固记忆百分比")
-    memory_ban_words: list[str] = Field(
-        default_factory=lambda: ["表情包", "图片", "回复", "聊天记录"], description="记忆禁用词"
-    )
     enable_instant_memory: bool = Field(default=True, description="启用即时记忆")
     enable_llm_instant_memory: bool = Field(default=True, description="启用基于LLM的瞬时记忆")
     enable_vector_instant_memory: bool = Field(default=True, description="启用基于向量的瞬时记忆")
@@ -472,8 +457,8 @@ class MemoryConfig(ValidatedConfigBase):
     memory_value_threshold: float = Field(default=0.7, description="记忆价值阈值")
 
     # 向量存储配置
-    vector_dimension: int = Field(default=768, description="向量维度")
     vector_similarity_threshold: float = Field(default=0.8, description="向量相似度阈值")
+    semantic_similarity_threshold: float = Field(default=0.6, description="语义相似度阈值")
 
     # 多阶段检索配置
     metadata_filter_limit: int = Field(default=100, description="元数据过滤阶段返回数量")

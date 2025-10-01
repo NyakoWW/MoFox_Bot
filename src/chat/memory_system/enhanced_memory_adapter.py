@@ -11,10 +11,25 @@ from dataclasses import dataclass
 
 from src.common.logger import get_logger
 from src.chat.memory_system.integration_layer import MemoryIntegrationLayer, IntegrationConfig, IntegrationMode
-from src.chat.memory_system.memory_chunk import MemoryChunk
+from src.chat.memory_system.memory_chunk import MemoryChunk, MemoryType
 from src.llm_models.utils_model import LLMRequest
 
 logger = get_logger(__name__)
+
+
+MEMORY_TYPE_LABELS = {
+    MemoryType.PERSONAL_FACT: "个人事实",
+    MemoryType.EVENT: "事件",
+    MemoryType.PREFERENCE: "偏好",
+    MemoryType.OPINION: "观点",
+    MemoryType.RELATIONSHIP: "关系",
+    MemoryType.EMOTION: "情感",
+    MemoryType.KNOWLEDGE: "知识",
+    MemoryType.SKILL: "技能",
+    MemoryType.GOAL: "目标",
+    MemoryType.EXPERIENCE: "经验",
+    MemoryType.CONTEXTUAL: "上下文",
+}
 
 
 @dataclass
@@ -85,12 +100,9 @@ class EnhancedMemoryAdapter:
 
     async def process_conversation_memory(
         self,
-        conversation_text: str,
-        context: Dict[str, Any],
-        user_id: str,
-        timestamp: Optional[float] = None
+        context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """处理对话记忆"""
+        """处理对话记忆，以上下文为唯一输入"""
         if not self._initialized or not self.config.enable_enhanced_memory:
             return {"success": False, "error": "Enhanced memory not available"}
 
@@ -98,10 +110,30 @@ class EnhancedMemoryAdapter:
         self.adapter_stats["total_processed"] += 1
 
         try:
+            payload_context: Dict[str, Any] = dict(context or {})
+
+            conversation_text = payload_context.get("conversation_text")
+            if not conversation_text:
+                conversation_candidate = (
+                    payload_context.get("message_content")
+                    or payload_context.get("latest_message")
+                    or payload_context.get("raw_text")
+                )
+                if conversation_candidate is not None:
+                    conversation_text = str(conversation_candidate)
+                    payload_context["conversation_text"] = conversation_text
+                else:
+                    conversation_text = ""
+            else:
+                conversation_text = str(conversation_text)
+
+            if "timestamp" not in payload_context:
+                payload_context["timestamp"] = time.time()
+
+            logger.debug("适配器收到记忆构建请求，文本长度=%d", len(conversation_text))
+
             # 使用集成层处理对话
-            result = await self.integration_layer.process_conversation(
-                conversation_text, context, user_id, timestamp
-            )
+            result = await self.integration_layer.process_conversation(payload_context)
 
             # 更新统计
             processing_time = time.time() - start_time
@@ -132,7 +164,7 @@ class EnhancedMemoryAdapter:
         try:
             limit = limit or self.config.max_retrieval_results
             memories = await self.integration_layer.retrieve_relevant_memories(
-                query, user_id, context, limit
+                query, None, context, limit
             )
 
             self.adapter_stats["memories_retrieved"] += len(memories)
@@ -157,12 +189,15 @@ class EnhancedMemoryAdapter:
         if not memories:
             return ""
 
-        # 格式化记忆为提示词友好的格式
-        memory_context_parts = []
-        for memory in memories:
-            memory_context_parts.append(f"- {memory.text_content}")
+        # 格式化记忆为提示词友好的Markdown结构
+        lines: List[str] = ["### 🧠 相关记忆 (Relevant Memories)", ""]
 
-        return "\n".join(memory_context_parts)
+        for memory in memories:
+            type_label = MEMORY_TYPE_LABELS.get(memory.memory_type, memory.memory_type.value)
+            display_text = memory.display or memory.text_content
+            lines.append(f"- **[{type_label}]** {display_text}")
+
+        return "\n".join(lines)
 
     async def get_enhanced_memory_summary(self, user_id: str) -> Dict[str, Any]:
         """获取增强记忆系统摘要"""
@@ -270,13 +305,10 @@ async def initialize_enhanced_memory_system(llm_model: LLMRequest):
 
 
 async def process_conversation_with_enhanced_memory(
-    conversation_text: str,
     context: Dict[str, Any],
-    user_id: str,
-    timestamp: Optional[float] = None,
     llm_model: Optional[LLMRequest] = None
 ) -> Dict[str, Any]:
-    """使用增强记忆系统处理对话"""
+    """使用增强记忆系统处理对话，上下文需包含 conversation_text 等信息"""
     if not llm_model:
         # 获取默认的LLM模型
         from src.llm_models.utils_model import get_global_llm_model
@@ -284,7 +316,18 @@ async def process_conversation_with_enhanced_memory(
 
     try:
         adapter = await get_enhanced_memory_adapter(llm_model)
-        return await adapter.process_conversation_memory(conversation_text, context, user_id, timestamp)
+        payload_context = dict(context or {})
+
+        if "conversation_text" not in payload_context:
+            conversation_candidate = (
+                payload_context.get("message_content")
+                or payload_context.get("latest_message")
+                or payload_context.get("raw_text")
+            )
+            if conversation_candidate is not None:
+                payload_context["conversation_text"] = str(conversation_candidate)
+
+        return await adapter.process_conversation_memory(payload_context)
     except Exception as e:
         logger.error(f"使用增强记忆系统处理对话失败: {e}", exc_info=True)
         return {"success": False, "error": str(e)}

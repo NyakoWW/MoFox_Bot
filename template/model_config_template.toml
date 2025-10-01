@@ -203,6 +203,7 @@ max_tokens = 1000
 #嵌入模型
 [model_task_config.embedding]
 model_list = ["bge-m3"]
+embedding_dimension = 1024
 
 
 

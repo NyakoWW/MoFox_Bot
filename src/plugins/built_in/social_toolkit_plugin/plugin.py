@@ -60,10 +60,12 @@ class ReminderTask(AsyncTask):
             logger.info(f"执行提醒任务: 给 {self.target_user_name} 发送关于 '{self.event_details}' 的提醒")
 
             extra_info = f"现在是提醒时间，请你以一种符合你人设的、俏皮的方式提醒 {self.target_user_name}。\n提醒内容: {self.event_details}\n设置提醒的人: {self.creator_name}"
+            last_message = self.chat_stream.context_manager.context.get_last_message()
+            reply_message_dict = last_message.flatten() if last_message else None
             success, reply_set, _ = await generator_api.generate_reply(
                 chat_stream=self.chat_stream,
                 extra_info=extra_info,
-                reply_message=self.chat_stream.context_manager.context.get_last_message().to_dict(),
+                reply_message=reply_message_dict,
                 request_type="plugin.reminder.remind_message",
             )
 
@@ -150,9 +152,11 @@ class PokeAction(BaseAction):
     action_require = ["当需要戳某个用户时使用", "当你想提醒特定用户时使用"]
     llm_judge_prompt = """
     判定是否需要使用戳一戳动作的条件：
-    1. 用户明确要求使用戳一戳。
-    2. 你想以一种有趣的方式提醒或与某人互动。
-    3. 上下文明确需要你戳一个或多个人。
+    1. **关键**: 这是一个高消耗的动作，请仅在绝对必要时使用，例如用户明确要求或作为提醒的关键部分。请极其谨慎地使用。
+    2. **用户请求**: 用户明确要求使用戳一戳。
+    3. **互动提醒**: 你想以一种有趣的方式提醒或与某人互动，但请确保这是对话的自然延伸，而不是无故打扰。
+    4. **上下文需求**: 上下文明确需要你戳一个或多个人。
+    5. **频率限制**: 如果最近已经戳过，或者用户情绪不高，请绝对不要使用。
 
     请回答"是"或"否"。
     """
@@ -217,7 +221,6 @@ class SetEmojiLikeAction(BaseAction):
             emoji_options.append(match.group(1))
 
     action_parameters = {
-        "emoji": f"要回应的表情,必须从以下表情中选择: {', '.join(emoji_options)}",
         "set": "是否设置回应 (True/False)",
     }
     action_require = [
@@ -238,6 +241,7 @@ class SetEmojiLikeAction(BaseAction):
     async def execute(self) -> Tuple[bool, str]:
         """执行设置表情回应的动作"""
         message_id = None
+        set_like = self.action_data.get("set", True)
         if self.has_action_message:
             logger.debug(str(self.action_message))
             if isinstance(self.action_message, dict):
@@ -251,24 +255,49 @@ class SetEmojiLikeAction(BaseAction):
                 action_done=False,
             )
             return False, "未提供消息ID"
+        available_models = llm_api.get_available_models()
+        if "utils_small" not in available_models:
+                logger.error("未找到 'utils_small' 模型配置，无法选择表情")
+                return False, "表情选择功能配置错误"
 
-        emoji_input = self.action_data.get("emoji")
-        set_like = self.action_data.get("set", True)
-
-        if not emoji_input:
-            logger.error("未提供表情")
-            return False, "未提供表情"
-        logger.info(f"设置表情回应: {emoji_input}, 是否设置: {set_like}")
-
-        emoji_id = get_emoji_id(emoji_input)
-        if not emoji_id:
-            logger.error(f"找不到表情: '{emoji_input}'。请从可用列表中选择。")
-            await self.store_action_info(
-                action_build_into_prompt=True,
-                action_prompt_display=f"执行了set_emoji_like动作：{self.action_name},失败: 找不到表情: '{emoji_input}'",
-                action_done=False,
+        model_to_use = available_models["utils_small"]
+            
+        # 获取最近的对话历史作为上下文
+        context_text = ""
+        if self.action_message:
+            context_text = self.action_message.get("processed_plain_text", "")
+        else:
+            logger.error("无法找到动作选择的原始消息")
+            return False, "无法找到动作选择的原始消息"
+        
+        prompt = (
+                f"根据以下这条消息，从列表中选择一个最合适的表情名称来回应这条消息。\n"
+                f"消息内容: '{context_text}'\n"
+                f"可用表情列表: {', '.join(self.emoji_options)}\n"
+                f"你的任务是：只输出你选择的表情的名称，不要包含任何其他文字或标点。\n"
+                f"例如，如果觉得应该用'赞'，就只输出'赞'。"
             )
-            return False, f"找不到表情: '{emoji_input}'。请从可用列表中选择。"
+
+        success, response, _, _ = await llm_api.generate_with_model(
+                prompt, model_config=model_to_use, request_type="plugin.set_emoji_like.select_emoji"
+            )
+
+        if not success or not response:
+                logger.error("二级LLM未能选择有效的表情。")
+                return False, "无法找到合适的表情。"
+
+        chosen_emoji_name = response.strip()
+        logger.info(f"二级LLM选择的表情是: '{chosen_emoji_name}'")
+        emoji_id = get_emoji_id(chosen_emoji_name)
+
+        if not emoji_id:
+                logger.error(f"二级LLM选择的表情 '{chosen_emoji_name}' 仍然无法匹配到有效的表情ID。")
+                await self.store_action_info(
+                    action_build_into_prompt=True,
+                    action_prompt_display=f"执行了set_emoji_like动作：{self.action_name},失败: 找不到表情: '{chosen_emoji_name}'",
+                    action_done=False,
+                )
+                return False, f"找不到表情: '{chosen_emoji_name}'。"
 
         # 4. 使用适配器API发送命令
         if not message_id:
@@ -291,7 +320,7 @@ class SetEmojiLikeAction(BaseAction):
                 logger.info("设置表情回应成功")
                 await self.store_action_info(
                     action_build_into_prompt=True,
-                    action_prompt_display=f"执行了set_emoji_like动作,{emoji_input},设置表情回应: {emoji_id}, 是否设置: {set_like}",
+                    action_prompt_display=f"执行了set_emoji_like动作,{chosen_emoji_name},设置表情回应: {emoji_id}, 是否设置: {set_like}",
                     action_done=True,
                 )
                 return True, "成功设置表情回应"

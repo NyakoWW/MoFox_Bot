@@ -25,6 +25,7 @@ class IndexType(Enum):
     """索引类型"""
     MEMORY_TYPE = "memory_type"           # 记忆类型索引
     USER_ID = "user_id"                   # 用户ID索引
+    SUBJECT = "subject"                   # 主体索引
     KEYWORD = "keyword"                   # 关键词索引
     TAG = "tag"                           # 标签索引
     CATEGORY = "category"                 # 分类索引
@@ -41,6 +42,7 @@ class IndexQuery:
     """索引查询条件"""
     user_ids: Optional[List[str]] = None
     memory_types: Optional[List[MemoryType]] = None
+    subjects: Optional[List[str]] = None
     keywords: Optional[List[str]] = None
     tags: Optional[List[str]] = None
     categories: Optional[List[str]] = None
@@ -76,6 +78,7 @@ class MetadataIndexManager:
         self.indices = {
             IndexType.MEMORY_TYPE: defaultdict(set),
             IndexType.USER_ID: defaultdict(set),
+            IndexType.SUBJECT: defaultdict(set),
             IndexType.KEYWORD: defaultdict(set),
             IndexType.TAG: defaultdict(set),
             IndexType.CATEGORY: defaultdict(set),
@@ -110,6 +113,41 @@ class MetadataIndexManager:
         self.auto_save_interval = 500  # 每500次操作自动保存
         self._operation_count = 0
 
+    @staticmethod
+    def _serialize_index_key(index_type: IndexType, key: Any) -> str:
+        """将索引键序列化为字符串以便存储"""
+        if isinstance(key, Enum):
+            value = key.value
+        else:
+            value = key
+        return str(value)
+
+    @staticmethod
+    def _deserialize_index_key(index_type: IndexType, key: str) -> Any:
+        """根据索引类型反序列化索引键"""
+        try:
+            if index_type == IndexType.MEMORY_TYPE:
+                return MemoryType(key)
+            if index_type == IndexType.CONFIDENCE:
+                return ConfidenceLevel(int(key))
+            if index_type == IndexType.IMPORTANCE:
+                return ImportanceLevel(int(key))
+            # 其他索引键默认使用原始字符串（可能已经是lower后的字符串）
+            return key
+        except Exception:
+            logger.warning("无法反序列化索引键 %s 在索引 %s 中，使用原始字符串", key, index_type.value)
+            return key
+
+    @staticmethod
+    def _serialize_metadata_entry(metadata: Dict[str, Any]) -> Dict[str, Any]:
+        serialized = {}
+        for field_name, value in metadata.items():
+            if isinstance(value, Enum):
+                serialized[field_name] = value.value
+            else:
+                serialized[field_name] = value
+        return serialized
+
     async def index_memories(self, memories: List[MemoryChunk]):
         """为记忆建立索引"""
         if not memories:
@@ -142,6 +180,68 @@ class MetadataIndexManager:
         except Exception as e:
             logger.error(f"❌ 元数据索引失败: {e}", exc_info=True)
 
+    async def update_memory_entry(self, memory: MemoryChunk):
+        """更新已存在记忆的索引信息"""
+        if not memory:
+            return
+
+        with self._lock:
+            entry = self.memory_metadata_cache.get(memory.memory_id)
+            if entry is None:
+                # 若不存在则作为新记忆索引
+                self._index_single_memory(memory)
+                return
+
+            old_confidence = entry.get("confidence")
+            old_importance = entry.get("importance")
+            old_semantic_hash = entry.get("semantic_hash")
+
+            entry.update(
+                {
+                    "user_id": memory.user_id,
+                    "memory_type": memory.memory_type,
+                    "created_at": memory.metadata.created_at,
+                    "last_accessed": memory.metadata.last_accessed,
+                    "access_count": memory.metadata.access_count,
+                    "confidence": memory.metadata.confidence,
+                    "importance": memory.metadata.importance,
+                    "relationship_score": memory.metadata.relationship_score,
+                    "relevance_score": memory.metadata.relevance_score,
+                    "semantic_hash": memory.semantic_hash,
+                    "subjects": memory.subjects,
+                }
+            )
+
+            # 更新置信度/重要性索引
+            if isinstance(old_confidence, ConfidenceLevel):
+                self.indices[IndexType.CONFIDENCE][old_confidence].discard(memory.memory_id)
+            if isinstance(old_importance, ImportanceLevel):
+                self.indices[IndexType.IMPORTANCE][old_importance].discard(memory.memory_id)
+            if isinstance(old_semantic_hash, str):
+                self.indices[IndexType.SEMANTIC_HASH][old_semantic_hash].discard(memory.memory_id)
+
+            self.indices[IndexType.CONFIDENCE][memory.metadata.confidence].add(memory.memory_id)
+            self.indices[IndexType.IMPORTANCE][memory.metadata.importance].add(memory.memory_id)
+            if memory.semantic_hash:
+                self.indices[IndexType.SEMANTIC_HASH][memory.semantic_hash].add(memory.memory_id)
+
+            # 同步关键词/标签/分类索引
+            for keyword in memory.keywords:
+                if keyword:
+                    self.indices[IndexType.KEYWORD][keyword.lower()].add(memory.memory_id)
+
+            for tag in memory.tags:
+                if tag:
+                    self.indices[IndexType.TAG][tag.lower()].add(memory.memory_id)
+
+            for category in memory.categories:
+                if category:
+                    self.indices[IndexType.CATEGORY][category.lower()].add(memory.memory_id)
+
+            for subject in memory.subjects:
+                if subject:
+                    self.indices[IndexType.SUBJECT][subject.strip().lower()].add(memory.memory_id)
+
     def _index_single_memory(self, memory: MemoryChunk):
         """为单个记忆建立索引"""
         memory_id = memory.memory_id
@@ -157,7 +257,8 @@ class MetadataIndexManager:
             "importance": memory.metadata.importance,
             "relationship_score": memory.metadata.relationship_score,
             "relevance_score": memory.metadata.relevance_score,
-            "semantic_hash": memory.semantic_hash
+            "semantic_hash": memory.semantic_hash,
+            "subjects": memory.subjects
         }
 
         # 记忆类型索引
@@ -165,6 +266,12 @@ class MetadataIndexManager:
 
         # 用户ID索引
         self.indices[IndexType.USER_ID][memory.user_id].add(memory_id)
+
+        # 主体索引
+        for subject in memory.subjects:
+            normalized = subject.strip().lower()
+            if normalized:
+                self.indices[IndexType.SUBJECT][normalized].add(memory_id)
 
         # 关键词索引
         for keyword in memory.keywords:
@@ -282,13 +389,6 @@ class MetadataIndexManager:
         # 应用最严格的过滤条件
         applied_filters = []
 
-        if query.user_ids:
-            user_ids_set = set()
-            for user_id in query.user_ids:
-                user_ids_set.update(self.indices[IndexType.USER_ID].get(user_id, set()))
-            candidate_ids.update(user_ids_set)
-            applied_filters.append("user_ids")
-
         if query.memory_types:
             memory_types_set = set()
             for memory_type in query.memory_types:
@@ -302,7 +402,7 @@ class MetadataIndexManager:
         if query.keywords:
             keywords_set = set()
             for keyword in query.keywords:
-                keywords_set.update(self.indices[IndexType.KEYWORD].get(keyword.lower(), set()))
+                keywords_set.update(self._collect_index_matches(IndexType.KEYWORD, keyword))
             if applied_filters:
                 candidate_ids &= keywords_set
             else:
@@ -329,11 +429,54 @@ class MetadataIndexManager:
                 candidate_ids.update(categories_set)
             applied_filters.append("categories")
 
+        if query.subjects:
+            subjects_set = set()
+            for subject in query.subjects:
+                subjects_set.update(self._collect_index_matches(IndexType.SUBJECT, subject))
+            if applied_filters:
+                candidate_ids &= subjects_set
+            else:
+                candidate_ids.update(subjects_set)
+            applied_filters.append("subjects")
+
         # 如果没有应用任何过滤条件，返回所有记忆
         if not applied_filters:
             return all_memory_ids
 
         return candidate_ids
+
+    def _collect_index_matches(self, index_type: IndexType, token: Optional[Union[str, Enum]]) -> Set[str]:
+        """根据给定token收集索引匹配，支持部分匹配"""
+        mapping = self.indices.get(index_type)
+        if mapping is None:
+            return set()
+
+        key = ""
+        if isinstance(token, Enum):
+            key = str(token.value).strip().lower()
+        elif isinstance(token, str):
+            key = token.strip().lower()
+        elif token is not None:
+            key = str(token).strip().lower()
+
+        if not key:
+            return set()
+
+        matches: Set[str] = set(mapping.get(key, set()))
+
+        if matches:
+            return set(matches)
+
+        for existing_key, ids in mapping.items():
+            if not existing_key or not isinstance(existing_key, str):
+                continue
+            normalized = existing_key.strip().lower()
+            if not normalized:
+                continue
+            if key in normalized or normalized in key:
+                matches.update(ids)
+
+        return matches
 
     def _apply_filters(self, candidate_ids: Set[str], query: IndexQuery) -> List[str]:
         """应用过滤条件"""
@@ -440,10 +583,10 @@ class MetadataIndexManager:
     def _get_applied_filters(self, query: IndexQuery) -> List[str]:
         """获取应用的过滤器列表"""
         filters = []
-        if query.user_ids:
-            filters.append("user_ids")
         if query.memory_types:
             filters.append("memory_types")
+        if query.subjects:
+            filters.append("subjects")
         if query.keywords:
             filters.append("keywords")
         if query.tags:
@@ -502,6 +645,18 @@ class MetadataIndexManager:
                 # 从各类索引中移除
                 self.indices[IndexType.MEMORY_TYPE][metadata["memory_type"]].discard(memory_id)
                 self.indices[IndexType.USER_ID][metadata["user_id"]].discard(memory_id)
+                subjects = metadata.get("subjects") or []
+                for subject in subjects:
+                    if not isinstance(subject, str):
+                        continue
+                    normalized = subject.strip().lower()
+                    if not normalized:
+                        continue
+                    subject_bucket = self.indices[IndexType.SUBJECT].get(normalized)
+                    if subject_bucket is not None:
+                        subject_bucket.discard(memory_id)
+                        if not subject_bucket:
+                            self.indices[IndexType.SUBJECT].pop(normalized, None)
 
                 # 从时间索引中移除
                 self.time_index = [(ts, mid) for ts, mid in self.time_index if mid != memory_id]
@@ -625,11 +780,13 @@ class MetadataIndexManager:
             logger.info("正在保存元数据索引...")
 
             # 保存各类索引
-            indices_data = {}
+            indices_data: Dict[str, Dict[str, List[str]]] = {}
             for index_type, index_data in self.indices.items():
-                indices_data[index_type.value] = {
-                    key: list(values) for key, values in index_data.items()
-                }
+                serialized_index = {}
+                for key, values in index_data.items():
+                    serialized_key = self._serialize_index_key(index_type, key)
+                    serialized_index[serialized_key] = list(values)
+                indices_data[index_type.value] = serialized_index
 
             indices_file = self.index_path / "indices.json"
             with open(indices_file, 'w', encoding='utf-8') as f:
@@ -652,8 +809,12 @@ class MetadataIndexManager:
 
             # 保存元数据缓存
             metadata_cache_file = self.index_path / "metadata_cache.json"
+            metadata_serialized = {
+                memory_id: self._serialize_metadata_entry(metadata)
+                for memory_id, metadata in self.memory_metadata_cache.items()
+            }
             with open(metadata_cache_file, 'w', encoding='utf-8') as f:
-                f.write(orjson.dumps(self.memory_metadata_cache, option=orjson.OPT_INDENT_2).decode('utf-8'))
+                f.write(orjson.dumps(metadata_serialized, option=orjson.OPT_INDENT_2).decode('utf-8'))
 
             # 保存统计信息
             stats_file = self.index_path / "index_stats.json"
@@ -679,9 +840,11 @@ class MetadataIndexManager:
 
                 for index_type_value, index_data in indices_data.items():
                     index_type = IndexType(index_type_value)
-                    self.indices[index_type] = {
-                        key: set(values) for key, values in index_data.items()
-                    }
+                    restored_index = defaultdict(set)
+                    for key_str, values in index_data.items():
+                        restored_key = self._deserialize_index_key(index_type, key_str)
+                        restored_index[restored_key] = set(values)
+                    self.indices[index_type] = restored_index
 
             # 加载时间索引
             time_index_file = self.index_path / "time_index.json"
@@ -709,10 +872,38 @@ class MetadataIndexManager:
 
                 # 转换置信度和重要性为枚举类型
                 for memory_id, metadata in cache_data.items():
-                    if isinstance(metadata["confidence"], str):
-                        metadata["confidence"] = ConfidenceLevel(metadata["confidence"])
-                    if isinstance(metadata["importance"], str):
-                        metadata["importance"] = ImportanceLevel(metadata["importance"])
+                    memory_type_value = metadata.get("memory_type")
+                    if isinstance(memory_type_value, str):
+                        try:
+                            metadata["memory_type"] = MemoryType(memory_type_value)
+                        except ValueError:
+                            logger.warning("无法解析memory_type %s", memory_type_value)
+
+                    confidence_value = metadata.get("confidence")
+                    if isinstance(confidence_value, (str, int)):
+                        try:
+                            metadata["confidence"] = ConfidenceLevel(int(confidence_value))
+                        except ValueError:
+                            logger.warning("无法解析confidence %s", confidence_value)
+
+                    importance_value = metadata.get("importance")
+                    if isinstance(importance_value, (str, int)):
+                        try:
+                            metadata["importance"] = ImportanceLevel(int(importance_value))
+                        except ValueError:
+                            logger.warning("无法解析importance %s", importance_value)
+
+                    subjects_value = metadata.get("subjects")
+                    if isinstance(subjects_value, str):
+                        metadata["subjects"] = [subjects_value]
+                    elif isinstance(subjects_value, list):
+                        cleaned_subjects = []
+                        for item in subjects_value:
+                            if isinstance(item, str) and item.strip():
+                                cleaned_subjects.append(item.strip())
+                        metadata["subjects"] = cleaned_subjects
+                    else:
+                        metadata["subjects"] = []
 
                 self.memory_metadata_cache = cache_data
 

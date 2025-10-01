@@ -2,21 +2,48 @@
 """
 记忆构建模块
 从对话流中提取高质量、结构化记忆单元
+输出格式要求:
+{{
+    "memories": [
+        {{
+            "type": "记忆类型",
+            "display": "用于直接展示和检索的自然语言描述",
+            "subject": ["主体1", "主体2"],
+            "predicate": "谓语(动作/状态)",
+            "object": "宾语(对象/属性或结构体)",
+            "keywords": ["关键词1", "关键词2"],
+            "importance": "重要性等级(1-4)",
+            "confidence": "置信度(1-4)",
+            "reasoning": "提取理由"
+        }}
+    ]
+}}
+
+注意：
+1. `subject` 可包含多个主体，请用数组表示；若主体不明确，请根据上下文给出最合理的称呼
+2. `display` 必须是一句完整流畅的中文描述，可直接用于用户展示和向量搜索
+3. 只提取确实值得记忆的信息，不要提取琐碎内容
+4. 确保信息准确、具体、有价值
+5. 重要性: 1=低, 2=一般, 3=高, 4=关键；置信度: 1=低, 2=中等, 3=高, 4=已验证
 """
 
 import re
 import time
-import orjson
-from typing import Dict, List, Optional, Any
-from datetime import datetime
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, Iterable, List, Optional, Union, Type
+
+import orjson
 
 from src.common.logger import get_logger
 from src.llm_models.utils_model import LLMRequest
 from src.chat.memory_system.memory_chunk import (
-    MemoryChunk, MemoryType, ConfidenceLevel, ImportanceLevel,
-    create_memory_chunk
+    MemoryChunk,
+    MemoryType,
+    ConfidenceLevel,
+    ImportanceLevel,
+    create_memory_chunk,
 )
 
 logger = get_logger(__name__)
@@ -24,6 +51,7 @@ logger = get_logger(__name__)
 
 class ExtractionStrategy(Enum):
     """提取策略"""
+
     LLM_BASED = "llm_based"           # 基于LLM的智能提取
     RULE_BASED = "rule_based"         # 基于规则的提取
     HYBRID = "hybrid"                 # 混合策略
@@ -171,18 +199,18 @@ class MemoryBuilder:
         """使用规则提取记忆"""
         memories = []
 
-        subject_display = self._resolve_user_display(context, user_id)
+        subjects = self._resolve_conversation_participants(context, user_id)
 
         # 规则1: 检测个人信息
-        personal_info = self._extract_personal_info(text, user_id, timestamp, context, subject_display)
+        personal_info = self._extract_personal_info(text, user_id, timestamp, context, subjects)
         memories.extend(personal_info)
 
         # 规则2: 检测偏好信息
-        preferences = self._extract_preferences(text, user_id, timestamp, context, subject_display)
+        preferences = self._extract_preferences(text, user_id, timestamp, context, subjects)
         memories.extend(preferences)
 
         # 规则3: 检测事件信息
-        events = self._extract_events(text, user_id, timestamp, context, subject_display)
+        events = self._extract_events(text, user_id, timestamp, context, subjects)
         memories.extend(events)
 
         return memories
@@ -258,10 +286,7 @@ class MemoryBuilder:
 你是一个专业的记忆提取专家。请从以下对话中主动识别并提取所有可能重要的信息，特别是包含个人事实、事件、偏好、观点等要素的内容。
 
 当前时间: {current_date}
-聊天ID: {chat_id}
 消息类型: {message_type}
-目标用户ID: {target_user_id_display}
-目标用户称呼: {target_user_name}
 
 ## 🤖 机器人身份（仅供参考，禁止写入记忆）
 - 机器人名称: {bot_name_display}
@@ -272,7 +297,6 @@ class MemoryBuilder:
 
 请务必遵守以下命名规范：
 - 当说话者是机器人时，请使用“{bot_name_display}”或其他明确称呼作为主语；
-- 如果看到系统自动生成的长ID（类似 {target_user_id}），请改用“{target_user_name}”、机器人的称呼或“该用户”描述，不要把ID写入记忆；
 - 记录关键事实时，请准确标记主体是机器人还是用户，避免混淆。
 
 对话内容:
@@ -450,7 +474,7 @@ class MemoryBuilder:
 
         bot_identifiers = self._collect_bot_identifiers(context)
         system_identifiers = self._collect_system_identifiers(context)
-        default_subject = self._resolve_user_display(context, user_id)
+        default_subjects = self._resolve_conversation_participants(context, user_id)
 
         bot_display = None
         if context:
@@ -481,19 +505,33 @@ class MemoryBuilder:
         for mem_data in memory_list:
             try:
                 subject_value = mem_data.get("subject")
-                normalized_subject = self._normalize_subject(
+                normalized_subject = self._normalize_subjects(
                     subject_value,
                     bot_identifiers,
                     system_identifiers,
-                    default_subject,
+                    default_subjects,
                     bot_display
                 )
 
-                if normalized_subject is None:
+                if not normalized_subject:
                     logger.debug("跳过疑似机器人自身信息的记忆: %s", mem_data)
                     continue
 
                 # 创建记忆块
+                importance_level = self._parse_enum_value(
+                    ImportanceLevel,
+                    mem_data.get("importance"),
+                    ImportanceLevel.NORMAL,
+                    "importance"
+                )
+
+                confidence_level = self._parse_enum_value(
+                    ConfidenceLevel,
+                    mem_data.get("confidence"),
+                    ConfidenceLevel.MEDIUM,
+                    "confidence"
+                )
+
                 memory = create_memory_chunk(
                     user_id=user_id,
                     subject=normalized_subject,
@@ -502,21 +540,15 @@ class MemoryBuilder:
                     memory_type=MemoryType(mem_data.get("type", "contextual")),
                     chat_id=context.get("chat_id"),
                     source_context=mem_data.get("reasoning", ""),
-                    importance=ImportanceLevel(mem_data.get("importance", 2)),
-                    confidence=ConfidenceLevel(mem_data.get("confidence", 2))
+                    importance=importance_level,
+                    confidence=confidence_level,
+                    display=mem_data.get("display")
                 )
 
                 # 添加关键词
                 keywords = mem_data.get("keywords", [])
                 for keyword in keywords:
                     memory.add_keyword(keyword)
-
-                subject_text = memory.content.subject.strip() if isinstance(memory.content.subject, str) else str(memory.content.subject)
-                if not subject_text:
-                    memory.content.subject = default_subject
-                elif subject_text.lower() in system_identifiers or self._looks_like_system_identifier(subject_text):
-                    logger.debug("将系统标识主语替换为默认用户名称: %s", subject_text)
-                    memory.content.subject = default_subject
 
                 memories.append(memory)
 
@@ -525,6 +557,64 @@ class MemoryBuilder:
                 continue
 
         return memories
+
+    def _parse_enum_value(
+        self,
+        enum_cls: Type[Enum],
+        raw_value: Any,
+        default: Enum,
+        field_name: str
+    ) -> Enum:
+        """解析枚举值，兼容数字/字符串表示"""
+        if isinstance(raw_value, enum_cls):
+            return raw_value
+
+        if raw_value is None:
+            return default
+
+        # 直接尝试整数转换
+        if isinstance(raw_value, (int, float)):
+            int_value = int(raw_value)
+            try:
+                return enum_cls(int_value)
+            except ValueError:
+                logger.debug("%s=%s 无法解析为 %s", field_name, raw_value, enum_cls.__name__)
+                return default
+
+        if isinstance(raw_value, str):
+            value_str = raw_value.strip()
+            if not value_str:
+                return default
+
+            if value_str.isdigit():
+                try:
+                    return enum_cls(int(value_str))
+                except ValueError:
+                    logger.debug("%s='%s' 无法解析为 %s", field_name, value_str, enum_cls.__name__)
+            else:
+                normalized = value_str.replace("-", "_").replace(" ", "_").upper()
+                for member in enum_cls:
+                    if member.name == normalized:
+                        return member
+                for member in enum_cls:
+                    if str(member.value).lower() == value_str.lower():
+                        return member
+
+                try:
+                    return enum_cls(value_str)
+                except ValueError:
+                    logger.debug("%s='%s' 无法解析为 %s", field_name, value_str, enum_cls.__name__)
+
+        try:
+            return enum_cls(raw_value)
+        except Exception:
+            logger.debug("%s=%s 类型 %s 无法解析为 %s，使用默认值 %s",
+                         field_name,
+                         raw_value,
+                         type(raw_value).__name__,
+                         enum_cls.__name__,
+                         default.name)
+            return default
 
     def _collect_bot_identifiers(self, context: Optional[Dict[str, Any]]) -> set[str]:
         identifiers: set[str] = {"bot", "机器人", "ai助手"}
@@ -580,6 +670,58 @@ class MemoryBuilder:
 
         return identifiers
 
+    def _resolve_conversation_participants(self, context: Optional[Dict[str, Any]], user_id: str) -> List[str]:
+        participants: List[str] = []
+
+        if context:
+            candidate_keys = [
+                "participants",
+                "participant_names",
+                "speaker_names",
+                "members",
+                "member_names",
+                "mention_users",
+                "audiences"
+            ]
+
+            for key in candidate_keys:
+                value = context.get(key)
+                if isinstance(value, (list, tuple, set)):
+                    for item in value:
+                        if isinstance(item, str):
+                            cleaned = self._clean_subject_text(item)
+                            if cleaned:
+                                participants.append(cleaned)
+                elif isinstance(value, str):
+                    for part in self._split_subject_string(value):
+                        if part:
+                            participants.append(part)
+
+        fallback = self._resolve_user_display(context, user_id)
+        if fallback:
+            participants.append(fallback)
+
+        if context:
+            bot_name = context.get("bot_name") or context.get("bot_identity")
+            if isinstance(bot_name, str):
+                cleaned = self._clean_subject_text(bot_name)
+                if cleaned:
+                    participants.append(cleaned)
+
+        if not participants:
+            participants = ["对话参与者"]
+
+        deduplicated: List[str] = []
+        seen = set()
+        for name in participants:
+            key = name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduplicated.append(name)
+
+        return deduplicated
+
     def _resolve_user_display(self, context: Optional[Dict[str, Any]], user_id: str) -> str:
         candidate_keys = [
             "user_display_name",
@@ -626,51 +768,160 @@ class MemoryBuilder:
 
         return False
 
-    def _normalize_subject(
+    def _split_subject_string(self, value: str) -> List[str]:
+        if not value:
+            return []
+
+        replaced = re.sub(r"\band\b", "、", value, flags=re.IGNORECASE)
+        replaced = replaced.replace("和", "、").replace("与", "、").replace("及", "、")
+        replaced = replaced.replace("&", "、").replace("/", "、").replace("+", "、")
+
+        tokens = [self._clean_subject_text(token) for token in re.split(r"[、,，;；]+", replaced)]
+        return [token for token in tokens if token]
+
+    def _normalize_subjects(
         self,
         subject: Any,
         bot_identifiers: set[str],
         system_identifiers: set[str],
-        default_subject: str,
+        default_subjects: List[str],
         bot_display: Optional[str] = None
-    ) -> Optional[str]:
-        if subject is None:
-            return default_subject
+    ) -> List[str]:
+        defaults = default_subjects or ["对话参与者"]
 
-        subject_str = subject if isinstance(subject, str) else str(subject)
-        cleaned = self._clean_subject_text(subject_str)
-        if not cleaned:
-            return default_subject
+        raw_candidates: List[str] = []
+        if isinstance(subject, list):
+            for item in subject:
+                if isinstance(item, str):
+                    raw_candidates.extend(self._split_subject_string(item))
+                elif item is not None:
+                    raw_candidates.extend(self._split_subject_string(str(item)))
+        elif isinstance(subject, str):
+            raw_candidates.extend(self._split_subject_string(subject))
+        elif subject is not None:
+            raw_candidates.extend(self._split_subject_string(str(subject)))
 
-        lowered = cleaned.lower()
+        normalized: List[str] = []
         bot_primary = self._clean_subject_text(bot_display or "")
 
-        if lowered in bot_identifiers:
-            return bot_primary or cleaned
+        for candidate in raw_candidates:
+            if not candidate:
+                continue
 
-        if lowered in {"用户", "user", "the user", "对方", "对手"}:
-            return default_subject
+            lowered = candidate.lower()
+            if lowered in bot_identifiers:
+                normalized.append(bot_primary or candidate)
+                continue
 
-        prefix_match = re.match(r"^(用户|User|user|USER|成员|member|Member|target|Target|TARGET)[\s:：\-\u2014_]*?(.*)$", cleaned)
-        if prefix_match:
-            remainder = self._clean_subject_text(prefix_match.group(2))
-            if not remainder:
-                return default_subject
-            remainder_lower = remainder.lower()
-            if remainder_lower in bot_identifiers:
-                return bot_primary or remainder
-            if (
-                remainder_lower in system_identifiers
-                or self._looks_like_system_identifier(remainder)
-            ):
-                return default_subject
-            cleaned = remainder
-            lowered = cleaned.lower()
+            if lowered in {"用户", "user", "the user", "对方", "对手"}:
+                normalized.extend(defaults)
+                continue
 
-        if lowered in system_identifiers or self._looks_like_system_identifier(cleaned):
-            return default_subject
+            if lowered in system_identifiers or self._looks_like_system_identifier(candidate):
+                continue
 
-        return cleaned
+            normalized.append(candidate)
+
+        if not normalized:
+            normalized = list(defaults)
+
+        deduplicated: List[str] = []
+        seen = set()
+        for name in normalized:
+            key = name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduplicated.append(name)
+
+        return deduplicated
+
+    def _extract_value_from_object(self, obj: Union[str, Dict[str, Any], List[Any]], keys: List[str]) -> Optional[str]:
+        if isinstance(obj, dict):
+            for key in keys:
+                value = obj.get(key)
+                if value is None:
+                    continue
+                if isinstance(value, list):
+                    compact = "、".join(str(item) for item in value[:3])
+                    if compact:
+                        return compact
+                else:
+                    value_str = str(value).strip()
+                    if value_str:
+                        return value_str
+        elif isinstance(obj, list):
+            compact = "、".join(str(item) for item in obj[:3])
+            return compact or None
+        elif isinstance(obj, str):
+            return obj.strip() or None
+        return None
+
+    def _compose_display_text(self, subjects: List[str], predicate: str, obj: Union[str, Dict[str, Any], List[Any]]) -> str:
+        subject_phrase = "、".join(subjects) if subjects else "对话参与者"
+        predicate = (predicate or "").strip()
+
+        if predicate == "is_named":
+            name = self._extract_value_from_object(obj, ["name", "nickname"]) or ""
+            name = self._clean_subject_text(name)
+            if name:
+                quoted = name if (name.startswith("「") and name.endswith("」")) else f"「{name}」"
+                return f"{subject_phrase}的昵称是{quoted}"
+        elif predicate == "is_age":
+            age = self._extract_value_from_object(obj, ["age"]) or ""
+            age = self._clean_subject_text(age)
+            if age:
+                return f"{subject_phrase}今年{age}岁"
+        elif predicate == "is_profession":
+            profession = self._extract_value_from_object(obj, ["profession", "job"]) or ""
+            profession = self._clean_subject_text(profession)
+            if profession:
+                return f"{subject_phrase}的职业是{profession}"
+        elif predicate == "lives_in":
+            location = self._extract_value_from_object(obj, ["location", "city", "place"]) or ""
+            location = self._clean_subject_text(location)
+            if location:
+                return f"{subject_phrase}居住在{location}"
+        elif predicate == "has_phone":
+            phone = self._extract_value_from_object(obj, ["phone", "number"]) or ""
+            phone = self._clean_subject_text(phone)
+            if phone:
+                return f"{subject_phrase}的电话号码是{phone}"
+        elif predicate == "has_email":
+            email = self._extract_value_from_object(obj, ["email"]) or ""
+            email = self._clean_subject_text(email)
+            if email:
+                return f"{subject_phrase}的邮箱是{email}"
+        elif predicate in {"likes", "likes_food", "favorite_is"}:
+            liked = self._extract_value_from_object(obj, ["item", "value", "name"]) or ""
+            liked = self._clean_subject_text(liked)
+            if liked:
+                verb = "喜欢" if predicate != "likes_food" else "爱吃"
+                if predicate == "favorite_is":
+                    verb = "最喜欢"
+                return f"{subject_phrase}{verb}{liked}"
+        elif predicate in {"dislikes", "hates"}:
+            disliked = self._extract_value_from_object(obj, ["item", "value", "name"]) or ""
+            disliked = self._clean_subject_text(disliked)
+            if disliked:
+                verb = "不喜欢" if predicate == "dislikes" else "讨厌"
+                return f"{subject_phrase}{verb}{disliked}"
+        elif predicate == "mentioned_event":
+            description = self._extract_value_from_object(obj, ["event_text", "description"]) or ""
+            description = self._clean_subject_text(description)
+            if description:
+                return f"{subject_phrase}提到了：{description}"
+
+        obj_text = self._extract_value_from_object(obj, ["value", "detail", "content"]) or ""
+        obj_text = self._clean_subject_text(obj_text)
+
+        if predicate and obj_text:
+            return f"{subject_phrase}{predicate}{obj_text}".strip()
+        if obj_text:
+            return f"{subject_phrase}{obj_text}".strip()
+        if predicate:
+            return f"{subject_phrase}{predicate}".strip()
+        return subject_phrase
 
     def _extract_personal_info(
         self,
@@ -678,7 +929,7 @@ class MemoryBuilder:
         user_id: str,
         timestamp: float,
         context: Dict[str, Any],
-        subject_display: str
+        subjects: List[str]
     ) -> List[MemoryChunk]:
         """提取个人信息"""
         memories = []
@@ -702,13 +953,14 @@ class MemoryBuilder:
 
                 memory = create_memory_chunk(
                     user_id=user_id,
-                    subject=subject_display,
+                    subject=subjects,
                     predicate=predicate,
                     obj=obj,
                     memory_type=MemoryType.PERSONAL_FACT,
                     chat_id=context.get("chat_id"),
                     importance=ImportanceLevel.HIGH,
-                    confidence=ConfidenceLevel.HIGH
+                    confidence=ConfidenceLevel.HIGH,
+                    display=self._compose_display_text(subjects, predicate, obj)
                 )
 
                 memories.append(memory)
@@ -721,7 +973,7 @@ class MemoryBuilder:
         user_id: str,
         timestamp: float,
         context: Dict[str, Any],
-        subject_display: str
+        subjects: List[str]
     ) -> List[MemoryChunk]:
         """提取偏好信息"""
         memories = []
@@ -740,13 +992,14 @@ class MemoryBuilder:
             if match:
                 memory = create_memory_chunk(
                     user_id=user_id,
-                    subject=subject_display,
+                    subject=subjects,
                     predicate=predicate,
                     obj=match.group(1),
                     memory_type=MemoryType.PREFERENCE,
                     chat_id=context.get("chat_id"),
                     importance=ImportanceLevel.NORMAL,
-                    confidence=ConfidenceLevel.MEDIUM
+                    confidence=ConfidenceLevel.MEDIUM,
+                    display=self._compose_display_text(subjects, predicate, match.group(1))
                 )
 
                 memories.append(memory)
@@ -759,7 +1012,7 @@ class MemoryBuilder:
         user_id: str,
         timestamp: float,
         context: Dict[str, Any],
-        subject_display: str
+        subjects: List[str]
     ) -> List[MemoryChunk]:
         """提取事件信息"""
         memories = []
@@ -770,13 +1023,14 @@ class MemoryBuilder:
         if any(keyword in text for keyword in event_keywords):
             memory = create_memory_chunk(
                 user_id=user_id,
-                    subject=subject_display,
+                subject=subjects,
                 predicate="mentioned_event",
                 obj={"event_text": text, "timestamp": timestamp},
                 memory_type=MemoryType.EVENT,
                 chat_id=context.get("chat_id"),
                 importance=ImportanceLevel.NORMAL,
-                confidence=ConfidenceLevel.MEDIUM
+                confidence=ConfidenceLevel.MEDIUM,
+                display=self._compose_display_text(subjects, "mentioned_event", text)
             )
 
             memories.append(memory)

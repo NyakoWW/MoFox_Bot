@@ -15,7 +15,6 @@ from src.plugin_system.base.command_args import CommandArgs
 from src.plugin_system.base.component_types import PlusCommandInfo, ChatType
 from src.plugin_system.apis.permission_api import permission_api
 from src.plugin_system.utils.permission_decorators import require_permission
-from src.plugin_system.core.plugin_hot_reload import hot_reload_manager
 
 
 class ManagementCommand(PlusCommand):
@@ -78,10 +77,6 @@ class ManagementCommand(PlusCommand):
             await self._force_reload_plugin(args[1])
         elif action in ["add_dir", "添加目录"] and len(args) > 1:
             await self._add_dir(args[1])
-        elif action in ["hotreload_status", "热重载状态"]:
-            await self._show_hotreload_status()
-        elif action in ["clear_cache", "清理缓存"]:
-            await self._clear_all_caches()
         else:
             await self.send_text("❌ 插件管理命令不合法\n使用 /pm plugin help 查看帮助")
             return False, "命令不合法", True
@@ -179,14 +174,9 @@ class ManagementCommand(PlusCommand):
 • `/pm plugin force_reload <插件名>` - 强制重载指定插件（深度清理）
 • `/pm plugin add_dir <目录路径>` - 添加插件目录
 
-� 热重载管理：
-• `/pm plugin hotreload_status` - 查看热重载状态
-• `/pm plugin clear_cache` - 清理所有模块缓存
-
 �📝 示例：
 • `/pm plugin load echo_example`
-• `/pm plugin force_reload permission_manager_plugin`
-• `/pm plugin clear_cache`"""
+• `/pm plugin force_reload permission_manager_plugin`"""
         elif target == "component":
             help_msg = """🧩 组件管理命令帮助
 
@@ -262,7 +252,7 @@ class ManagementCommand(PlusCommand):
         await self.send_text(f"🔄 开始强制重载插件: `{plugin_name}`...")
 
         try:
-            success = hot_reload_manager.force_reload_plugin(plugin_name)
+            success = plugin_manage_api.force_reload_plugin(plugin_name)
             if success:
                 await self.send_text(f"✅ 插件强制重载成功: `{plugin_name}`")
             else:
@@ -270,44 +260,7 @@ class ManagementCommand(PlusCommand):
         except Exception as e:
             await self.send_text(f"❌ 强制重载过程中发生错误: {str(e)}")
 
-    async def _show_hotreload_status(self):
-        """显示热重载状态"""
-        try:
-            status = hot_reload_manager.get_status()
-
-            status_text = f"""🔄 **热重载系统状态**
-
-🟢 **运行状态:** {"运行中" if status["is_running"] else "已停止"}
-📂 **监听目录:** {len(status["watch_directories"])} 个
-👁️ **活跃观察者:** {status["active_observers"]} 个
-📦 **已加载插件:** {status["loaded_plugins"]} 个
-❌ **失败插件:** {status["failed_plugins"]} 个
-⏱️ **防抖延迟:** {status.get("debounce_delay", 0)} 秒
-
-📋 **监听的目录:**"""
-
-            for i, watch_dir in enumerate(status["watch_directories"], 1):
-                dir_type = "(内置插件)" if "src" in watch_dir else "(外部插件)"
-                status_text += f"\n{i}. `{watch_dir}` {dir_type}"
-
-            if status.get("pending_reloads"):
-                status_text += f"\n\n⏳ **待重载插件:** {', '.join([f'`{p}`' for p in status['pending_reloads']])}"
-
-            await self.send_text(status_text)
-
-        except Exception as e:
-            await self.send_text(f"❌ 获取热重载状态时发生错误: {str(e)}")
-
-    async def _clear_all_caches(self):
-        """清理所有模块缓存"""
-        await self.send_text("🧹 开始清理所有Python模块缓存...")
-
-        try:
-            hot_reload_manager.clear_all_caches()
-            await self.send_text("✅ 模块缓存清理完成！建议重载相关插件以确保生效。")
-        except Exception as e:
-            await self.send_text(f"❌ 清理缓存时发生错误: {str(e)}")
-
+  
     async def _add_dir(self, dir_path: str):
         """添加插件目录"""
         await self.send_text(f"📁 正在添加插件目录: `{dir_path}`")

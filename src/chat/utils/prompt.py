@@ -373,12 +373,12 @@ class Prompt:
 
             # 性能优化 - 为不同任务设置不同的超时时间
             task_timeouts = {
-                "memory_block": 5.0,      # 记忆系统可能较慢，单独设置超时
-                "tool_info": 3.0,         # 工具信息中等速度
-                "relation_info": 2.0,     # 关系信息通常较快
-                "knowledge_info": 3.0,    # 知识库查询中等速度
-                "cross_context": 2.0,     # 上下文处理通常较快
-                "expression_habits": 1.5, # 表达习惯处理很快
+                "memory_block": 15.0,      # 记忆系统
+                "tool_info": 15.0,         # 工具信息
+                "relation_info": 10.0,     # 关系信息
+                "knowledge_info": 10.0,    # 知识库查询
+                "cross_context": 10.0,     # 上下文处理
+                "expression_habits": 10.0, # 表达习惯
             }
 
             # 分别处理每个任务，避免慢任务影响快任务
@@ -558,12 +558,8 @@ class Prompt:
                 )
             ]
 
-            # 等待所有记忆查询完成（最多3秒）
             try:
-                running_memories, instant_memory = await asyncio.wait_for(
-                    asyncio.gather(*memory_tasks, return_exceptions=True),
-                    timeout=3.0
-                )
+                running_memories, instant_memory = await asyncio.gather(*memory_tasks, return_exceptions=True)
 
                 # 处理可能的异常结果
                 if isinstance(running_memories, Exception):

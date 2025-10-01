@@ -282,9 +282,11 @@ class MemoryIntegrationHooks:
             }
 
             # 使用增强记忆系统处理对话
-            result = await process_conversation_with_enhanced_memory(
-                conversation_text, context, user_id
-            )
+            memory_context = dict(context)
+            memory_context["conversation_text"] = conversation_text
+            memory_context["user_id"] = user_id
+
+            result = await process_conversation_with_enhanced_memory(memory_context)
 
             processing_time = time.time() - start_time
             self._update_hook_stats(processing_time)
@@ -336,9 +338,11 @@ class MemoryIntegrationHooks:
             }
 
             # 使用增强记忆系统处理对话
-            result = await process_conversation_with_enhanced_memory(
-                conversation_text, context, user_id
-            )
+            memory_context = dict(context)
+            memory_context["conversation_text"] = conversation_text
+            memory_context["user_id"] = user_id
+
+            result = await process_conversation_with_enhanced_memory(memory_context)
 
             processing_time = time.time() - start_time
             self._update_hook_stats(processing_time)
