@@ -207,6 +207,9 @@ class VideoAnalyzer:
         """检查视频是否已经分析过"""
         try:
             async with get_db_session() as session:
+                if not session:
+                    logger.warning("无法获取数据库会话，跳过视频存在性检查。")
+                    return None
                 # 明确刷新会话以确保看到其他事务的最新提交
                 await session.expire_all()
                 stmt = select(Videos).where(Videos.video_hash == video_hash)
@@ -227,6 +230,9 @@ class VideoAnalyzer:
 
         try:
             async with get_db_session() as session:
+                if not session:
+                    logger.warning("无法获取数据库会话，跳过视频结果存储。")
+                    return None
                 # 只根据video_hash查找
                 stmt = select(Videos).where(Videos.video_hash == video_hash)
                 result = await session.execute(stmt)
@@ -540,11 +546,14 @@ class VideoAnalyzer:
         # logger.info(f"✅ 多帧消息构建完成，包含{len(frames)}张图片")
 
         # 获取模型信息和客户端
-        model_info, api_provider, client = self.video_llm._select_model()
+        selection_result = self.video_llm._model_selector.select_best_available_model(set(), "response")
+        if not selection_result:
+            raise RuntimeError("无法为视频分析选择可用模型。")
+        model_info, api_provider, client = selection_result
         # logger.info(f"使用模型: {model_info.name} 进行多帧分析")
 
         # 直接执行多图片请求
-        api_response = await self.video_llm._execute_request(
+        api_response = await self.video_llm._executor.execute_request(
             api_provider=api_provider,
             client=client,
             request_type=RequestType.RESPONSE,
