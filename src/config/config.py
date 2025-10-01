@@ -45,6 +45,7 @@ from src.config.official_configs import (
     CommandConfig,
     PlanningSystemConfig,
     AffinityFlowConfig,
+    ProactiveThinkingConfig
 )
 
 from .api_ada_configs import (
@@ -419,6 +420,7 @@ class Config(ValidatedConfigBase):
         default_factory=lambda: CrossContextConfig(), description="跨群聊上下文共享配置"
     )
     affinity_flow: AffinityFlowConfig = Field(default_factory=lambda: AffinityFlowConfig(), description="亲和流配置")
+    ProactiveThinking: ProactiveThinkingConfig = Field(default_factory=lambda: AffinityFlowConfig(), description="主动思考配置")
 
 
 class APIAdapterConfig(ValidatedConfigBase):
