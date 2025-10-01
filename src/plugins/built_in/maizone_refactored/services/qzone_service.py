@@ -741,27 +741,41 @@ class QZoneService:
                 my_name = json_data.get("logininfo", {}).get("name", "")
                 for msg in json_data.get("msglist", []):
                     # 只有在处理好友说说时，才检查是否已评论并跳过
+                    commentlist = msg.get("commentlist")
+
+                    # 只有在处理好友说说时，才检查是否已评论并跳过
                     if not is_monitoring_own_feeds:
-                        is_commented = any(
-                            c.get("name") == my_name for c in msg.get("commentlist", []) if isinstance(c, dict)
-                        )
+                        is_commented = False
+                        if isinstance(commentlist, list):
+                            is_commented = any(
+                                c.get("name") == my_name for c in commentlist if isinstance(c, dict)
+                            )
                         if is_commented:
                             continue
 
-                    images = [pic["url1"] for pic in msg.get("pictotal", []) if "url1" in pic]
+                    # --- 安全地处理图片列表 ---
+                    images = []
+                    pictotal = msg.get("pictotal")
+                    if isinstance(pictotal, list):
+                        images = [
+                            pic["url1"] for pic in pictotal if isinstance(pic, dict) and "url1" in pic
+                        ]
 
+                    # --- 安全地处理评论列表 ---
                     comments = []
-                    if "commentlist" in msg:
-                        for c in msg["commentlist"]:
-                            comments.append(
-                                {
-                                    "qq_account": c.get("uin"),
-                                    "nickname": c.get("name"),
-                                    "content": c.get("content"),
-                                    "comment_tid": c.get("tid"),
-                                    "parent_tid": c.get("parent_tid"),  # API直接返回了父ID
-                                }
-                            )
+                    if isinstance(commentlist, list):
+                        for c in commentlist:
+                            # 确保评论条目也是字典
+                            if isinstance(c, dict):
+                                comments.append(
+                                    {
+                                        "qq_account": c.get("uin"),
+                                        "nickname": c.get("name"),
+                                        "content": c.get("content"),
+                                        "comment_tid": c.get("tid"),
+                                        "parent_tid": c.get("parent_tid"),
+                                    }
+                                )
 
                     feeds_list.append(
                         {
