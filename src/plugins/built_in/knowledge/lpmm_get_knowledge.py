@@ -1,8 +1,8 @@
-from typing import Dict, Any
+from typing import Any
 
+from src.chat.knowledge.knowledge_lib import qa_manager
 from src.common.logger import get_logger
 from src.config.config import global_config
-from src.chat.knowledge.knowledge_lib import qa_manager
 from src.plugin_system import BaseTool, ToolParamType
 
 logger = get_logger("lpmm_get_knowledge_tool")
@@ -19,7 +19,7 @@ class SearchKnowledgeFromLPMMTool(BaseTool):
     ]
     available_for_llm = global_config.lpmm_knowledge.enable
 
-    async def execute(self, function_args: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, function_args: dict[str, Any]) -> dict[str, Any]:
         """执行知识库搜索
 
         Args:
@@ -47,16 +47,16 @@ class SearchKnowledgeFromLPMMTool(BaseTool):
                 knowledge_parts = []
                 for i, item in enumerate(knowledge_info["knowledge_items"]):
                     knowledge_parts.append(f"- {item.get('content', 'N/A')}")
-                
+
                 knowledge_text = "\n".join(knowledge_parts)
-                summary = knowledge_info.get('summary', '无总结')
+                summary = knowledge_info.get("summary", "无总结")
                 content = f"关于 '{query}', 你知道以下信息：\n{knowledge_text}\n\n总结: {summary}"
             else:
                 content = f"关于 '{query}'，你的知识库里好像没有相关的信息呢"
             return {"type": "lpmm_knowledge", "id": query, "content": content}
         except Exception as e:
             # 捕获异常并记录错误
-            logger.error(f"知识库搜索工具执行失败: {str(e)}")
+            logger.error(f"知识库搜索工具执行失败: {e!s}")
             # 在其他异常情况下，确保 id 仍然是 query (如果它被定义了)
             query_id = query if "query" in locals() else "unknown_query"
-            return {"type": "info", "id": query_id, "content": f"lpmm知识库搜索失败，炸了: {str(e)}"}
+            return {"type": "info", "id": query_id, "content": f"lpmm知识库搜索失败，炸了: {e!s}"}

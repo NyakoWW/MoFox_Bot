@@ -1,35 +1,36 @@
 import asyncio
+import datetime
 import os
 import shutil
 import sys
-import orjson
-import datetime
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from threading import Lock
-from typing import Optional
+
+import orjson
 from json_repair import repair_json
 
 # 将项目根目录添加到 sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from src.common.logger import get_logger
-from src.chat.knowledge.utils.hash import get_sha256
-from src.llm_models.utils_model import LLMRequest
-from src.config.config import model_config
-from src.chat.knowledge.open_ie import OpenIE
-from src.chat.knowledge.embedding_store import EmbeddingManager
-from src.chat.knowledge.kg_manager import KGManager
 from rich.progress import (
-    Progress,
     BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
-    TaskProgressColumn,
-    MofNCompleteColumn,
-    SpinnerColumn,
-    TextColumn,
 )
+
+from src.chat.knowledge.embedding_store import EmbeddingManager
+from src.chat.knowledge.kg_manager import KGManager
+from src.chat.knowledge.open_ie import OpenIE
+from src.chat.knowledge.utils.hash import get_sha256
+from src.common.logger import get_logger
+from src.config.config import model_config
+from src.llm_models.utils_model import LLMRequest
 
 logger = get_logger("LPMM_LearningTool")
 ROOT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -39,6 +40,7 @@ TEMP_DIR = os.path.join(ROOT_PATH, "temp", "lpmm_cache")
 file_lock = Lock()
 
 # --- 缓存清理 ---
+
 
 def clear_cache():
     """清理 lpmm_learning_tool.py 生成的缓存文件"""
@@ -53,11 +55,12 @@ def clear_cache():
         logger.info("缓存目录不存在，无需清理。")
     logger.info("--- 缓存清理完成 ---")
 
+
 # --- 模块一：数据预处理 ---
 
 
 def process_text_file(file_path):
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         raw = f.read()
     return [p.strip() for p in raw.split("\n\n") if p.strip()]
 
@@ -84,7 +87,7 @@ def preprocess_raw_data():
 # --- 模块二：信息提取 ---
 
 
-def _parse_and_repair_json(json_string: str) -> Optional[dict]:
+def _parse_and_repair_json(json_string: str) -> dict | None:
     """
     尝试解析JSON字符串，如果失败则尝试修复并重新解析。
 
@@ -108,7 +111,7 @@ def _parse_and_repair_json(json_string: str) -> Optional[dict]:
         cleaned_string = cleaned_string[7:].strip()
     elif cleaned_string.startswith("```"):
         cleaned_string = cleaned_string[3:].strip()
-    
+
     if cleaned_string.endswith("```"):
         cleaned_string = cleaned_string[:-3].strip()
 
@@ -117,7 +120,7 @@ def _parse_and_repair_json(json_string: str) -> Optional[dict]:
         return orjson.loads(cleaned_string)
     except orjson.JSONDecodeError:
         logger.warning("直接解析JSON失败，将尝试修复...")
-        
+
         # 3. 修复与最终解析
         repaired_json_str = ""
         try:
@@ -164,10 +167,10 @@ async def extract_info_async(pg_hash, paragraph, llm_api):
     content = None
     try:
         content, (_, _, _) = await llm_api.generate_response_async(prompt)
-        
+
         # 改进点：调用封装好的函数处理JSON解析和修复
         extracted_data = _parse_and_repair_json(content)
-        
+
         if extracted_data is None:
             # 如果解析失败，抛出异常以触发统一的错误处理逻辑
             raise ValueError("无法从LLM输出中解析有效的JSON数据")
@@ -247,7 +250,7 @@ def extract_information(paragraphs_dict, model_set):
 # --- 模块三：数据导入 ---
 
 
-async def import_data(openie_obj: Optional[OpenIE] = None):
+async def import_data(openie_obj: OpenIE | None = None):
     """
     将OpenIE数据导入知识库（Embedding Store 和 KG）
 

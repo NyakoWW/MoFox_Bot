@@ -1,35 +1,34 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 视频分析器模块 - Rust优化版本
 集成了Rust视频关键帧提取模块，提供高性能的视频分析功能
 支持SIMD优化、多线程处理和智能关键帧检测
 """
 
-import os
-import tempfile
 import asyncio
 import base64
 import hashlib
+import io
+import os
+import tempfile
 import time
+from pathlib import Path
+
 import numpy as np
 from PIL import Image
-from pathlib import Path
-from typing import List, Tuple, Optional, Dict
-import io
-
-from src.llm_models.utils_model import LLMRequest
-from src.config.config import global_config, model_config
-from src.common.logger import get_logger
-from src.common.database.sqlalchemy_models import get_db_session, Videos
 from sqlalchemy import select
+
+from src.common.database.sqlalchemy_models import Videos, get_db_session
+from src.common.logger import get_logger
+from src.config.config import global_config, model_config
+from src.llm_models.utils_model import LLMRequest
 
 logger = get_logger("utils_video")
 
 # Rust模块可用性检测
 RUST_VIDEO_AVAILABLE = False
 try:
-    import rust_video # pyright: ignore[reportMissingImports]
+    import rust_video  # pyright: ignore[reportMissingImports]
 
     RUST_VIDEO_AVAILABLE = True
     logger.info("✅ Rust 视频处理模块加载成功")
@@ -203,7 +202,7 @@ class VideoAnalyzer:
         hash_obj.update(video_data)
         return hash_obj.hexdigest()
 
-    async def _check_video_exists(self, video_hash: str) -> Optional[Videos]:
+    async def _check_video_exists(self, video_hash: str) -> Videos | None:
         """检查视频是否已经分析过"""
         try:
             async with get_db_session() as session:
@@ -220,8 +219,8 @@ class VideoAnalyzer:
             return None
 
     async def _store_video_result(
-        self, video_hash: str,  description: str, metadata: Optional[Dict] = None
-    ) -> Optional[Videos]:
+        self, video_hash: str, description: str, metadata: dict | None = None
+    ) -> Videos | None:
         """存储视频分析结果到数据库"""
         # 检查描述是否为错误信息，如果是则不保存
         if description.startswith("❌"):
@@ -281,7 +280,7 @@ class VideoAnalyzer:
         else:
             logger.warning(f"无效的分析模式: {mode}")
 
-    async def extract_frames(self, video_path: str) -> List[Tuple[str, float]]:
+    async def extract_frames(self, video_path: str) -> list[tuple[str, float]]:
         """提取视频帧 - 智能选择最佳实现"""
         # 检查是否应该使用Rust实现
         if RUST_VIDEO_AVAILABLE and self.frame_extraction_mode == "keyframe":
@@ -303,7 +302,7 @@ class VideoAnalyzer:
                 logger.info(f"🔄 抽帧模式为 {self.frame_extraction_mode}，使用Python抽帧实现")
             return await self._extract_frames_python_fallback(video_path)
 
-    async def _extract_frames_rust_advanced(self, video_path: str) -> List[Tuple[str, float]]:
+    async def _extract_frames_rust_advanced(self, video_path: str) -> list[tuple[str, float]]:
         """使用 Rust 高级接口的帧提取"""
         try:
             logger.info("🔄 使用 Rust 高级接口提取关键帧...")
@@ -387,7 +386,7 @@ class VideoAnalyzer:
             logger.info("回退到基础 Rust 方法")
             return await self._extract_frames_rust(video_path)
 
-    async def _extract_frames_rust(self, video_path: str) -> List[Tuple[str, float]]:
+    async def _extract_frames_rust(self, video_path: str) -> list[tuple[str, float]]:
         """使用 Rust 实现的帧提取"""
         try:
             logger.info("🔄 使用 Rust 模块提取关键帧...")
@@ -463,7 +462,7 @@ class VideoAnalyzer:
             logger.error(f"❌ Rust 帧提取失败: {e}")
             raise e
 
-    async def _extract_frames_python_fallback(self, video_path: str) -> List[Tuple[str, float]]:
+    async def _extract_frames_python_fallback(self, video_path: str) -> list[tuple[str, float]]:
         """Python降级抽帧实现 - 支持多种抽帧模式"""
         try:
             # 导入旧版本分析器
@@ -490,7 +489,7 @@ class VideoAnalyzer:
             logger.error(f"❌ Python降级抽帧失败: {e}")
             return []
 
-    async def analyze_frames_batch(self, frames: List[Tuple[str, float]], user_question: str = None) -> str:
+    async def analyze_frames_batch(self, frames: list[tuple[str, float]], user_question: str = None) -> str:
         """批量分析所有帧"""
         logger.info(f"开始批量分析{len(frames)}帧")
 
@@ -526,7 +525,7 @@ class VideoAnalyzer:
             logger.error(f"❌ 视频识别失败: {e}")
             raise e
 
-    async def _analyze_multiple_frames(self, frames: List[Tuple[str, float]], prompt: str) -> str:
+    async def _analyze_multiple_frames(self, frames: list[tuple[str, float]], prompt: str) -> str:
         """使用多图片分析方法"""
         logger.info(f"开始构建包含{len(frames)}帧的分析请求")
 
@@ -566,7 +565,7 @@ class VideoAnalyzer:
         logger.info(f"视频识别完成，响应长度: {len(api_response.content or '')} ")
         return api_response.content or "❌ 未获得响应内容"
 
-    async def analyze_frames_sequential(self, frames: List[Tuple[str, float]], user_question: str = None) -> str:
+    async def analyze_frames_sequential(self, frames: list[tuple[str, float]], user_question: str = None) -> str:
         """逐帧分析并汇总"""
         logger.info(f"开始逐帧分析{len(frames)}帧")
 
@@ -624,7 +623,7 @@ class VideoAnalyzer:
             # 如果汇总失败，返回各帧分析结果
             return f"视频逐帧分析结果：\n\n{chr(10).join(frame_analyses)}"
 
-    async def analyze_video(self, video_path: str, user_question: str = None) -> Tuple[bool, str]:
+    async def analyze_video(self, video_path: str, user_question: str = None) -> tuple[bool, str]:
         """分析视频的主要方法
 
         Returns:
@@ -662,13 +661,13 @@ class VideoAnalyzer:
             return (True, result)
 
         except Exception as e:
-            error_msg = f"❌ 视频分析失败: {str(e)}"
+            error_msg = f"❌ 视频分析失败: {e!s}"
             logger.error(error_msg)
             return (False, error_msg)
 
     async def analyze_video_from_bytes(
         self, video_bytes: bytes, filename: str = None, user_question: str = None, prompt: str = None
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """从字节数据分析视频
 
         Args:
@@ -778,7 +777,7 @@ class VideoAnalyzer:
                 return {"summary": result}
 
         except Exception as e:
-            error_msg = f"❌ 从字节数据分析视频失败: {str(e)}"
+            error_msg = f"❌ 从字节数据分析视频失败: {e!s}"
             logger.error(error_msg)
 
             # 不保存错误信息到数据库，允许后续重试
@@ -802,7 +801,7 @@ class VideoAnalyzer:
         supported_formats = {".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv", ".m4v", ".3gp", ".webm"}
         return Path(file_path).suffix.lower() in supported_formats
 
-    def get_processing_capabilities(self) -> Dict[str, any]:
+    def get_processing_capabilities(self) -> dict[str, any]:
         """获取处理能力信息"""
         if not RUST_VIDEO_AVAILABLE:
             return {"error": "Rust视频处理模块不可用", "available": False, "reason": "rust_video模块未安装或加载失败"}
@@ -832,7 +831,7 @@ class VideoAnalyzer:
             logger.error(f"获取处理能力信息失败: {e}")
             return {"error": str(e), "available": False}
 
-    def _get_recommended_settings(self, cpu_features: Dict[str, bool]) -> Dict[str, any]:
+    def _get_recommended_settings(self, cpu_features: dict[str, bool]) -> dict[str, any]:
         """根据CPU特性推荐最佳设置"""
         settings = {
             "use_simd": any(cpu_features.values()),
@@ -882,7 +881,7 @@ def is_video_analysis_available() -> bool:
         return False
 
 
-def get_video_analysis_status() -> Dict[str, any]:
+def get_video_analysis_status() -> dict[str, any]:
     """获取视频分析功能的详细状态信息
 
     Returns:

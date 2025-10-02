@@ -6,22 +6,23 @@
 import asyncio
 import random
 import time
-from typing import Dict, Optional, Any, TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Any
 
-from src.chat.message_receive.chat_stream import ChatStream
-from src.common.logger import get_logger
-from src.common.data_models.database_data_model import DatabaseMessages
-from src.common.data_models.message_manager_data_model import StreamContext, MessageManagerStats, StreamStats
 from src.chat.chatter_manager import ChatterManager
+from src.chat.message_receive.chat_stream import ChatStream
 from src.chat.planner_actions.action_manager import ChatterActionManager
-from .sleep_manager.sleep_manager import SleepManager
-from .sleep_manager.wakeup_manager import WakeUpManager
+from src.common.data_models.database_data_model import DatabaseMessages
+from src.common.data_models.message_manager_data_model import MessageManagerStats, StreamStats
+from src.common.logger import get_logger
 from src.config.config import global_config
 from src.plugin_system.apis.chat_api import get_chat_manager
+
 from .distribution_manager import stream_loop_manager
+from .sleep_manager.sleep_manager import SleepManager
+from .sleep_manager.wakeup_manager import WakeUpManager
 
 if TYPE_CHECKING:
-    from src.common.data_models.message_manager_data_model import StreamContext
+    pass
 
 logger = get_logger("message_manager")
 
@@ -32,7 +33,7 @@ class MessageManager:
     def __init__(self, check_interval: float = 5.0):
         self.check_interval = check_interval  # 检查间隔（秒）
         self.is_running = False
-        self.manager_task: Optional[asyncio.Task] = None
+        self.manager_task: asyncio.Task | None = None
 
         # 统计信息
         self.stats = MessageManagerStats()
@@ -63,7 +64,7 @@ class MessageManager:
         stream_loop_manager.set_chatter_manager(self.chatter_manager)
 
         logger.info("🚀 消息管理器已启动 | 流循环管理器已启动")
-        
+
     async def stop(self):
         """停止消息管理器"""
         if not self.is_running:
@@ -88,7 +89,9 @@ class MessageManager:
                 logger.warning(f"MessageManager.add_message: 聊天流 {stream_id} 不存在")
                 return
             await self._check_and_handle_interruption(chat_stream)
-            chat_stream.context_manager.context.processing_task = asyncio.create_task(chat_stream.context_manager.add_message(message))
+            chat_stream.context_manager.context.processing_task = asyncio.create_task(
+                chat_stream.context_manager.add_message(message)
+            )
         except Exception as e:
             logger.error(f"添加消息到聊天流 {stream_id} 时发生错误: {e}")
 
@@ -123,7 +126,7 @@ class MessageManager:
         except Exception as e:
             logger.error(f"更新消息 {message_id} 时发生错误: {e}")
 
-    async def bulk_update_messages(self, stream_id: str, updates: List[Dict[str, Any]]) -> int:
+    async def bulk_update_messages(self, stream_id: str, updates: list[dict[str, Any]]) -> int:
         """批量更新消息信息，降低更新频率"""
         if not updates:
             return 0
@@ -141,11 +144,7 @@ class MessageManager:
                 if not message_id:
                     continue
 
-                payload = {
-                    key: value
-                    for key, value in item.items()
-                    if key != "message_id" and value is not None
-                }
+                payload = {key: value for key, value in item.items() if key != "message_id" and value is not None}
 
                 if not payload:
                     continue
@@ -169,9 +168,7 @@ class MessageManager:
             if not chat_stream:
                 logger.warning(f"MessageManager.add_action: 聊天流 {stream_id} 不存在")
                 return
-            success = await chat_stream.context_manager.update_message(
-                message_id, {"actions": [action]}
-            )
+            success = await chat_stream.context_manager.update_message(message_id, {"actions": [action]})
             if success:
                 logger.debug(f"为消息 {message_id} 添加动作 {action} 成功")
             else:
@@ -193,7 +190,7 @@ class MessageManager:
             context.is_active = False
 
             # 取消处理任务
-            if hasattr(context, 'processing_task') and context.processing_task and not context.processing_task.done():
+            if hasattr(context, "processing_task") and context.processing_task and not context.processing_task.done():
                 context.processing_task.cancel()
 
             logger.info(f"停用聊天流: {stream_id}")
@@ -218,7 +215,7 @@ class MessageManager:
         except Exception as e:
             logger.error(f"激活聊天流 {stream_id} 时发生错误: {e}")
 
-    def get_stream_stats(self, stream_id: str) -> Optional[StreamStats]:
+    def get_stream_stats(self, stream_id: str) -> StreamStats | None:
         """获取聊天流统计"""
         try:
             # 通过 ChatManager 获取 ChatStream
@@ -236,14 +233,18 @@ class MessageManager:
                 unread_count=unread_count,
                 history_count=len(context.history_messages),
                 last_check_time=context.last_check_time,
-                has_active_task=bool(hasattr(context, 'processing_task') and context.processing_task and not context.processing_task.done()),
+                has_active_task=bool(
+                    hasattr(context, "processing_task")
+                    and context.processing_task
+                    and not context.processing_task.done()
+                ),
             )
 
         except Exception as e:
             logger.error(f"获取聊天流 {stream_id} 统计时发生错误: {e}")
             return None
 
-    def get_manager_stats(self) -> Dict[str, Any]:
+    def get_manager_stats(self) -> dict[str, Any]:
         """获取管理器统计"""
         return {
             "total_streams": self.stats.total_streams,
@@ -278,13 +279,16 @@ class MessageManager:
         except Exception as e:
             logger.error(f"清理不活跃聊天流时发生错误: {e}")
 
-    async def _check_and_handle_interruption(self, chat_stream: Optional[ChatStream] = None):
+    async def _check_and_handle_interruption(self, chat_stream: ChatStream | None = None):
         """检查并处理消息打断"""
         if not global_config.chat.interruption_enabled:
             return
 
         # 检查是否有正在进行的处理任务
-        if chat_stream.context_manager.context.processing_task and not chat_stream.context_manager.context.processing_task.done():
+        if (
+            chat_stream.context_manager.context.processing_task
+            and not chat_stream.context_manager.context.processing_task.done()
+        ):
             # 计算打断概率
             interruption_probability = chat_stream.context_manager.context.calculate_interruption_probability(
                 global_config.chat.interruption_max_limit, global_config.chat.interruption_probability_factor
@@ -310,7 +314,9 @@ class MessageManager:
 
                 # 增加打断计数并应用afc阈值降低
                 chat_stream.context_manager.context.increment_interruption_count()
-                chat_stream.context_manager.context.apply_interruption_afc_reduction(global_config.chat.interruption_afc_reduction)
+                chat_stream.context_manager.context.apply_interruption_afc_reduction(
+                    global_config.chat.interruption_afc_reduction
+                )
 
                 # 检查是否已达到最大次数
                 if chat_stream.context_manager.context.interruption_count >= global_config.chat.interruption_max_limit:
@@ -364,7 +370,7 @@ class MessageManager:
                 return
 
             context = chat_stream.context_manager.context
-            if hasattr(context, 'unread_messages') and context.unread_messages:
+            if hasattr(context, "unread_messages") and context.unread_messages:
                 logger.debug(f"正在为流 {stream_id} 清除 {len(context.unread_messages)} 条未读消息")
                 context.unread_messages.clear()
             else:

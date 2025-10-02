@@ -1,15 +1,15 @@
 # 使用基于时间戳的文件处理器，简单的轮转份数限制
 
 import logging
-import orjson
 import threading
 import time
+from collections.abc import Callable
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import orjson
 import structlog
 import tomlkit
-
-from pathlib import Path
-from typing import Callable, Optional
-from datetime import datetime, timedelta
 
 # 创建logs目录
 LOG_DIR = Path("logs")
@@ -212,7 +212,7 @@ def load_log_config():  # sourcery skip: use-contextlib-suppress
 
     try:
         if config_path.exists():
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 config = tomlkit.load(f)
                 return config.get("log", default_config)
     except Exception as e:
@@ -781,23 +781,23 @@ class ModuleColoredConsoleRenderer:
                 thought_color = "\033[38;5;218m"
                 # 分割消息内容
                 prefix, thought = event_content.split("内心思考:", 1)
-                
+
                 # 前缀部分（“决定进行回复，”）使用模块颜色
                 if module_color:
                     prefix_colored = f"{module_color}{prefix.strip()}{RESET_COLOR}"
                 else:
                     prefix_colored = prefix.strip()
-                
+
                 # “内心思考”部分换行并使用专属颜色
                 thought_colored = f"\n\n{thought_color}内心思考:{thought.strip()}{RESET_COLOR}\n"
-                
+
                 # 重新组合
                 # parts.append(prefix_colored + thought_colored)
                 # 将前缀和思考内容作为独立的part添加，避免它们之间出现多余的空格
                 if prefix_colored:
                     parts.append(prefix_colored)
                 parts.append(thought_colored)
-                
+
             elif module_color:
                 event_content = f"{module_color}{event_content}{RESET_COLOR}"
                 parts.append(event_content)
@@ -942,7 +942,7 @@ raw_logger: structlog.stdlib.BoundLogger = structlog.get_logger()
 binds: dict[str, Callable] = {}
 
 
-def get_logger(name: Optional[str]) -> structlog.stdlib.BoundLogger:
+def get_logger(name: str | None) -> structlog.stdlib.BoundLogger:
     """获取logger实例，支持按名称绑定"""
     if name is None:
         return raw_logger

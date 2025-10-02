@@ -1,7 +1,8 @@
 # mmc/src/schedule/database.py
 
-from typing import List
-from sqlalchemy import select, func, update, delete
+
+from sqlalchemy import delete, func, select, update
+
 from src.common.database.sqlalchemy_models import MonthlyPlan, get_db_session
 from src.common.logger import get_logger
 from src.config.config import global_config
@@ -9,7 +10,7 @@ from src.config.config import global_config
 logger = get_logger("schedule_database")
 
 
-async def add_new_plans(plans: List[str], month: str):
+async def add_new_plans(plans: list[str], month: str):
     """
     批量添加新生成的月度计划到数据库，并确保不超过上限。
 
@@ -55,7 +56,7 @@ async def add_new_plans(plans: List[str], month: str):
             raise
 
 
-async def get_active_plans_for_month(month: str) -> List[MonthlyPlan]:
+async def get_active_plans_for_month(month: str) -> list[MonthlyPlan]:
     """
     获取指定月份所有状态为 'active' 的计划。
 
@@ -69,13 +70,13 @@ async def get_active_plans_for_month(month: str) -> List[MonthlyPlan]:
                 .where(MonthlyPlan.target_month == month, MonthlyPlan.status == "active")
                 .order_by(MonthlyPlan.created_at.desc())
             )
-            return result.scalars().all()
+            return list(result.scalars().all())
         except Exception as e:
             logger.error(f"查询 {month} 的有效月度计划时发生错误: {e}")
             return []
 
 
-async def mark_plans_completed(plan_ids: List[int]):
+async def mark_plans_completed(plan_ids: list[int]):
     """
     将指定ID的计划标记为已完成。
 
@@ -95,9 +96,7 @@ async def mark_plans_completed(plan_ids: List[int]):
             plan_details = "\n".join([f"  {i + 1}. {plan.plan_text}" for i, plan in enumerate(plans_to_mark)])
             logger.info(f"以下 {len(plans_to_mark)} 条月度计划将被标记为已完成:\n{plan_details}")
 
-            await session.execute(
-                update(MonthlyPlan).where(MonthlyPlan.id.in_(plan_ids)).values(status="completed")
-            )
+            await session.execute(update(MonthlyPlan).where(MonthlyPlan.id.in_(plan_ids)).values(status="completed"))
             await session.commit()
         except Exception as e:
             logger.error(f"标记月度计划为完成时发生错误: {e}")
@@ -105,7 +104,7 @@ async def mark_plans_completed(plan_ids: List[int]):
             raise
 
 
-async def delete_plans_by_ids(plan_ids: List[int]):
+async def delete_plans_by_ids(plan_ids: list[int]):
     """
     根据ID列表从数据库中物理删除月度计划。
 
@@ -136,7 +135,7 @@ async def delete_plans_by_ids(plan_ids: List[int]):
             raise
 
 
-async def update_plan_usage(plan_ids: List[int], used_date: str):
+async def update_plan_usage(plan_ids: list[int], used_date: str):
     """
     更新计划的使用统计信息。
 
@@ -184,9 +183,7 @@ async def update_plan_usage(plan_ids: List[int], used_date: str):
             raise
 
 
-async def get_smart_plans_for_daily_schedule(
-    month: str, max_count: int = 3, avoid_days: int = 7
-) -> List[MonthlyPlan]:
+async def get_smart_plans_for_daily_schedule(month: str, max_count: int = 3, avoid_days: int = 7) -> list[MonthlyPlan]:
     """
     智能抽取月度计划用于每日日程生成。
 
@@ -208,14 +205,10 @@ async def get_smart_plans_for_daily_schedule(
             avoid_date = (datetime.now() - timedelta(days=avoid_days)).strftime("%Y-%m-%d")
 
             # 查询符合条件的计划
-            query = select(MonthlyPlan).where(
-                MonthlyPlan.target_month == month, MonthlyPlan.status == "active"
-            )
+            query = select(MonthlyPlan).where(MonthlyPlan.target_month == month, MonthlyPlan.status == "active")
 
             # 排除最近使用过的计划
-            query = query.where(
-                (MonthlyPlan.last_used_date.is_(None)) | (MonthlyPlan.last_used_date < avoid_date)
-            )
+            query = query.where((MonthlyPlan.last_used_date.is_(None)) | (MonthlyPlan.last_used_date < avoid_date))
 
             # 按使用次数升序排列，优先选择使用次数少的
             result = await session.execute(query.order_by(MonthlyPlan.usage_count.asc()))
@@ -232,7 +225,7 @@ async def get_smart_plans_for_daily_schedule(
                 plans = random.sample(plans, max_count)
 
             logger.info(f"智能抽取了 {len(plans)} 条 {month} 的月度计划用于每日日程生成。")
-            return plans
+            return list(plans)
 
         except Exception as e:
             logger.error(f"智能抽取 {month} 的月度计划时发生错误: {e}")
@@ -263,7 +256,7 @@ async def archive_active_plans_for_month(month: str):
             raise
 
 
-async def get_archived_plans_for_month(month: str) -> List[MonthlyPlan]:
+async def get_archived_plans_for_month(month: str) -> list[MonthlyPlan]:
     """
     获取指定月份所有状态为 'archived' 的计划。
     用于生成下个月计划时的参考。
@@ -274,11 +267,9 @@ async def get_archived_plans_for_month(month: str) -> List[MonthlyPlan]:
     async with get_db_session() as session:
         try:
             result = await session.execute(
-                select(MonthlyPlan).where(
-                    MonthlyPlan.target_month == month, MonthlyPlan.status == "archived"
-                )
+                select(MonthlyPlan).where(MonthlyPlan.target_month == month, MonthlyPlan.status == "archived")
             )
-            return result.scalars().all()
+            return list(result.scalars().all())
         except Exception as e:
             logger.error(f"查询 {month} 的归档月度计划时发生错误: {e}")
             return []

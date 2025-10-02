@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 反注入系统统计模块
 
@@ -6,12 +5,12 @@
 """
 
 import datetime
-from typing import Dict, Any
+from typing import Any
 
 from sqlalchemy import select
 
-from src.common.logger import get_logger
 from src.common.database.sqlalchemy_models import AntiInjectionStats, get_db_session
+from src.common.logger import get_logger
 from src.config.config import global_config
 
 logger = get_logger("anti_injector.statistics")
@@ -31,9 +30,11 @@ class AntiInjectionStatistics:
         try:
             async with get_db_session() as session:
                 # 获取最新的统计记录，如果没有则创建
-                stats = (await session.execute(
-                    select(AntiInjectionStats).order_by(AntiInjectionStats.id.desc())
-                )).scalars().first()
+                stats = (
+                    (await session.execute(select(AntiInjectionStats).order_by(AntiInjectionStats.id.desc())))
+                    .scalars()
+                    .first()
+                )
                 if not stats:
                     stats = AntiInjectionStats()
                     session.add(stats)
@@ -49,9 +50,11 @@ class AntiInjectionStatistics:
         """更新统计数据"""
         try:
             async with get_db_session() as session:
-                stats = (await session.execute(
-                    select(AntiInjectionStats).order_by(AntiInjectionStats.id.desc())
-                )).scalars().first()
+                stats = (
+                    (await session.execute(select(AntiInjectionStats).order_by(AntiInjectionStats.id.desc())))
+                    .scalars()
+                    .first()
+                )
                 if not stats:
                     stats = AntiInjectionStats()
                     session.add(stats)
@@ -90,7 +93,7 @@ class AntiInjectionStatistics:
         except Exception as e:
             logger.error(f"更新统计数据失败: {e}")
 
-    async def get_stats(self) -> Dict[str, Any]:
+    async def get_stats(self) -> dict[str, Any]:
         """获取统计信息"""
         try:
             # 检查反注入系统是否启用

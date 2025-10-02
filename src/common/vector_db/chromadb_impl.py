@@ -1,11 +1,12 @@
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import chromadb
 from chromadb.config import Settings
 
-from .base import VectorDBBase
 from src.common.logger import get_logger
+
+from .base import VectorDBBase
 
 logger = get_logger("chromadb_impl")
 
@@ -38,7 +39,7 @@ class ChromaDBImpl(VectorDBBase):
                         self.client = chromadb.PersistentClient(
                             path=path, settings=Settings(anonymized_telemetry=False)
                         )
-                        self._collections: Dict[str, Any] = {}
+                        self._collections: dict[str, Any] = {}
                         self._initialized = True
                         logger.info(f"ChromaDB 客户端已初始化，数据库路径: {path}")
                     except Exception as e:
@@ -65,10 +66,10 @@ class ChromaDBImpl(VectorDBBase):
     def add(
         self,
         collection_name: str,
-        embeddings: List[List[float]],
-        documents: Optional[List[str]] = None,
-        metadatas: Optional[List[Dict[str, Any]]] = None,
-        ids: Optional[List[str]] = None,
+        embeddings: list[list[float]],
+        documents: list[str] | None = None,
+        metadatas: list[dict[str, Any]] | None = None,
+        ids: list[str] | None = None,
     ) -> None:
         collection = self.get_or_create_collection(collection_name)
         if collection:
@@ -85,11 +86,11 @@ class ChromaDBImpl(VectorDBBase):
     def query(
         self,
         collection_name: str,
-        query_embeddings: List[List[float]],
+        query_embeddings: list[list[float]],
         n_results: int = 1,
-        where: Optional[Dict[str, Any]] = None,
+        where: dict[str, Any] | None = None,
         **kwargs: Any,
-    ) -> Dict[str, List[Any]]:
+    ) -> dict[str, list[Any]]:
         collection = self.get_or_create_collection(collection_name)
         if collection:
             try:
@@ -98,13 +99,13 @@ class ChromaDBImpl(VectorDBBase):
                     "n_results": n_results,
                     **kwargs,
                 }
-                
+
                 # 修复ChromaDB的where条件格式
                 if where:
                     processed_where = self._process_where_condition(where)
                     if processed_where:
                         query_params["where"] = processed_where
-                
+
                 return collection.query(**query_params)
             except Exception as e:
                 logger.error(f"查询集合 '{collection_name}' 失败: {e}")
@@ -114,29 +115,29 @@ class ChromaDBImpl(VectorDBBase):
                         "query_embeddings": query_embeddings,
                         "n_results": n_results,
                     }
-                    logger.warning(f"使用回退查询模式（无where条件）")
+                    logger.warning("使用回退查询模式（无where条件）")
                     return collection.query(**fallback_params)
                 except Exception as fallback_e:
                     logger.error(f"回退查询也失败: {fallback_e}")
         return {}
 
-    def _process_where_condition(self, where: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _process_where_condition(self, where: dict[str, Any]) -> dict[str, Any] | None:
         """
         处理where条件，转换为ChromaDB支持的格式
         ChromaDB支持的格式：
-        - 简单条件: {"field": "value"}  
+        - 简单条件: {"field": "value"}
         - 操作符条件: {"field": {"$op": "value"}}
         - AND条件: {"$and": [condition1, condition2]}
         - OR条件: {"$or": [condition1, condition2]}
         """
         if not where:
             return None
-        
+
         try:
             # 如果只有一个字段，直接返回
             if len(where) == 1:
                 key, value = next(iter(where.items()))
-                
+
                 # 处理列表值（如memory_types）
                 if isinstance(value, list):
                     if len(value) == 1:
@@ -146,7 +147,7 @@ class ChromaDBImpl(VectorDBBase):
                         return {key: {"$in": value}}
                 else:
                     return {key: value}
-            
+
             # 多个字段使用 $and 操作符
             conditions = []
             for key, value in where.items():
@@ -157,9 +158,9 @@ class ChromaDBImpl(VectorDBBase):
                         conditions.append({key: {"$in": value}})
                 else:
                     conditions.append({key: value})
-            
+
             return {"$and": conditions}
-            
+
         except Exception as e:
             logger.warning(f"处理where条件失败: {e}, 使用简化条件")
             # 回退到只使用第一个条件
@@ -174,13 +175,13 @@ class ChromaDBImpl(VectorDBBase):
     def get(
         self,
         collection_name: str,
-        ids: Optional[List[str]] = None,
-        where: Optional[Dict[str, Any]] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-        where_document: Optional[Dict[str, Any]] = None,
-        include: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        ids: list[str] | None = None,
+        where: dict[str, Any] | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        where_document: dict[str, Any] | None = None,
+        include: list[str] | None = None,
+    ) -> dict[str, Any]:
         """根据条件从集合中获取数据"""
         collection = self.get_or_create_collection(collection_name)
         if collection:
@@ -189,7 +190,7 @@ class ChromaDBImpl(VectorDBBase):
                 processed_where = None
                 if where:
                     processed_where = self._process_where_condition(where)
-                
+
                 return collection.get(
                     ids=ids,
                     where=processed_where,
@@ -202,7 +203,7 @@ class ChromaDBImpl(VectorDBBase):
                 logger.error(f"从集合 '{collection_name}' 获取数据失败: {e}")
                 # 如果获取失败，尝试不使用where条件重新获取
                 try:
-                    logger.warning(f"使用回退获取模式（无where条件）")
+                    logger.warning("使用回退获取模式（无where条件）")
                     return collection.get(
                         ids=ids,
                         limit=limit,
@@ -217,8 +218,8 @@ class ChromaDBImpl(VectorDBBase):
     def delete(
         self,
         collection_name: str,
-        ids: Optional[List[str]] = None,
-        where: Optional[Dict[str, Any]] = None,
+        ids: list[str] | None = None,
+        where: dict[str, Any] | None = None,
     ) -> None:
         collection = self.get_or_create_collection(collection_name)
         if collection:

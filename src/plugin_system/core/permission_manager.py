@@ -4,16 +4,16 @@
 这个模块提供了权限系统的核心实现，包括权限检查、权限节点管理、用户权限管理等功能。
 """
 
-from typing import List, Set, Tuple
-from sqlalchemy.ext.asyncio import async_sessionmaker
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from datetime import datetime
-from sqlalchemy import select, delete
 
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from src.common.database.sqlalchemy_models import PermissionNodes, UserPermissions, get_engine
 from src.common.logger import get_logger
-from src.common.database.sqlalchemy_models import get_engine, PermissionNodes, UserPermissions
-from src.plugin_system.apis.permission_api import IPermissionManager, PermissionNode, UserInfo
 from src.config.config import global_config
+from src.plugin_system.apis.permission_api import IPermissionManager, PermissionNode, UserInfo
 
 logger = get_logger(__name__)
 
@@ -24,7 +24,7 @@ class PermissionManager(IPermissionManager):
     def __init__(self):
         self.engine = None
         self.SessionLocal = None
-        self._master_users: Set[Tuple[str, str]] = set()
+        self._master_users: set[tuple[str, str]] = set()
         self._load_master_users()
 
     async def initialize(self):
@@ -95,17 +95,16 @@ class PermissionManager(IPermissionManager):
 
                 # 检查用户是否有明确的权限设置
                 result = await session.execute(
-                    select(UserPermissions)
-                    .filter_by(platform=user.platform, user_id=user.user_id, permission_node=permission_node)
+                    select(UserPermissions).filter_by(
+                        platform=user.platform, user_id=user.user_id, permission_node=permission_node
+                    )
                 )
                 user_perm = result.scalar_one_or_none()
 
                 if user_perm:
                     # 有明确设置，返回设置的值
                     res = user_perm.granted
-                    logger.debug(
-                        f"用户 {user.platform}:{user.user_id} 对权限节点 {permission_node} 的明确设置: {res}"
-                    )
+                    logger.debug(f"用户 {user.platform}:{user.user_id} 对权限节点 {permission_node} 的明确设置: {res}")
                     return res
                 else:
                     # 没有明确设置，使用默认值
@@ -191,8 +190,9 @@ class PermissionManager(IPermissionManager):
 
                 # 检查是否已有权限记录
                 result = await session.execute(
-                    select(UserPermissions)
-                    .filter_by(platform=user.platform, user_id=user.user_id, permission_node=permission_node)
+                    select(UserPermissions).filter_by(
+                        platform=user.platform, user_id=user.user_id, permission_node=permission_node
+                    )
                 )
                 existing_perm = result.scalar_one_or_none()
 
@@ -244,8 +244,9 @@ class PermissionManager(IPermissionManager):
 
                 # 检查是否已有权限记录
                 result = await session.execute(
-                    select(UserPermissions)
-                    .filter_by(platform=user.platform, user_id=user.user_id, permission_node=permission_node)
+                    select(UserPermissions).filter_by(
+                        platform=user.platform, user_id=user.user_id, permission_node=permission_node
+                    )
                 )
                 existing_perm = result.scalar_one_or_none()
 
@@ -275,7 +276,7 @@ class PermissionManager(IPermissionManager):
             logger.error(f"撤销权限时发生未知错误: {e}")
             return False
 
-    async def get_user_permissions(self, user: UserInfo) -> List[str]:
+    async def get_user_permissions(self, user: UserInfo) -> list[str]:
         """
         获取用户拥有的所有权限节点
 
@@ -303,8 +304,9 @@ class PermissionManager(IPermissionManager):
                 for node in all_nodes:
                     # 检查用户是否有明确的权限设置
                     result = await session.execute(
-                        select(UserPermissions)
-                        .filter_by(platform=user.platform, user_id=user.user_id, permission_node=node.node_name)
+                        select(UserPermissions).filter_by(
+                            platform=user.platform, user_id=user.user_id, permission_node=node.node_name
+                        )
                     )
                     user_perm = result.scalar_one_or_none()
 
@@ -326,7 +328,7 @@ class PermissionManager(IPermissionManager):
             logger.error(f"获取用户权限时发生未知错误: {e}")
             return []
 
-    async def get_all_permission_nodes(self) -> List[PermissionNode]:
+    async def get_all_permission_nodes(self) -> list[PermissionNode]:
         """
         获取所有已注册的权限节点
 
@@ -354,7 +356,7 @@ class PermissionManager(IPermissionManager):
             logger.error(f"获取所有权限节点时发生未知错误: {e}")
             return []
 
-    async def get_plugin_permission_nodes(self, plugin_name: str) -> List[PermissionNode]:
+    async def get_plugin_permission_nodes(self, plugin_name: str) -> list[PermissionNode]:
         """
         获取指定插件的所有权限节点
 
@@ -408,8 +410,7 @@ class PermissionManager(IPermissionManager):
 
                 # 删除用户权限记录
                 result = await session.execute(
-                    delete(UserPermissions)
-                    .where(UserPermissions.permission_node.in_(node_names))
+                    delete(UserPermissions).where(UserPermissions.permission_node.in_(node_names))
                 )
                 deleted_user_perms = result.rowcount
 
@@ -430,7 +431,7 @@ class PermissionManager(IPermissionManager):
             logger.error(f"删除插件权限时发生未知错误: {e}")
             return False
 
-    async def get_users_with_permission(self, permission_node: str) -> List[Tuple[str, str]]:
+    async def get_users_with_permission(self, permission_node: str) -> list[tuple[str, str]]:
         """
         获取拥有指定权限的所有用户
 

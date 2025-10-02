@@ -1,25 +1,24 @@
-import traceback
 import os
 import re
+import traceback
+from typing import Any
 
-from typing import Dict, Any, Optional
 from maim_message import UserInfo
-
-from src.common.logger import get_logger
-from src.config.config import global_config
-from src.mood.mood_manager import mood_manager  # 导入情绪管理器
-from src.chat.message_receive.chat_stream import get_chat_manager, ChatStream
-from src.chat.message_receive.message import MessageRecv, MessageRecvS4U
-from src.chat.message_receive.storage import MessageStorage
-from src.chat.message_manager import message_manager
-from src.chat.utils.prompt import Prompt, global_prompt_manager
-from src.plugin_system.core import component_registry, event_manager, global_announcement_manager
-from src.plugin_system.base import BaseCommand, EventType
-from src.mais4u.mais4u_chat.s4u_msg_processor import S4UMessageProcessor
-from src.chat.utils.utils import is_mentioned_bot_in_message
 
 # 导入反注入系统
 from src.chat.antipromptinjector import initialize_anti_injector
+from src.chat.message_manager import message_manager
+from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
+from src.chat.message_receive.message import MessageRecv, MessageRecvS4U
+from src.chat.message_receive.storage import MessageStorage
+from src.chat.utils.prompt import Prompt, global_prompt_manager
+from src.chat.utils.utils import is_mentioned_bot_in_message
+from src.common.logger import get_logger
+from src.config.config import global_config
+from src.mais4u.mais4u_chat.s4u_msg_processor import S4UMessageProcessor
+from src.mood.mood_manager import mood_manager  # 导入情绪管理器
+from src.plugin_system.base import BaseCommand, EventType
+from src.plugin_system.core import component_registry, event_manager, global_announcement_manager
 
 # 获取项目根目录（假设本文件在src/chat/message_receive/下，根目录为上上上级目录）
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
@@ -190,7 +189,7 @@ class ChatBot:
             try:
                 # 检查聊天类型限制
                 if not plus_command_instance.is_chat_type_allowed():
-                    is_group = message.message_info.group_info                    
+                    is_group = message.message_info.group_info
                     logger.info(
                         f"PlusCommand {plus_command_class.__name__} 不支持当前聊天类型: {'群聊' if is_group else '私聊'}"
                     )
@@ -219,7 +218,7 @@ class ChatBot:
                 logger.error(traceback.format_exc())
 
                 try:
-                    await plus_command_instance.send_text(f"命令执行出错: {str(e)}")
+                    await plus_command_instance.send_text(f"命令执行出错: {e!s}")
                 except Exception as send_error:
                     logger.error(f"发送错误消息失败: {send_error}")
 
@@ -286,7 +285,7 @@ class ChatBot:
                     logger.error(traceback.format_exc())
 
                     try:
-                        await command_instance.send_text(f"命令执行出错: {str(e)}")
+                        await command_instance.send_text(f"命令执行出错: {e!s}")
                     except Exception as send_error:
                         logger.error(f"发送错误消息失败: {send_error}")
 
@@ -338,7 +337,7 @@ class ChatBot:
         except Exception as e:
             logger.error(f"处理适配器响应时出错: {e}")
 
-    async def do_s4u(self, message_data: Dict[str, Any]):
+    async def do_s4u(self, message_data: dict[str, Any]):
         message = MessageRecvS4U(message_data)
         group_info = message.message_info.group_info
         user_info = message.message_info.user_info
@@ -359,7 +358,7 @@ class ChatBot:
 
         return
 
-    async def message_process(self, message_data: Dict[str, Any]) -> None:
+    async def message_process(self, message_data: dict[str, Any]) -> None:
         """处理转化后的统一格式消息"""
         try:
             # 首先处理可能的切片消息重组
@@ -420,7 +419,9 @@ class ChatBot:
             await message.process()
 
             # 在这里打印[所见]日志，确保在所有处理和过滤之前记录
-            logger.info(f"\u001b[38;5;118m{message.message_info.user_info.user_nickname}:{message.processed_plain_text}\u001b[0m")
+            logger.info(
+                f"\u001b[38;5;118m{message.message_info.user_info.user_nickname}:{message.processed_plain_text}\u001b[0m"
+            )
 
             # 过滤检查
             if _check_ban_words(message.processed_plain_text, chat, user_info) or _check_ban_regex(  # type: ignore
@@ -452,11 +453,11 @@ class ChatBot:
             result = await event_manager.trigger_event(EventType.ON_MESSAGE, permission_group="SYSTEM", message=message)
             if not result.all_continue_process():
                 raise UserWarning(f"插件{result.get_summary().get('stopped_handlers', '')}于消息到达时取消了消息处理")
-            
+
             # TODO:暂不可用
             # 确认从接口发来的message是否有自定义的prompt模板信息
             if message.message_info.template_info and not message.message_info.template_info.template_default:
-                template_group_name: Optional[str] = message.message_info.template_info.template_name  # type: ignore
+                template_group_name: str | None = message.message_info.template_info.template_name  # type: ignore
                 template_items = message.message_info.template_info.template_items
                 async with global_prompt_manager.async_message_scope(template_group_name):
                     if isinstance(template_items, dict):
@@ -469,14 +470,14 @@ class ChatBot:
             async def preprocess():
                 # 存储消息到数据库
                 from .storage import MessageStorage
-                
+
                 try:
                     await MessageStorage.store_message(message, message.chat_stream)
                     logger.debug(f"消息已存储到数据库: {message.message_info.message_id}")
                 except Exception as e:
                     logger.error(f"存储消息到数据库失败: {e}")
                     traceback.print_exc()
-                
+
                 # 使用消息管理器处理消息（保持原有功能）
                 from src.common.data_models.database_data_model import DatabaseMessages
 

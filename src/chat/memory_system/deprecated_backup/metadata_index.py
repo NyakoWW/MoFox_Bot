@@ -1,70 +1,71 @@
-# -*- coding: utf-8 -*-
 """
 元数据索引系统
 为记忆系统提供多维度的精准过滤和查询能力
 """
 
-import os
-import time
-import orjson
-from typing import Dict, List, Optional, Tuple, Set, Any, Union
-from datetime import datetime, timedelta
-from dataclasses import dataclass, field
-from enum import Enum
 import threading
+import time
 from collections import defaultdict
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
+from typing import Any
 
+import orjson
+
+from src.chat.memory_system.memory_chunk import ConfidenceLevel, ImportanceLevel, MemoryChunk, MemoryType
 from src.common.logger import get_logger
-from src.chat.memory_system.memory_chunk import MemoryChunk, MemoryType, ConfidenceLevel, ImportanceLevel
 
 logger = get_logger(__name__)
 
 
 class IndexType(Enum):
     """索引类型"""
-    MEMORY_TYPE = "memory_type"           # 记忆类型索引
-    USER_ID = "user_id"                   # 用户ID索引
-    SUBJECT = "subject"                   # 主体索引
-    KEYWORD = "keyword"                   # 关键词索引
-    TAG = "tag"                           # 标签索引
-    CATEGORY = "category"                 # 分类索引
-    TIMESTAMP = "timestamp"               # 时间索引
-    CONFIDENCE = "confidence"             # 置信度索引
-    IMPORTANCE = "importance"             # 重要性索引
+
+    MEMORY_TYPE = "memory_type"  # 记忆类型索引
+    USER_ID = "user_id"  # 用户ID索引
+    SUBJECT = "subject"  # 主体索引
+    KEYWORD = "keyword"  # 关键词索引
+    TAG = "tag"  # 标签索引
+    CATEGORY = "category"  # 分类索引
+    TIMESTAMP = "timestamp"  # 时间索引
+    CONFIDENCE = "confidence"  # 置信度索引
+    IMPORTANCE = "importance"  # 重要性索引
     RELATIONSHIP_SCORE = "relationship_score"  # 关系分索引
     ACCESS_FREQUENCY = "access_frequency"  # 访问频率索引
-    SEMANTIC_HASH = "semantic_hash"       # 语义哈希索引
+    SEMANTIC_HASH = "semantic_hash"  # 语义哈希索引
 
 
 @dataclass
 class IndexQuery:
     """索引查询条件"""
-    user_ids: Optional[List[str]] = None
-    memory_types: Optional[List[MemoryType]] = None
-    subjects: Optional[List[str]] = None
-    keywords: Optional[List[str]] = None
-    tags: Optional[List[str]] = None
-    categories: Optional[List[str]] = None
-    time_range: Optional[Tuple[float, float]] = None
-    confidence_levels: Optional[List[ConfidenceLevel]] = None
-    importance_levels: Optional[List[ImportanceLevel]] = None
-    min_relationship_score: Optional[float] = None
-    max_relationship_score: Optional[float] = None
-    min_access_count: Optional[int] = None
-    semantic_hashes: Optional[List[str]] = None
-    limit: Optional[int] = None
-    sort_by: Optional[str] = None  # "created_at", "access_count", "relevance_score"
+
+    user_ids: list[str] | None = None
+    memory_types: list[MemoryType] | None = None
+    subjects: list[str] | None = None
+    keywords: list[str] | None = None
+    tags: list[str] | None = None
+    categories: list[str] | None = None
+    time_range: tuple[float, float] | None = None
+    confidence_levels: list[ConfidenceLevel] | None = None
+    importance_levels: list[ImportanceLevel] | None = None
+    min_relationship_score: float | None = None
+    max_relationship_score: float | None = None
+    min_access_count: int | None = None
+    semantic_hashes: list[str] | None = None
+    limit: int | None = None
+    sort_by: str | None = None  # "created_at", "access_count", "relevance_score"
     sort_order: str = "desc"  # "asc", "desc"
 
 
 @dataclass
 class IndexResult:
     """索引结果"""
-    memory_ids: List[str]
+
+    memory_ids: list[str]
     total_count: int
     query_time: float
-    filtered_by: List[str]
+    filtered_by: list[str]
 
 
 class MetadataIndexManager:
@@ -93,7 +94,7 @@ class MetadataIndexManager:
         self.access_frequency_index = []  # [(access_count, memory_id), ...]
 
         # 内存缓存
-        self.memory_metadata_cache: Dict[str, Dict[str, Any]] = {}
+        self.memory_metadata_cache: dict[str, dict[str, Any]] = {}
 
         # 统计信息
         self.index_stats = {
@@ -102,7 +103,7 @@ class MetadataIndexManager:
             "average_query_time": 0.0,
             "total_queries": 0,
             "cache_hit_rate": 0.0,
-            "cache_hits": 0
+            "cache_hits": 0,
         }
 
         # 线程锁
@@ -139,7 +140,7 @@ class MetadataIndexManager:
             return key
 
     @staticmethod
-    def _serialize_metadata_entry(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    def _serialize_metadata_entry(metadata: dict[str, Any]) -> dict[str, Any]:
         serialized = {}
         for field_name, value in metadata.items():
             if isinstance(value, Enum):
@@ -148,7 +149,7 @@ class MetadataIndexManager:
                 serialized[field_name] = value
         return serialized
 
-    async def index_memories(self, memories: List[MemoryChunk]):
+    async def index_memories(self, memories: list[MemoryChunk]):
         """为记忆建立索引"""
         if not memories:
             return
@@ -171,9 +172,8 @@ class MetadataIndexManager:
 
             index_time = time.time() - start_time
             self.index_stats["index_build_time"] = (
-                (self.index_stats["index_build_time"] * (len(memories) - 1) + index_time) /
-                len(memories)
-            )
+                self.index_stats["index_build_time"] * (len(memories) - 1) + index_time
+            ) / len(memories)
 
             logger.debug(f"元数据索引完成，{len(memories)} 条记忆，耗时 {index_time:.3f}秒")
 
@@ -258,7 +258,7 @@ class MetadataIndexManager:
             "relationship_score": memory.metadata.relationship_score,
             "relevance_score": memory.metadata.relevance_score,
             "semantic_hash": memory.semantic_hash,
-            "subjects": memory.subjects
+            "subjects": memory.subjects,
         }
 
         # 记忆类型索引
@@ -355,28 +355,27 @@ class MetadataIndexManager:
 
                 # 限制数量
                 if query.limit and len(filtered_ids) > query.limit:
-                    filtered_ids = filtered_ids[:query.limit]
+                    filtered_ids = filtered_ids[: query.limit]
 
                 # 记录查询统计
                 query_time = time.time() - start_time
                 self.index_stats["total_queries"] += 1
                 self.index_stats["average_query_time"] = (
-                    (self.index_stats["average_query_time"] * (self.index_stats["total_queries"] - 1) + query_time) /
-                    self.index_stats["total_queries"]
-                )
+                    self.index_stats["average_query_time"] * (self.index_stats["total_queries"] - 1) + query_time
+                ) / self.index_stats["total_queries"]
 
                 return IndexResult(
                     memory_ids=filtered_ids,
                     total_count=len(filtered_ids),
                     query_time=query_time,
-                    filtered_by=self._get_applied_filters(query)
+                    filtered_by=self._get_applied_filters(query),
                 )
 
         except Exception as e:
             logger.error(f"❌ 元数据查询失败: {e}", exc_info=True)
             return IndexResult(memory_ids=[], total_count=0, query_time=0.0, filtered_by=[])
 
-    def _get_candidate_memories(self, query: IndexQuery) -> Set[str]:
+    def _get_candidate_memories(self, query: IndexQuery) -> set[str]:
         """获取候选记忆ID集合"""
         candidate_ids = set()
 
@@ -445,7 +444,7 @@ class MetadataIndexManager:
 
         return candidate_ids
 
-    def _collect_index_matches(self, index_type: IndexType, token: Optional[Union[str, Enum]]) -> Set[str]:
+    def _collect_index_matches(self, index_type: IndexType, token: str | Enum | None) -> set[str]:
         """根据给定token收集索引匹配，支持部分匹配"""
         mapping = self.indices.get(index_type)
         if mapping is None:
@@ -462,7 +461,7 @@ class MetadataIndexManager:
         if not key:
             return set()
 
-        matches: Set[str] = set(mapping.get(key, set()))
+        matches: set[str] = set(mapping.get(key, set()))
 
         if matches:
             return set(matches)
@@ -478,7 +477,7 @@ class MetadataIndexManager:
 
         return matches
 
-    def _apply_filters(self, candidate_ids: Set[str], query: IndexQuery) -> List[str]:
+    def _apply_filters(self, candidate_ids: set[str], query: IndexQuery) -> list[str]:
         """应用过滤条件"""
         filtered_ids = list(candidate_ids)
 
@@ -486,15 +485,15 @@ class MetadataIndexManager:
         if query.time_range:
             start_time, end_time = query.time_range
             filtered_ids = [
-                memory_id for memory_id in filtered_ids
-                if self._is_in_time_range(memory_id, start_time, end_time)
+                memory_id for memory_id in filtered_ids if self._is_in_time_range(memory_id, start_time, end_time)
             ]
 
         # 置信度过滤
         if query.confidence_levels:
             confidence_set = set(query.confidence_levels)
             filtered_ids = [
-                memory_id for memory_id in filtered_ids
+                memory_id
+                for memory_id in filtered_ids
                 if self.memory_metadata_cache[memory_id]["confidence"] in confidence_set
             ]
 
@@ -502,27 +501,31 @@ class MetadataIndexManager:
         if query.importance_levels:
             importance_set = set(query.importance_levels)
             filtered_ids = [
-                memory_id for memory_id in filtered_ids
+                memory_id
+                for memory_id in filtered_ids
                 if self.memory_metadata_cache[memory_id]["importance"] in importance_set
             ]
 
         # 关系分范围过滤
         if query.min_relationship_score is not None:
             filtered_ids = [
-                memory_id for memory_id in filtered_ids
+                memory_id
+                for memory_id in filtered_ids
                 if self.memory_metadata_cache[memory_id]["relationship_score"] >= query.min_relationship_score
             ]
 
         if query.max_relationship_score is not None:
             filtered_ids = [
-                memory_id for memory_id in filtered_ids
+                memory_id
+                for memory_id in filtered_ids
                 if self.memory_metadata_cache[memory_id]["relationship_score"] <= query.max_relationship_score
             ]
 
         # 最小访问次数过滤
         if query.min_access_count is not None:
             filtered_ids = [
-                memory_id for memory_id in filtered_ids
+                memory_id
+                for memory_id in filtered_ids
                 if self.memory_metadata_cache[memory_id]["access_count"] >= query.min_access_count
             ]
 
@@ -530,7 +533,8 @@ class MetadataIndexManager:
         if query.semantic_hashes:
             hash_set = set(query.semantic_hashes)
             filtered_ids = [
-                memory_id for memory_id in filtered_ids
+                memory_id
+                for memory_id in filtered_ids
                 if self.memory_metadata_cache[memory_id]["semantic_hash"] in hash_set
             ]
 
@@ -541,7 +545,7 @@ class MetadataIndexManager:
         created_at = self.memory_metadata_cache[memory_id]["created_at"]
         return start_time <= created_at <= end_time
 
-    def _sort_memories(self, memory_ids: List[str], sort_by: str, sort_order: str) -> List[str]:
+    def _sort_memories(self, memory_ids: list[str], sort_by: str, sort_order: str) -> list[str]:
         """对记忆进行排序"""
         if sort_by == "created_at":
             # 使用时间索引（已经有序）
@@ -560,8 +564,7 @@ class MetadataIndexManager:
         elif sort_by == "relevance_score":
             # 按相关度排序
             memory_ids.sort(
-                key=lambda mid: self.memory_metadata_cache[mid]["relevance_score"],
-                reverse=(sort_order == "desc")
+                key=lambda mid: self.memory_metadata_cache[mid]["relevance_score"], reverse=(sort_order == "desc")
             )
 
         elif sort_by == "relationship_score":
@@ -574,13 +577,12 @@ class MetadataIndexManager:
         elif sort_by == "last_accessed":
             # 按最后访问时间排序
             memory_ids.sort(
-                key=lambda mid: self.memory_metadata_cache[mid]["last_accessed"],
-                reverse=(sort_order == "desc")
+                key=lambda mid: self.memory_metadata_cache[mid]["last_accessed"], reverse=(sort_order == "desc")
             )
 
         return memory_ids
 
-    def _get_applied_filters(self, query: IndexQuery) -> List[str]:
+    def _get_applied_filters(self, query: IndexQuery) -> list[str]:
         """获取应用的过滤器列表"""
         filters = []
         if query.memory_types:
@@ -665,7 +667,9 @@ class MetadataIndexManager:
                 self.relationship_index = [(score, mid) for score, mid in self.relationship_index if mid != memory_id]
 
                 # 从访问频率索引中移除
-                self.access_frequency_index = [(count, mid) for count, mid in self.access_frequency_index if mid != memory_id]
+                self.access_frequency_index = [
+                    (count, mid) for count, mid in self.access_frequency_index if mid != memory_id
+                ]
 
                 # 注意：关键词、标签、分类索引需要从原始记忆中获取，这里简化处理
                 # 实际实现中可能需要重新加载记忆或维护反向索引
@@ -682,11 +686,11 @@ class MetadataIndexManager:
             except Exception as e:
                 logger.error(f"❌ 移除记忆索引失败: {e}")
 
-    async def get_memory_metadata(self, memory_id: str) -> Optional[Dict[str, Any]]:
+    async def get_memory_metadata(self, memory_id: str) -> dict[str, Any] | None:
         """获取记忆元数据"""
         return self.memory_metadata_cache.get(memory_id)
 
-    async def get_user_memory_ids(self, user_id: str, limit: Optional[int] = None) -> List[str]:
+    async def get_user_memory_ids(self, user_id: str, limit: int | None = None) -> list[str]:
         """获取用户的所有记忆ID"""
         user_memory_ids = list(self.indices[IndexType.USER_ID].get(user_id, set()))
 
@@ -695,7 +699,7 @@ class MetadataIndexManager:
 
         return user_memory_ids
 
-    async def get_memory_statistics(self, user_id: Optional[str] = None) -> Dict[str, Any]:
+    async def get_memory_statistics(self, user_id: str | None = None) -> dict[str, Any]:
         """获取记忆统计信息"""
         stats = {
             "total_memories": self.index_stats["total_memories"],
@@ -704,7 +708,7 @@ class MetadataIndexManager:
             "average_importance": 0.0,
             "average_relationship_score": 0.0,
             "top_keywords": [],
-            "top_tags": []
+            "top_tags": [],
         }
 
         if user_id:
@@ -780,7 +784,7 @@ class MetadataIndexManager:
             logger.info("正在保存元数据索引...")
 
             # 保存各类索引
-            indices_data: Dict[str, Dict[str, List[str]]] = {}
+            indices_data: dict[str, dict[str, list[str]]] = {}
             for index_type, index_data in self.indices.items():
                 serialized_index = {}
                 for key, values in index_data.items():
@@ -789,23 +793,23 @@ class MetadataIndexManager:
                 indices_data[index_type.value] = serialized_index
 
             indices_file = self.index_path / "indices.json"
-            with open(indices_file, 'w', encoding='utf-8') as f:
-                f.write(orjson.dumps(indices_data, option=orjson.OPT_INDENT_2).decode('utf-8'))
+            with open(indices_file, "w", encoding="utf-8") as f:
+                f.write(orjson.dumps(indices_data, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
             # 保存时间索引
             time_index_file = self.index_path / "time_index.json"
-            with open(time_index_file, 'w', encoding='utf-8') as f:
-                f.write(orjson.dumps(self.time_index, option=orjson.OPT_INDENT_2).decode('utf-8'))
+            with open(time_index_file, "w", encoding="utf-8") as f:
+                f.write(orjson.dumps(self.time_index, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
             # 保存关系分索引
             relationship_index_file = self.index_path / "relationship_index.json"
-            with open(relationship_index_file, 'w', encoding='utf-8') as f:
-                f.write(orjson.dumps(self.relationship_index, option=orjson.OPT_INDENT_2).decode('utf-8'))
+            with open(relationship_index_file, "w", encoding="utf-8") as f:
+                f.write(orjson.dumps(self.relationship_index, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
             # 保存访问频率索引
             access_frequency_index_file = self.index_path / "access_frequency_index.json"
-            with open(access_frequency_index_file, 'w', encoding='utf-8') as f:
-                f.write(orjson.dumps(self.access_frequency_index, option=orjson.OPT_INDENT_2).decode('utf-8'))
+            with open(access_frequency_index_file, "w", encoding="utf-8") as f:
+                f.write(orjson.dumps(self.access_frequency_index, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
             # 保存元数据缓存
             metadata_cache_file = self.index_path / "metadata_cache.json"
@@ -813,13 +817,13 @@ class MetadataIndexManager:
                 memory_id: self._serialize_metadata_entry(metadata)
                 for memory_id, metadata in self.memory_metadata_cache.items()
             }
-            with open(metadata_cache_file, 'w', encoding='utf-8') as f:
-                f.write(orjson.dumps(metadata_serialized, option=orjson.OPT_INDENT_2).decode('utf-8'))
+            with open(metadata_cache_file, "w", encoding="utf-8") as f:
+                f.write(orjson.dumps(metadata_serialized, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
             # 保存统计信息
             stats_file = self.index_path / "index_stats.json"
-            with open(stats_file, 'w', encoding='utf-8') as f:
-                f.write(orjson.dumps(self.index_stats, option=orjson.OPT_INDENT_2).decode('utf-8'))
+            with open(stats_file, "w", encoding="utf-8") as f:
+                f.write(orjson.dumps(self.index_stats, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
             self._dirty = False
             logger.info("✅ 元数据索引保存完成")
@@ -835,7 +839,7 @@ class MetadataIndexManager:
             # 加载各类索引
             indices_file = self.index_path / "indices.json"
             if indices_file.exists():
-                with open(indices_file, 'r', encoding='utf-8') as f:
+                with open(indices_file, encoding="utf-8") as f:
                     indices_data = orjson.loads(f.read())
 
                 for index_type_value, index_data in indices_data.items():
@@ -849,25 +853,25 @@ class MetadataIndexManager:
             # 加载时间索引
             time_index_file = self.index_path / "time_index.json"
             if time_index_file.exists():
-                with open(time_index_file, 'r', encoding='utf-8') as f:
+                with open(time_index_file, encoding="utf-8") as f:
                     self.time_index = orjson.loads(f.read())
 
             # 加载关系分索引
             relationship_index_file = self.index_path / "relationship_index.json"
             if relationship_index_file.exists():
-                with open(relationship_index_file, 'r', encoding='utf-8') as f:
+                with open(relationship_index_file, encoding="utf-8") as f:
                     self.relationship_index = orjson.loads(f.read())
 
             # 加载访问频率索引
             access_frequency_index_file = self.index_path / "access_frequency_index.json"
             if access_frequency_index_file.exists():
-                with open(access_frequency_index_file, 'r', encoding='utf-8') as f:
+                with open(access_frequency_index_file, encoding="utf-8") as f:
                     self.access_frequency_index = orjson.loads(f.read())
 
             # 加载元数据缓存
             metadata_cache_file = self.index_path / "metadata_cache.json"
             if metadata_cache_file.exists():
-                with open(metadata_cache_file, 'r', encoding='utf-8') as f:
+                with open(metadata_cache_file, encoding="utf-8") as f:
                     cache_data = orjson.loads(f.read())
 
                 # 转换置信度和重要性为枚举类型
@@ -910,7 +914,7 @@ class MetadataIndexManager:
             # 加载统计信息
             stats_file = self.index_path / "index_stats.json"
             if stats_file.exists():
-                with open(stats_file, 'r', encoding='utf-8') as f:
+                with open(stats_file, encoding="utf-8") as f:
                     self.index_stats = orjson.loads(f.read())
 
             # 更新记忆计数
@@ -937,9 +941,7 @@ class MetadataIndexManager:
 
             # 更新统计信息
             if self.index_stats["total_queries"] > 0:
-                self.index_stats["cache_hit_rate"] = (
-                    self.index_stats["cache_hits"] / self.index_stats["total_queries"]
-                )
+                self.index_stats["cache_hit_rate"] = self.index_stats["cache_hits"] / self.index_stats["total_queries"]
 
             logger.info("✅ 元数据索引优化完成")
 
@@ -967,7 +969,9 @@ class MetadataIndexManager:
         self.relationship_index = [(score, mid) for score, mid in self.relationship_index if mid in valid_memory_ids]
 
         # 清理访问频率索引中的无效引用
-        self.access_frequency_index = [(count, mid) for count, mid in self.access_frequency_index if mid in valid_memory_ids]
+        self.access_frequency_index = [
+            (count, mid) for count, mid in self.access_frequency_index if mid in valid_memory_ids
+        ]
 
         # 更新总记忆数
         self.index_stats["total_memories"] = len(valid_memory_ids)
@@ -1000,7 +1004,7 @@ class MetadataIndexManager:
             if len(self.indices[IndexType.CATEGORY][category]) < min_frequency:
                 del self.indices[IndexType.CATEGORY][category]
 
-    def get_index_stats(self) -> Dict[str, Any]:
+    def get_index_stats(self) -> dict[str, Any]:
         """获取索引统计信息"""
         stats = self.index_stats.copy()
         if stats["total_queries"] > 0:
@@ -1017,7 +1021,7 @@ class MetadataIndexManager:
             "categories": len(self.indices[IndexType.CATEGORY]),
             "confidence_levels": len(self.indices[IndexType.CONFIDENCE]),
             "importance_levels": len(self.indices[IndexType.IMPORTANCE]),
-            "semantic_hashes": len(self.indices[IndexType.SEMANTIC_HASH])
+            "semantic_hashes": len(self.indices[IndexType.SEMANTIC_HASH]),
         }
 
         return stats

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 精准记忆系统核心模块
 1. 基于文档设计的高效记忆构建、存储与召回优化系统，覆盖构建、向量化与多阶段检索全流程。
@@ -6,26 +5,27 @@
 """
 
 import asyncio
-import time
-import orjson
-import re
 import hashlib
-from typing import Dict, List, Optional, Set, Any, TYPE_CHECKING
+import re
+import time
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
-from dataclasses import dataclass, asdict
 from enum import Enum
+from typing import TYPE_CHECKING, Any
 
-from src.common.logger import get_logger
-from src.llm_models.utils_model import LLMRequest
-from src.config.config import model_config, global_config
-from src.chat.memory_system.memory_chunk import MemoryChunk
+import orjson
+
 from src.chat.memory_system.memory_builder import MemoryBuilder, MemoryExtractionError
+from src.chat.memory_system.memory_chunk import MemoryChunk
 from src.chat.memory_system.memory_fusion import MemoryFusionEngine
 from src.chat.memory_system.memory_query_planner import MemoryQueryPlanner
+from src.common.logger import get_logger
+from src.config.config import global_config, model_config
+from src.llm_models.utils_model import LLMRequest
 
 if TYPE_CHECKING:
-    from src.common.data_models.database_data_model import DatabaseMessages
     from src.chat.memory_system.memory_forgetting_engine import MemoryForgettingEngine
+    from src.common.data_models.database_data_model import DatabaseMessages
 
 logger = get_logger(__name__)
 
@@ -35,6 +35,7 @@ GLOBAL_MEMORY_SCOPE = "global"
 
 class MemorySystemStatus(Enum):
     """记忆系统状态"""
+
     INITIALIZING = "initializing"
     READY = "ready"
     BUILDING = "building"
@@ -45,6 +46,7 @@ class MemorySystemStatus(Enum):
 @dataclass
 class MemorySystemConfig:
     """记忆系统配置"""
+
     # 记忆构建配置
     min_memory_length: int = 10
     max_memory_length: int = 500
@@ -97,11 +99,9 @@ class MemorySystemConfig:
             max_memory_length=global_config.memory.max_memory_length,
             memory_value_threshold=global_config.memory.memory_value_threshold,
             min_build_interval_seconds=getattr(global_config.memory, "memory_build_interval", 300.0),
-
             # 向量存储配置
             vector_dimension=int(embedding_dimension),
             similarity_threshold=global_config.memory.vector_similarity_threshold,
-
             # 召回配置
             coarse_recall_limit=global_config.memory.metadata_filter_limit,
             fine_recall_limit=global_config.memory.vector_search_limit,
@@ -112,21 +112,16 @@ class MemorySystemConfig:
             semantic_weight=global_config.memory.semantic_weight,
             context_weight=global_config.memory.context_weight,
             recency_weight=global_config.memory.recency_weight,
-
             # 融合配置
             fusion_similarity_threshold=global_config.memory.fusion_similarity_threshold,
-            deduplication_window=timedelta(hours=global_config.memory.deduplication_window_hours)
+            deduplication_window=timedelta(hours=global_config.memory.deduplication_window_hours),
         )
 
 
 class MemorySystem:
     """精准记忆系统核心类"""
 
-    def __init__(
-        self,
-        llm_model: Optional[LLMRequest] = None,
-        config: Optional[MemorySystemConfig] = None
-    ):
+    def __init__(self, llm_model: LLMRequest | None = None, config: MemorySystemConfig | None = None):
         self.config = config or MemorySystemConfig.from_global_config()
         self.llm_model = llm_model
         self.status = MemorySystemStatus.INITIALIZING
@@ -136,7 +131,7 @@ class MemorySystem:
         self.fusion_engine: MemoryFusionEngine = None
         self.unified_storage = None  # 统一存储系统
         self.query_planner: MemoryQueryPlanner = None
-        self.forgetting_engine: Optional[MemoryForgettingEngine] = None
+        self.forgetting_engine: MemoryForgettingEngine | None = None
 
         # LLM模型
         self.value_assessment_model: LLMRequest = None
@@ -148,10 +143,10 @@ class MemorySystem:
         self.last_retrieval_time = None
 
         # 构建节流记录
-        self._last_memory_build_times: Dict[str, float] = {}
+        self._last_memory_build_times: dict[str, float] = {}
 
         # 记忆指纹缓存，用于快速检测重复记忆
-        self._memory_fingerprints: Dict[str, str] = {}
+        self._memory_fingerprints: dict[str, str] = {}
 
         logger.info("MemorySystem 初始化开始")
 
@@ -175,16 +170,16 @@ class MemorySystem:
                 extraction_task_config = value_task_config or fallback_task
 
             if value_task_config is None or extraction_task_config is None:
-                raise RuntimeError("无法初始化记忆系统所需的模型配置，请检查 model_task_config 中的 utils / utils_small 设置。")
+                raise RuntimeError(
+                    "无法初始化记忆系统所需的模型配置，请检查 model_task_config 中的 utils / utils_small 设置。"
+                )
 
             self.value_assessment_model = LLMRequest(
-                model_set=value_task_config,
-                request_type="memory.value_assessment"
+                model_set=value_task_config, request_type="memory.value_assessment"
             )
 
             self.memory_extraction_model = LLMRequest(
-                model_set=extraction_task_config,
-                request_type="memory.extraction"
+                model_set=extraction_task_config, request_type="memory.extraction"
             )
 
             # 初始化核心组件（简化版）
@@ -198,13 +193,13 @@ class MemorySystem:
                 memory_collection="unified_memory_v2",
                 metadata_collection="memory_metadata_v2",
                 similarity_threshold=self.config.similarity_threshold,
-                search_limit=getattr(global_config.memory, 'unified_storage_search_limit', 20),
-                batch_size=getattr(global_config.memory, 'unified_storage_batch_size', 100),
-                enable_caching=getattr(global_config.memory, 'unified_storage_enable_caching', True),
-                cache_size_limit=getattr(global_config.memory, 'unified_storage_cache_limit', 1000),
-                auto_cleanup_interval=getattr(global_config.memory, 'unified_storage_auto_cleanup_interval', 3600),
-                enable_forgetting=getattr(global_config.memory, 'enable_memory_forgetting', True),
-                retention_hours=getattr(global_config.memory, 'memory_retention_hours', 720)  # 30天
+                search_limit=getattr(global_config.memory, "unified_storage_search_limit", 20),
+                batch_size=getattr(global_config.memory, "unified_storage_batch_size", 100),
+                enable_caching=getattr(global_config.memory, "unified_storage_enable_caching", True),
+                cache_size_limit=getattr(global_config.memory, "unified_storage_cache_limit", 1000),
+                auto_cleanup_interval=getattr(global_config.memory, "unified_storage_auto_cleanup_interval", 3600),
+                enable_forgetting=getattr(global_config.memory, "enable_memory_forgetting", True),
+                retention_hours=getattr(global_config.memory, "memory_retention_hours", 720),  # 30天
             )
 
             try:
@@ -215,55 +210,44 @@ class MemorySystem:
                 raise
 
             # 初始化遗忘引擎
-            from src.chat.memory_system.memory_forgetting_engine import MemoryForgettingEngine, ForgettingConfig
+            from src.chat.memory_system.memory_forgetting_engine import ForgettingConfig, MemoryForgettingEngine
 
             # 从全局配置创建遗忘引擎配置
             forgetting_config = ForgettingConfig(
                 # 检查频率配置
-                check_interval_hours=getattr(global_config.memory, 'forgetting_check_interval_hours', 24),
+                check_interval_hours=getattr(global_config.memory, "forgetting_check_interval_hours", 24),
                 batch_size=100,  # 固定值，暂不配置
-
                 # 遗忘阈值配置
-                base_forgetting_days=getattr(global_config.memory, 'base_forgetting_days', 30.0),
-                min_forgetting_days=getattr(global_config.memory, 'min_forgetting_days', 7.0),
-                max_forgetting_days=getattr(global_config.memory, 'max_forgetting_days', 365.0),
-
+                base_forgetting_days=getattr(global_config.memory, "base_forgetting_days", 30.0),
+                min_forgetting_days=getattr(global_config.memory, "min_forgetting_days", 7.0),
+                max_forgetting_days=getattr(global_config.memory, "max_forgetting_days", 365.0),
                 # 重要程度权重
-                critical_importance_bonus=getattr(global_config.memory, 'critical_importance_bonus', 45.0),
-                high_importance_bonus=getattr(global_config.memory, 'high_importance_bonus', 30.0),
-                normal_importance_bonus=getattr(global_config.memory, 'normal_importance_bonus', 15.0),
-                low_importance_bonus=getattr(global_config.memory, 'low_importance_bonus', 0.0),
-
+                critical_importance_bonus=getattr(global_config.memory, "critical_importance_bonus", 45.0),
+                high_importance_bonus=getattr(global_config.memory, "high_importance_bonus", 30.0),
+                normal_importance_bonus=getattr(global_config.memory, "normal_importance_bonus", 15.0),
+                low_importance_bonus=getattr(global_config.memory, "low_importance_bonus", 0.0),
                 # 置信度权重
-                verified_confidence_bonus=getattr(global_config.memory, 'verified_confidence_bonus', 30.0),
-                high_confidence_bonus=getattr(global_config.memory, 'high_confidence_bonus', 20.0),
-                medium_confidence_bonus=getattr(global_config.memory, 'medium_confidence_bonus', 10.0),
-                low_confidence_bonus=getattr(global_config.memory, 'low_confidence_bonus', 0.0),
-
+                verified_confidence_bonus=getattr(global_config.memory, "verified_confidence_bonus", 30.0),
+                high_confidence_bonus=getattr(global_config.memory, "high_confidence_bonus", 20.0),
+                medium_confidence_bonus=getattr(global_config.memory, "medium_confidence_bonus", 10.0),
+                low_confidence_bonus=getattr(global_config.memory, "low_confidence_bonus", 0.0),
                 # 激活频率权重
-                activation_frequency_weight=getattr(global_config.memory, 'activation_frequency_weight', 0.5),
-                max_frequency_bonus=getattr(global_config.memory, 'max_frequency_bonus', 10.0),
-
+                activation_frequency_weight=getattr(global_config.memory, "activation_frequency_weight", 0.5),
+                max_frequency_bonus=getattr(global_config.memory, "max_frequency_bonus", 10.0),
                 # 休眠配置
-                dormant_threshold_days=getattr(global_config.memory, 'dormant_threshold_days', 90)
+                dormant_threshold_days=getattr(global_config.memory, "dormant_threshold_days", 90),
             )
 
             self.forgetting_engine = MemoryForgettingEngine(forgetting_config)
 
             planner_task_config = getattr(model_config.model_task_config, "utils_small", None)
-            planner_model: Optional[LLMRequest] = None
+            planner_model: LLMRequest | None = None
             try:
-                planner_model = LLMRequest(
-                    model_set=planner_task_config,
-                    request_type="memory.query_planner"
-                )
+                planner_model = LLMRequest(model_set=planner_task_config, request_type="memory.query_planner")
             except Exception as planner_exc:
                 logger.warning("查询规划模型初始化失败，将使用默认规划策略: %s", planner_exc, exc_info=True)
 
-            self.query_planner = MemoryQueryPlanner(
-                planner_model,
-                default_limit=self.config.final_recall_limit
-            )
+            self.query_planner = MemoryQueryPlanner(planner_model, default_limit=self.config.final_recall_limit)
 
             # 统一存储已经自动加载数据，无需额外加载
             logger.info("✅ 简化版记忆系统初始化完成")
@@ -277,12 +261,8 @@ class MemorySystem:
             raise
 
     async def retrieve_memories_for_building(
-        self,
-        query_text: str,
-        user_id: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        limit: int = 5
-    ) -> List[MemoryChunk]:
+        self, query_text: str, user_id: str | None = None, context: dict[str, Any] | None = None, limit: int = 5
+    ) -> list[MemoryChunk]:
         """在构建记忆时检索相关记忆，使用统一存储系统
 
         Args:
@@ -304,9 +284,7 @@ class MemorySystem:
         try:
             # 使用统一存储检索相似记忆
             search_results = await self.unified_storage.search_similar_memories(
-                query_text=query_text,
-                limit=limit,
-                scope_id=user_id
+                query_text=query_text, limit=limit, scope_id=user_id
             )
 
             # 转换为记忆对象
@@ -324,11 +302,8 @@ class MemorySystem:
             return []
 
     async def build_memory_from_conversation(
-        self,
-        conversation_text: str,
-        context: Dict[str, Any],
-        timestamp: Optional[float] = None
-    ) -> List[MemoryChunk]:
+        self, conversation_text: str, context: dict[str, Any], timestamp: float | None = None
+    ) -> list[MemoryChunk]:
         """从对话中构建记忆
 
         Args:
@@ -343,8 +318,8 @@ class MemorySystem:
         self.status = MemorySystemStatus.BUILDING
         start_time = time.time()
 
-        build_scope_key: Optional[str] = None
-        build_marker_time: Optional[float] = None
+        build_scope_key: str | None = None
+        build_marker_time: float | None = None
 
         try:
             normalized_context = self._normalize_context(context, GLOBAL_MEMORY_SCOPE, timestamp)
@@ -383,7 +358,7 @@ class MemorySystem:
                 conversation_text,
                 normalized_context,
                 GLOBAL_MEMORY_SCOPE,  # 强制使用 global，不区分用户
-                timestamp or time.time()
+                timestamp or time.time(),
             )
 
             if not memory_chunks:
@@ -393,10 +368,7 @@ class MemorySystem:
 
             # 3. 记忆融合与去重（包含与历史记忆的融合）
             existing_candidates = await self._collect_fusion_candidates(memory_chunks)
-            fused_chunks = await self.fusion_engine.fuse_memories(
-                memory_chunks,
-                existing_candidates
-            )
+            fused_chunks = await self.fusion_engine.fuse_memories(memory_chunks, existing_candidates)
 
             # 4. 存储记忆到统一存储
             stored_count = await self._store_memories_unified(fused_chunks)
@@ -436,7 +408,7 @@ class MemorySystem:
             logger.error(f"❌ 记忆构建失败: {e}", exc_info=True)
             raise
 
-    def _log_memory_preview(self, memories: List[MemoryChunk]) -> None:
+    def _log_memory_preview(self, memories: list[MemoryChunk]) -> None:
         """在控制台输出记忆预览，便于人工检查"""
         if not memories:
             logger.info("📝 本次未生成新的记忆")
@@ -453,17 +425,13 @@ class MemorySystem:
                 f"置信度={memory.metadata.confidence.name} | 内容={text}"
             )
 
-    async def _collect_fusion_candidates(self, new_memories: List[MemoryChunk]) -> List[MemoryChunk]:
+    async def _collect_fusion_candidates(self, new_memories: list[MemoryChunk]) -> list[MemoryChunk]:
         """收集与新记忆相似的现有记忆，便于融合去重"""
         if not new_memories:
             return []
 
-        candidate_ids: Set[str] = set()
-        new_memory_ids = {
-            memory.memory_id
-            for memory in new_memories
-            if memory and getattr(memory, "memory_id", None)
-        }
+        candidate_ids: set[str] = set()
+        new_memory_ids = {memory.memory_id for memory in new_memories if memory and getattr(memory, "memory_id", None)}
 
         # 基于指纹的直接匹配
         for memory in new_memories:
@@ -501,9 +469,7 @@ class MemorySystem:
                     continue
                 search_tasks.append(
                     self.unified_storage.search_similar_memories(
-                        query_text=display_text,
-                        limit=8,
-                        scope_id=GLOBAL_MEMORY_SCOPE
+                        query_text=display_text, limit=8, scope_id=GLOBAL_MEMORY_SCOPE
                     )
                 )
 
@@ -527,7 +493,7 @@ class MemorySystem:
                             continue
                         candidate_ids.add(memory_id)
 
-        existing_candidates: List[MemoryChunk] = []
+        existing_candidates: list[MemoryChunk] = []
         cache = self.unified_storage.memory_cache if self.unified_storage else {}
         for candidate_id in candidate_ids:
             if candidate_id in new_memory_ids:
@@ -545,10 +511,7 @@ class MemorySystem:
 
         return existing_candidates
 
-    async def process_conversation_memory(
-        self,
-        context: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    async def process_conversation_memory(self, context: dict[str, Any]) -> dict[str, Any]:
         """对外暴露的对话记忆处理接口，仅依赖上下文信息"""
         start_time = time.time()
 
@@ -563,7 +526,9 @@ class MemorySystem:
                 or ""
             )
 
-            conversation_text = conversation_candidate if isinstance(conversation_candidate, str) else str(conversation_candidate)
+            conversation_text = (
+                conversation_candidate if isinstance(conversation_candidate, str) else str(conversation_candidate)
+            )
 
             timestamp = context.get("timestamp")
             if timestamp is None:
@@ -573,9 +538,7 @@ class MemorySystem:
             normalized_context.setdefault("conversation_text", conversation_text)
 
             memories = await self.build_memory_from_conversation(
-                conversation_text=conversation_text,
-                context=normalized_context,
-                timestamp=timestamp
+                conversation_text=conversation_text, context=normalized_context, timestamp=timestamp
             )
 
             processing_time = time.time() - start_time
@@ -586,27 +549,22 @@ class MemorySystem:
                 "created_memories": memories,
                 "memory_count": memory_count,
                 "processing_time": processing_time,
-                "status": self.status.value
+                "status": self.status.value,
             }
 
         except Exception as e:
             processing_time = time.time() - start_time
             logger.error(f"对话记忆处理失败: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": str(e),
-                "processing_time": processing_time,
-                "status": self.status.value
-            }
+            return {"success": False, "error": str(e), "processing_time": processing_time, "status": self.status.value}
 
     async def retrieve_relevant_memories(
         self,
-        query_text: Optional[str] = None,
-        user_id: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
+        query_text: str | None = None,
+        user_id: str | None = None,
+        context: dict[str, Any] | None = None,
         limit: int = 5,
-        **kwargs
-    ) -> List[MemoryChunk]:
+        **kwargs,
+    ) -> list[MemoryChunk]:
         """检索相关记忆（三阶段召回：元数据粗筛 → 向量精筛 → 综合重排）"""
         raw_query = query_text or kwargs.get("query")
         if not raw_query:
@@ -617,7 +575,7 @@ class MemorySystem:
             return []
 
         context = context or {}
-        
+
         # 所有记忆完全共享，统一使用 global 作用域，不区分用户
         resolved_user_id = GLOBAL_MEMORY_SCOPE
 
@@ -627,7 +585,7 @@ class MemorySystem:
         try:
             normalized_context = self._normalize_context(context, GLOBAL_MEMORY_SCOPE, None)
             effective_limit = self.config.final_recall_limit
-            
+
             # === 阶段一：元数据粗筛（软性过滤） ===
             coarse_filters = {
                 "user_id": GLOBAL_MEMORY_SCOPE,  # 必选：确保作用域正确
@@ -642,119 +600,126 @@ class MemorySystem:
                     # 构建包含未读消息的增强上下文
                     enhanced_context = await self._build_enhanced_query_context(raw_query, normalized_context)
                     query_plan = await self.query_planner.plan_query(raw_query, enhanced_context)
-                    
+
                     # 使用LLM优化后的查询语句（更精确的语义表达）
                     if getattr(query_plan, "semantic_query", None):
                         optimized_query = query_plan.semantic_query
-                    
+
                     # 构建JSON元数据过滤条件（用于阶段一粗筛）
                     # 将查询规划的结果转换为元数据过滤条件
                     if getattr(query_plan, "memory_types", None):
-                        metadata_filters['memory_types'] = [mt.value for mt in query_plan.memory_types]
-                    
+                        metadata_filters["memory_types"] = [mt.value for mt in query_plan.memory_types]
+
                     if getattr(query_plan, "subject_includes", None):
-                        metadata_filters['subjects'] = query_plan.subject_includes
-                    
+                        metadata_filters["subjects"] = query_plan.subject_includes
+
                     if getattr(query_plan, "required_keywords", None):
-                        metadata_filters['keywords'] = query_plan.required_keywords
-                    
+                        metadata_filters["keywords"] = query_plan.required_keywords
+
                     # 时间范围过滤
                     recency = getattr(query_plan, "recency_preference", "any")
                     current_time = time.time()
                     if recency == "recent":
                         # 最近7天
-                        metadata_filters['created_after'] = current_time - (7 * 24 * 3600)
+                        metadata_filters["created_after"] = current_time - (7 * 24 * 3600)
                     elif recency == "historical":
                         # 30天以前
-                        metadata_filters['created_before'] = current_time - (30 * 24 * 3600)
-                    
+                        metadata_filters["created_before"] = current_time - (30 * 24 * 3600)
+
                     # 添加用户ID到元数据过滤
-                    metadata_filters['user_id'] = GLOBAL_MEMORY_SCOPE
-                    
+                    metadata_filters["user_id"] = GLOBAL_MEMORY_SCOPE
+
                     logger.debug(f"[阶段一] 查询优化: '{raw_query}' → '{optimized_query}'")
                     logger.debug(f"[阶段一] 元数据过滤条件: {metadata_filters}")
-                    
+
                 except Exception as plan_exc:
                     logger.warning("查询规划失败，使用原始查询: %s", plan_exc, exc_info=True)
                     # 即使查询规划失败，也保留基本的user_id过滤
-                    metadata_filters = {'user_id': GLOBAL_MEMORY_SCOPE}
+                    metadata_filters = {"user_id": GLOBAL_MEMORY_SCOPE}
 
             # === 阶段二：向量精筛 ===
             coarse_limit = self.config.coarse_recall_limit  # 粗筛阶段返回更多候选
-            
+
             logger.debug(f"[阶段二] 开始向量搜索: query='{optimized_query[:60]}...', limit={coarse_limit}")
-            
+
             search_results = await self.unified_storage.search_similar_memories(
                 query_text=optimized_query,
                 limit=coarse_limit,
                 filters=coarse_filters,  # ChromaDB where条件（保留兼容）
-                metadata_filters=metadata_filters  # JSON元数据索引过滤
+                metadata_filters=metadata_filters,  # JSON元数据索引过滤
             )
-            
+
             logger.info(f"[阶段二] 向量搜索完成: 返回 {len(search_results)} 条候选")
 
             # === 阶段三：综合重排 ===
             scored_memories = []
             current_time = time.time()
-            
+
             for memory, vector_similarity in search_results:
                 # 1. 向量相似度得分（已归一化到 0-1）
                 vector_score = vector_similarity
-                
+
                 # 2. 时效性得分（指数衰减，30天半衰期）
                 age_seconds = current_time - memory.metadata.created_at
                 age_days = age_seconds / (24 * 3600)
                 # 使用 math.exp 而非 np.exp（避免依赖numpy）
                 import math
+
                 recency_score = math.exp(-age_days / 30)
-                
+
                 # 3. 重要性得分（枚举值转换为归一化得分 0-1）
                 # ImportanceLevel: LOW=1, NORMAL=2, HIGH=3, CRITICAL=4
                 importance_enum = memory.metadata.importance
-                if hasattr(importance_enum, 'value'):
+                if hasattr(importance_enum, "value"):
                     # 枚举类型，转换为0-1范围：(value - 1) / 3
                     importance_score = (importance_enum.value - 1) / 3.0
                 else:
                     # 如果已经是数值，直接使用
                     importance_score = float(importance_enum) if importance_enum else 0.5
-                
+
                 # 4. 访问频率得分（归一化，访问10次以上得满分）
                 access_count = memory.metadata.access_count
                 frequency_score = min(access_count / 10.0, 1.0)
-                
+
                 # 综合得分（加权平均）
                 final_score = (
-                    self.config.vector_weight * vector_score +
-                    self.config.recency_weight * recency_score +
-                    self.config.context_weight * importance_score +
-                    0.1 * frequency_score  # 访问频率权重（固定10%）
+                    self.config.vector_weight * vector_score
+                    + self.config.recency_weight * recency_score
+                    + self.config.context_weight * importance_score
+                    + 0.1 * frequency_score  # 访问频率权重（固定10%）
                 )
-                
-                scored_memories.append((memory, final_score, {
-                    "vector": vector_score,
-                    "recency": recency_score,
-                    "importance": importance_score,
-                    "frequency": frequency_score,
-                    "final": final_score
-                }))
-                
+
+                scored_memories.append(
+                    (
+                        memory,
+                        final_score,
+                        {
+                            "vector": vector_score,
+                            "recency": recency_score,
+                            "importance": importance_score,
+                            "frequency": frequency_score,
+                            "final": final_score,
+                        },
+                    )
+                )
+
                 # 更新访问记录
                 memory.update_access()
 
             # 按综合得分排序
             scored_memories.sort(key=lambda x: x[1], reverse=True)
-            
+
             # 返回 Top-K
             final_memories = [mem for mem, score, details in scored_memories[:effective_limit]]
-            
+
             retrieval_time = time.time() - start_time
 
             # 详细日志
             if scored_memories:
-                logger.info(f"[阶段三] 综合重排完成: Top 3 得分详情")
+                logger.info("[阶段三] 综合重排完成: Top 3 得分详情")
                 for i, (mem, score, details) in enumerate(scored_memories[:3], 1):
                     try:
-                        summary = mem.content[:60] if hasattr(mem, 'content') and mem.content else ""
+                        summary = mem.content[:60] if hasattr(mem, "content") and mem.content else ""
                     except:
                         summary = ""
                     logger.info(
@@ -785,7 +750,7 @@ class MemorySystem:
             raise
 
     @staticmethod
-    def _extract_json_payload(response: str) -> Optional[str]:
+    def _extract_json_payload(response: str) -> str | None:
         """从模型响应中提取JSON部分，兼容Markdown代码块等格式"""
         if not response:
             return None
@@ -803,18 +768,15 @@ class MemorySystem:
         start = stripped.find("{")
         end = stripped.rfind("}")
         if start != -1 and end != -1 and end > start:
-            return stripped[start:end + 1].strip()
+            return stripped[start : end + 1].strip()
 
         return stripped if stripped.startswith("{") and stripped.endswith("}") else None
 
     def _normalize_context(
-        self,
-        raw_context: Optional[Dict[str, Any]],
-        user_id: Optional[str],
-        timestamp: Optional[float]
-    ) -> Dict[str, Any]:
+        self, raw_context: dict[str, Any] | None, user_id: str | None, timestamp: float | None
+    ) -> dict[str, Any]:
         """标准化上下文，确保必备字段存在且格式正确"""
-        context: Dict[str, Any] = {}
+        context: dict[str, Any] = {}
         if raw_context:
             try:
                 context = dict(raw_context)
@@ -850,9 +812,7 @@ class MemorySystem:
 
         # 历史窗口配置
         window_candidate = (
-            context.get("history_limit")
-            or context.get("history_window")
-            or context.get("memory_history_limit")
+            context.get("history_limit") or context.get("history_window") or context.get("memory_history_limit")
         )
         if window_candidate is not None:
             try:
@@ -862,7 +822,7 @@ class MemorySystem:
 
         return context
 
-    async def _build_enhanced_query_context(self, raw_query: str, normalized_context: Dict[str, Any]) -> Dict[str, Any]:
+    async def _build_enhanced_query_context(self, raw_query: str, normalized_context: dict[str, Any]) -> dict[str, Any]:
         """构建包含未读消息综合上下文的增强查询上下文
 
         Args:
@@ -888,7 +848,9 @@ class MemorySystem:
                 enhanced_context["unread_messages_context"] = unread_messages_summary
                 enhanced_context["has_unread_context"] = True
 
-                logger.debug(f"为查询规划构建了增强上下文，包含 {len(unread_messages_summary.get('messages', []))} 条未读消息")
+                logger.debug(
+                    f"为查询规划构建了增强上下文，包含 {len(unread_messages_summary.get('messages', []))} 条未读消息"
+                )
             else:
                 enhanced_context["has_unread_context"] = False
                 logger.debug("未找到未读消息，使用基础上下文进行查询规划")
@@ -899,7 +861,7 @@ class MemorySystem:
 
         return enhanced_context
 
-    async def _collect_unread_messages_context(self, stream_id: str) -> Optional[Dict[str, Any]]:
+    async def _collect_unread_messages_context(self, stream_id: str) -> dict[str, Any] | None:
         """收集未读消息的综合上下文信息
 
         Args:
@@ -934,26 +896,30 @@ class MemorySystem:
             for msg in unread_messages[:10]:  # 限制处理最近10条未读消息
                 try:
                     # 提取消息内容
-                    content = (getattr(msg, "processed_plain_text", None) or
-                              getattr(msg, "display_message", None) or "")
+                    content = getattr(msg, "processed_plain_text", None) or getattr(msg, "display_message", None) or ""
                     if not content:
                         continue
 
                     # 提取发送者信息
                     sender_name = "未知用户"
                     if hasattr(msg, "user_info") and msg.user_info:
-                        sender_name = (getattr(msg.user_info, "user_nickname", None) or
-                                     getattr(msg.user_info, "user_cardname", None) or
-                                     getattr(msg.user_info, "user_id", None) or "未知用户")
+                        sender_name = (
+                            getattr(msg.user_info, "user_nickname", None)
+                            or getattr(msg.user_info, "user_cardname", None)
+                            or getattr(msg.user_info, "user_id", None)
+                            or "未知用户"
+                        )
 
                     participant_names.add(sender_name)
 
                     # 添加到消息摘要
-                    messages_summary.append({
-                        "sender": sender_name,
-                        "content": content[:200],  # 限制长度避免过长
-                        "timestamp": getattr(msg, "time", None)
-                    })
+                    messages_summary.append(
+                        {
+                            "sender": sender_name,
+                            "content": content[:200],  # 限制长度避免过长
+                            "timestamp": getattr(msg, "time", None),
+                        }
+                    )
 
                     # 提取关键词（简单实现）
                     content_lower = content.lower()
@@ -975,17 +941,19 @@ class MemorySystem:
                 "processed_count": len(messages_summary),
                 "keywords": list(all_keywords)[:20],  # 最多20个关键词
                 "participants": list(participant_names),
-                "context_summary": self._build_unread_context_summary(messages_summary)
+                "context_summary": self._build_unread_context_summary(messages_summary),
             }
 
-            logger.debug(f"收集到未读消息上下文: {len(messages_summary)}条消息，{len(all_keywords)}个关键词，{len(participant_names)}个参与者")
+            logger.debug(
+                f"收集到未读消息上下文: {len(messages_summary)}条消息，{len(all_keywords)}个关键词，{len(participant_names)}个参与者"
+            )
             return unread_context
 
         except Exception as e:
             logger.warning(f"收集未读消息上下文失败: {e}", exc_info=True)
             return None
 
-    def _build_unread_context_summary(self, messages_summary: List[Dict[str, Any]]) -> str:
+    def _build_unread_context_summary(self, messages_summary: list[dict[str, Any]]) -> str:
         """构建未读消息的文本摘要
 
         Args:
@@ -1006,7 +974,7 @@ class MemorySystem:
 
         return " | ".join(summary_parts)
 
-    async def _resolve_conversation_context(self, fallback_text: str, context: Optional[Dict[str, Any]]) -> str:
+    async def _resolve_conversation_context(self, fallback_text: str, context: dict[str, Any] | None) -> str:
         """使用 stream_id 历史消息和相关记忆充实对话文本，默认回退到传入文本"""
         if not context:
             return fallback_text
@@ -1051,10 +1019,7 @@ class MemorySystem:
         if user_id and fallback_text:
             try:
                 relevant_memories = await self.retrieve_memories_for_building(
-                    query_text=fallback_text,
-                    user_id=user_id,
-                    context=context,
-                    limit=3
+                    query_text=fallback_text, user_id=user_id, context=context, limit=3
                 )
 
                 if relevant_memories:
@@ -1068,9 +1033,7 @@ class MemorySystem:
                         memory_transcript = f"{memory_transcript}\n[当前消息] {cleaned_fallback}"
 
                     logger.debug(
-                        "使用检索到的历史记忆构建记忆上下文，记忆数=%d，用户=%s",
-                        len(relevant_memories),
-                        user_id
+                        "使用检索到的历史记忆构建记忆上下文，记忆数=%d，用户=%s", len(relevant_memories), user_id
                     )
                     return memory_transcript
 
@@ -1080,18 +1043,14 @@ class MemorySystem:
         # 回退到传入文本
         return fallback_text
 
-    def _get_build_scope_key(self, context: Dict[str, Any], user_id: Optional[str]) -> Optional[str]:
+    def _get_build_scope_key(self, context: dict[str, Any], user_id: str | None) -> str | None:
         """确定用于节流控制的记忆构建作用域"""
         return "global_scope"
 
-    def _determine_history_limit(self, context: Dict[str, Any]) -> int:
+    def _determine_history_limit(self, context: dict[str, Any]) -> int:
         """确定历史消息获取数量，限制在30-50之间"""
         default_limit = 40
-        candidate = (
-            context.get("history_limit")
-            or context.get("history_window")
-            or context.get("memory_history_limit")
-        )
+        candidate = context.get("history_limit") or context.get("history_window") or context.get("memory_history_limit")
 
         if isinstance(candidate, str):
             try:
@@ -1106,12 +1065,12 @@ class MemorySystem:
 
         return history_limit
 
-    def _format_history_messages(self, messages: List["DatabaseMessages"]) -> Optional[str]:
+    def _format_history_messages(self, messages: list["DatabaseMessages"]) -> str | None:
         """将历史消息格式化为可供LLM处理的多轮对话文本"""
         if not messages:
             return None
 
-        lines: List[str] = []
+        lines: list[str] = []
         for msg in messages:
             try:
                 content = getattr(msg, "processed_plain_text", None) or getattr(msg, "display_message", None)
@@ -1146,7 +1105,7 @@ class MemorySystem:
 
         return "\n".join(lines) if lines else None
 
-    async def _assess_information_value(self, text: str, context: Dict[str, Any]) -> float:
+    async def _assess_information_value(self, text: str, context: dict[str, Any]) -> float:
         """评估信息价值
 
         Args:
@@ -1186,9 +1145,9 @@ class MemorySystem:
 {text}
 
 上下文信息：
-- 用户ID: {context.get('user_id', 'unknown')}
-- 消息类型: {context.get('message_type', 'unknown')}
-- 时间: {datetime.fromtimestamp(context.get('timestamp', time.time()))}
+- 用户ID: {context.get("user_id", "unknown")}
+- 消息类型: {context.get("message_type", "unknown")}
+- 时间: {datetime.fromtimestamp(context.get("timestamp", time.time()))}
 
 ## 📋 评估要求：
 
@@ -1214,9 +1173,7 @@ class MemorySystem:
 }}
 """
 
-            response, _ = await self.value_assessment_model.generate_response_async(
-                prompt, temperature=0.3
-            )
+            response, _ = await self.value_assessment_model.generate_response_async(prompt, temperature=0.3)
 
             # 解析响应
             try:
@@ -1236,7 +1193,7 @@ class MemorySystem:
                 return max(0.0, min(1.0, value_score))
 
             except (orjson.JSONDecodeError, ValueError) as e:
-                preview = response[:200].replace('\n', ' ')
+                preview = response[:200].replace("\n", " ")
                 logger.warning(f"解析价值评估响应失败: {e}, 响应片段: {preview}")
                 return 0.5  # 默认中等价值
 
@@ -1244,7 +1201,7 @@ class MemorySystem:
             logger.error(f"信息价值评估失败: {e}", exc_info=True)
             return 0.5  # 默认中等价值
 
-    async def _store_memories_unified(self, memory_chunks: List[MemoryChunk]) -> int:
+    async def _store_memories_unified(self, memory_chunks: list[MemoryChunk]) -> int:
         """使用统一存储系统存储记忆块"""
         if not memory_chunks or not self.unified_storage:
             return 0
@@ -1265,7 +1222,7 @@ class MemorySystem:
             return 0
 
     # 保留原有方法以兼容旧代码
-    async def _store_memories(self, memory_chunks: List[MemoryChunk]) -> int:
+    async def _store_memories(self, memory_chunks: list[MemoryChunk]) -> int:
         """兼容性方法：重定向到统一存储"""
         return await self._store_memories_unified(memory_chunks)
 
@@ -1314,7 +1271,7 @@ class MemorySystem:
             key = self._fingerprint_key(memory.user_id, fingerprint)
             self._memory_fingerprints[key] = memory.memory_id
 
-    def _register_memory_fingerprints(self, memories: List[MemoryChunk]) -> None:
+    def _register_memory_fingerprints(self, memories: list[MemoryChunk]) -> None:
         for memory in memories:
             fingerprint = self._build_memory_fingerprint(memory)
             key = self._fingerprint_key(memory.user_id, fingerprint)
@@ -1331,31 +1288,33 @@ class MemorySystem:
         else:
             obj_part = str(obj).strip()
 
-        base = "|".join([
-            str(memory.user_id or "unknown"),
-            memory.memory_type.value,
-            subject_part,
-            predicate_part,
-            obj_part,
-        ])
+        base = "|".join(
+            [
+                str(memory.user_id or "unknown"),
+                memory.memory_type.value,
+                subject_part,
+                predicate_part,
+                obj_part,
+            ]
+        )
 
         return hashlib.sha256(base.encode("utf-8")).hexdigest()
 
     @staticmethod
     def _fingerprint_key(user_id: str, fingerprint: str) -> str:
-        return f"{str(user_id)}:{fingerprint}"
+        return f"{user_id!s}:{fingerprint}"
 
-    def get_system_stats(self) -> Dict[str, Any]:
+    def get_system_stats(self) -> dict[str, Any]:
         """获取系统统计信息"""
         return {
             "status": self.status.value,
             "total_memories": self.total_memories,
             "last_build_time": self.last_build_time,
             "last_retrieval_time": self.last_retrieval_time,
-            "config": asdict(self.config)
+            "config": asdict(self.config),
         }
 
-    def _compute_memory_score(self, query_text: str, memory: MemoryChunk, context: Dict[str, Any]) -> float:
+    def _compute_memory_score(self, query_text: str, memory: MemoryChunk, context: dict[str, Any]) -> float:
         """根据查询和上下文为记忆计算匹配分数"""
         tokens_query = self._tokenize_text(query_text)
         tokens_memory = self._tokenize_text(memory.text_content)
@@ -1369,7 +1328,9 @@ class MemorySystem:
         keyword_overlap = 0.0
         if context_keywords:
             memory_keywords = set(k.lower() for k in memory.keywords)
-            keyword_overlap = len(memory_keywords & set(k.lower() for k in context_keywords)) / max(len(context_keywords), 1)
+            keyword_overlap = len(memory_keywords & set(k.lower() for k in context_keywords)) / max(
+                len(context_keywords), 1
+            )
 
         importance_boost = (memory.metadata.importance.value - 1) / 3 * 0.1
         confidence_boost = (memory.metadata.confidence.value - 1) / 3 * 0.05
@@ -1377,7 +1338,7 @@ class MemorySystem:
         final_score = base_score * 0.7 + keyword_overlap * 0.15 + importance_boost + confidence_boost
         return max(0.0, min(1.0, final_score))
 
-    def _tokenize_text(self, text: str) -> Set[str]:
+    def _tokenize_text(self, text: str) -> set[str]:
         """简单分词，兼容中英文"""
         if not text:
             return set()
@@ -1429,7 +1390,7 @@ class MemorySystem:
         """重建向量存储（如果需要）"""
         try:
             # 检查是否有记忆缓存数据
-            if not hasattr(self.unified_storage, 'memory_cache') or not self.unified_storage.memory_cache:
+            if not hasattr(self.unified_storage, "memory_cache") or not self.unified_storage.memory_cache:
                 logger.info("无记忆缓存数据，跳过向量存储重建")
                 return
 
@@ -1443,19 +1404,19 @@ class MemorySystem:
                     memories_to_rebuild.append(memory)
                 elif memory.text_content and memory.text_content.strip():
                     memories_to_rebuild.append(memory)
-            
+
             if not memories_to_rebuild:
                 logger.warning("没有找到可重建向量的记忆")
                 return
-            
+
             logger.info(f"准备为 {len(memories_to_rebuild)} 条记忆重建向量")
-            
+
             # 批量重建向量
             batch_size = 10
             rebuild_count = 0
-            
+
             for i in range(0, len(memories_to_rebuild), batch_size):
-                batch = memories_to_rebuild[i:i + batch_size]
+                batch = memories_to_rebuild[i : i + batch_size]
                 try:
                     await self.unified_storage.store_memories(batch)
                     rebuild_count += len(batch)
@@ -1472,7 +1433,7 @@ class MemorySystem:
 
             final_count = self.unified_storage.storage_stats.get("total_vectors", 0)
             logger.info(f"✅ 向量存储重建完成，最终向量数量: {final_count}")
-            
+
         except Exception as e:
             logger.error(f"❌ 向量存储重建失败: {e}", exc_info=True)
 
@@ -1489,7 +1450,7 @@ def get_memory_system() -> MemorySystem:
     return memory_system
 
 
-async def initialize_memory_system(llm_model: Optional[LLMRequest] = None):
+async def initialize_memory_system(llm_model: LLMRequest | None = None):
     """初始化全局记忆系统"""
     global memory_system
     if memory_system is None:

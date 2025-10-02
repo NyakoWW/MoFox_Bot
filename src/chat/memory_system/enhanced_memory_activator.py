@@ -1,26 +1,24 @@
-# -*- coding: utf-8 -*-
 """
 记忆激活器
 记忆系统的激活器组件
 """
 
 import difflib
-import orjson
-import time
-from typing import List, Dict, Optional
 from datetime import datetime
 
+import orjson
 from json_repair import repair_json
-from src.llm_models.utils_model import LLMRequest
-from src.config.config import global_config, model_config
-from src.common.logger import get_logger
+
+from src.chat.memory_system.memory_manager import MemoryResult
 from src.chat.utils.prompt import Prompt, global_prompt_manager
-from src.chat.memory_system.memory_manager import memory_manager, MemoryResult
+from src.common.logger import get_logger
+from src.config.config import global_config, model_config
+from src.llm_models.utils_model import LLMRequest
 
 logger = get_logger("memory_activator")
 
 
-def get_keywords_from_json(json_str) -> List:
+def get_keywords_from_json(json_str) -> list:
     """
     从JSON字符串中提取关键词列表
 
@@ -82,7 +80,7 @@ class MemoryActivator:
         self.cached_keywords = set()  # 用于缓存历史关键词
         self.last_memory_query_time = 0  # 上次查询记忆的时间
 
-    async def activate_memory_with_chat_history(self, target_message, chat_history_prompt) -> List[Dict]:
+    async def activate_memory_with_chat_history(self, target_message, chat_history_prompt) -> list[dict]:
         """
         激活记忆
         """
@@ -127,8 +125,8 @@ class MemoryActivator:
             for result in memory_results:
                 # 检查是否已存在相似内容的记忆
                 exists = any(
-                    m["content"] == result.content or
-                    difflib.SequenceMatcher(None, m["content"], result.content).ratio() >= 0.7
+                    m["content"] == result.content
+                    or difflib.SequenceMatcher(None, m["content"], result.content).ratio() >= 0.7
                     for m in self.running_memory
                 )
                 if not exists:
@@ -140,7 +138,7 @@ class MemoryActivator:
                         "confidence": result.confidence,
                         "importance": result.importance,
                         "source": result.source,
-                        "relevance_score": result.relevance_score  # 添加相关度评分
+                        "relevance_score": result.relevance_score,  # 添加相关度评分
                     }
                     self.running_memory.append(memory_entry)
                     logger.debug(f"添加新记忆: {result.memory_type} - {result.content}")
@@ -156,7 +154,7 @@ class MemoryActivator:
 
         return self.running_memory
 
-    async def _query_unified_memory(self, keywords: List[str], query_text: str) -> List[MemoryResult]:
+    async def _query_unified_memory(self, keywords: list[str], query_text: str) -> list[MemoryResult]:
         """查询统一记忆系统"""
         try:
             # 使用记忆系统
@@ -168,17 +166,14 @@ class MemoryActivator:
                 return []
 
             # 构建查询上下文
-            context = {
-                "keywords": keywords,
-                "query_intent": "conversation_response"
-            }
+            context = {"keywords": keywords, "query_intent": "conversation_response"}
 
             # 查询记忆
             memories = await memory_system.retrieve_relevant_memories(
                 query_text=query_text,
                 user_id="global",  # 使用全局作用域
                 context=context,
-                limit=5
+                limit=5,
             )
 
             # 转换为 MemoryResult 格式
@@ -191,7 +186,7 @@ class MemoryActivator:
                     importance=memory.metadata.importance.value,
                     timestamp=memory.metadata.created_at,
                     source="unified_memory",
-                    relevance_score=memory.metadata.relevance_score
+                    relevance_score=memory.metadata.relevance_score,
                 )
                 memory_results.append(result)
 
@@ -202,7 +197,7 @@ class MemoryActivator:
             logger.error(f"查询统一记忆失败: {e}")
             return []
 
-    async def get_instant_memory(self, target_message: str, chat_id: str) -> Optional[str]:
+    async def get_instant_memory(self, target_message: str, chat_id: str) -> str | None:
         """
         获取即时记忆 - 兼容原有接口（使用统一存储）
         """
@@ -214,16 +209,10 @@ class MemoryActivator:
             if not memory_system or memory_system.status.value != "ready":
                 return None
 
-            context = {
-                "query_intent": "instant_response",
-                "chat_id": chat_id
-            }
+            context = {"query_intent": "instant_response", "chat_id": chat_id}
 
             memories = await memory_system.retrieve_relevant_memories(
-                query_text=target_message,
-                user_id="global",
-                context=context,
-                limit=1
+                query_text=target_message, user_id="global", context=context, limit=1
             )
 
             if memories:
