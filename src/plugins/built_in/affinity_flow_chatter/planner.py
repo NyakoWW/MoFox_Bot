@@ -127,7 +127,7 @@ class ChatterActionPlanner:
                             }
                         )
 
-                        logger.debug(
+                        logger.info(
                             f"消息 {message.message_id} 兴趣度: {message_interest:.3f}, 应回复: {message.should_reply}"
                         )
 
