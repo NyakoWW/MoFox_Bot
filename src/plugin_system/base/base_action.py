@@ -382,21 +382,19 @@ class BaseAction(ABC):
             # 构造命令数据
             command_data = {"name": command_name, "args": args or {}}
 
-            response = await send_api.adapter_command_to_stream(
-                action=command_name,
-                params=args or {},
+            success = await send_api.command_to_stream(
+                command=command_data,
                 stream_id=self.chat_id,
-                platform=self.platform
+                storage_message=storage_message,
+                display_message=display_message,
             )
 
-            # 根据响应判断成功与否
-            if response and response.get("status") == "ok":
-                logger.info(f"{self.log_prefix} 成功执行适配器命令: {command_name}, 响应: {response.get('data')}")
-                return True
+            if success:
+                logger.info(f"{self.log_prefix} 成功发送命令: {command_name}")
             else:
-                error_message = response.get('message', '未知错误')
-                logger.error(f"{self.log_prefix} 执行适配器命令失败: {command_name}, 错误: {error_message}")
-                return False
+                logger.error(f"{self.log_prefix} 发送命令失败: {command_name}")
+
+            return success
 
         except Exception as e:
             logger.error(f"{self.log_prefix} 发送命令时出错: {e}")
