@@ -191,27 +191,27 @@ class MemorySystem:
             self.memory_builder = MemoryBuilder(self.memory_extraction_model)
             self.fusion_engine = MemoryFusionEngine(self.config.fusion_similarity_threshold)
 
-            # 初始化统一存储系统
-            from src.chat.memory_system.unified_memory_storage import initialize_unified_memory_storage, UnifiedStorageConfig
+            # 初始化Vector DB存储系统（替代旧的unified_memory_storage）
+            from src.chat.memory_system.vector_memory_storage_v2 import VectorMemoryStorage, VectorStorageConfig
 
-            storage_config = UnifiedStorageConfig(
-                dimension=self.config.vector_dimension,
+            storage_config = VectorStorageConfig(
+                memory_collection="unified_memory_v2",
+                metadata_collection="memory_metadata_v2",
                 similarity_threshold=self.config.similarity_threshold,
-                storage_path=getattr(global_config.memory, 'unified_storage_path', 'data/unified_memory'),
-                cache_size_limit=getattr(global_config.memory, 'unified_storage_cache_limit', 10000),
-                auto_save_interval=getattr(global_config.memory, 'unified_storage_auto_save_interval', 50),
-                enable_compression=getattr(global_config.memory, 'unified_storage_enable_compression', True),
+                search_limit=getattr(global_config.memory, 'unified_storage_search_limit', 20),
+                batch_size=getattr(global_config.memory, 'unified_storage_batch_size', 100),
+                enable_caching=getattr(global_config.memory, 'unified_storage_enable_caching', True),
+                cache_size_limit=getattr(global_config.memory, 'unified_storage_cache_limit', 1000),
+                auto_cleanup_interval=getattr(global_config.memory, 'unified_storage_auto_cleanup_interval', 3600),
                 enable_forgetting=getattr(global_config.memory, 'enable_memory_forgetting', True),
-                forgetting_check_interval=getattr(global_config.memory, 'forgetting_check_interval_hours', 24)
+                retention_hours=getattr(global_config.memory, 'memory_retention_hours', 720)  # 30天
             )
 
             try:
-                self.unified_storage = await initialize_unified_memory_storage(storage_config)
-                if self.unified_storage is None:
-                    raise RuntimeError("统一存储系统初始化返回None")
-                logger.info("✅ 统一存储系统初始化成功")
+                self.unified_storage = VectorMemoryStorage(storage_config)
+                logger.info("✅ Vector DB存储系统初始化成功")
             except Exception as storage_error:
-                logger.error(f"❌ 统一存储系统初始化失败: {storage_error}", exc_info=True)
+                logger.error(f"❌ Vector DB存储系统初始化失败: {storage_error}", exc_info=True)
                 raise
 
             # 初始化遗忘引擎
@@ -380,11 +380,11 @@ class MemorySystem:
                 self.status = original_status
                 return []
 
-            # 2. 构建记忆块
+            # 2. 构建记忆块（所有记忆统一使用 global 作用域，实现完全共享）
             memory_chunks = await self.memory_builder.build_memories(
                 conversation_text,
                 normalized_context,
-                GLOBAL_MEMORY_SCOPE,
+                GLOBAL_MEMORY_SCOPE,  # 强制使用 global，不区分用户
                 timestamp or time.time()
             )
 
@@ -609,7 +609,7 @@ class MemorySystem:
         limit: int = 5,
         **kwargs
     ) -> List[MemoryChunk]:
-        """检索相关记忆（简化版，使用统一存储）"""
+        """检索相关记忆（三阶段召回：元数据粗筛 → 向量精筛 → 综合重排）"""
         raw_query = query_text or kwargs.get("query")
         if not raw_query:
             raise ValueError("query_text 或 query 参数不能为空")
@@ -619,6 +619,8 @@ class MemorySystem:
             return []
 
         context = context or {}
+        
+        # 所有记忆完全共享，统一使用 global 作用域，不区分用户
         resolved_user_id = GLOBAL_MEMORY_SCOPE
 
         self.status = MemorySystemStatus.RETRIEVING
@@ -626,50 +628,152 @@ class MemorySystem:
 
         try:
             normalized_context = self._normalize_context(context, GLOBAL_MEMORY_SCOPE, None)
-
-            effective_limit = limit or self.config.final_recall_limit
-
-            # 构建过滤器
-            filters = {
-                "user_id": resolved_user_id
+            effective_limit = self.config.final_recall_limit
+            
+            # === 阶段一：元数据粗筛（软性过滤） ===
+            coarse_filters = {
+                "user_id": GLOBAL_MEMORY_SCOPE,  # 必选：确保作用域正确
             }
 
-            # 应用查询规划结果
+            # 应用查询规划（优化查询语句并构建元数据过滤）
+            optimized_query = raw_query
+            metadata_filters = {}
+
             if self.query_planner:
                 try:
-                    query_plan = await self.query_planner.plan_query(raw_query, normalized_context)
-                    if getattr(query_plan, "memory_types", None):
-                        filters["memory_types"] = [mt.value for mt in query_plan.memory_types]
-                    if getattr(query_plan, "subject_includes", None):
-                        filters["keywords"] = query_plan.subject_includes
+                    # 构建包含未读消息的增强上下文
+                    enhanced_context = await self._build_enhanced_query_context(raw_query, normalized_context)
+                    query_plan = await self.query_planner.plan_query(raw_query, enhanced_context)
+                    
+                    # 使用LLM优化后的查询语句（更精确的语义表达）
                     if getattr(query_plan, "semantic_query", None):
-                        raw_query = query_plan.semantic_query
+                        optimized_query = query_plan.semantic_query
+                    
+                    # 构建JSON元数据过滤条件（用于阶段一粗筛）
+                    # 将查询规划的结果转换为元数据过滤条件
+                    if getattr(query_plan, "memory_types", None):
+                        metadata_filters['memory_types'] = [mt.value for mt in query_plan.memory_types]
+                    
+                    if getattr(query_plan, "subject_includes", None):
+                        metadata_filters['subjects'] = query_plan.subject_includes
+                    
+                    if getattr(query_plan, "required_keywords", None):
+                        metadata_filters['keywords'] = query_plan.required_keywords
+                    
+                    # 时间范围过滤
+                    recency = getattr(query_plan, "recency_preference", "any")
+                    current_time = time.time()
+                    if recency == "recent":
+                        # 最近7天
+                        metadata_filters['created_after'] = current_time - (7 * 24 * 3600)
+                    elif recency == "historical":
+                        # 30天以前
+                        metadata_filters['created_before'] = current_time - (30 * 24 * 3600)
+                    
+                    # 添加用户ID到元数据过滤
+                    metadata_filters['user_id'] = GLOBAL_MEMORY_SCOPE
+                    
+                    logger.debug(f"[阶段一] 查询优化: '{raw_query}' → '{optimized_query}'")
+                    logger.debug(f"[阶段一] 元数据过滤条件: {metadata_filters}")
+                    
                 except Exception as plan_exc:
-                    logger.warning("查询规划失败，使用默认检索策略: %s", plan_exc, exc_info=True)
+                    logger.warning("查询规划失败，使用原始查询: %s", plan_exc, exc_info=True)
+                    # 即使查询规划失败，也保留基本的user_id过滤
+                    metadata_filters = {'user_id': GLOBAL_MEMORY_SCOPE}
 
-            # 使用统一存储搜索
+            # === 阶段二：向量精筛 ===
+            coarse_limit = self.config.coarse_recall_limit  # 粗筛阶段返回更多候选
+            
+            logger.debug(f"[阶段二] 开始向量搜索: query='{optimized_query[:60]}...', limit={coarse_limit}")
+            
             search_results = await self.unified_storage.search_similar_memories(
-                query_text=raw_query,
-                limit=effective_limit,
-                filters=filters
+                query_text=optimized_query,
+                limit=coarse_limit,
+                filters=coarse_filters,  # ChromaDB where条件（保留兼容）
+                metadata_filters=metadata_filters  # JSON元数据索引过滤
             )
+            
+            logger.info(f"[阶段二] 向量搜索完成: 返回 {len(search_results)} 条候选")
 
-            # 转换为记忆对象
-            final_memories = []
-            for memory_id, similarity_score in search_results:
-                memory = self.unified_storage.get_memory_by_id(memory_id)
-                if memory:
-                    memory.update_access()
-                    final_memories.append(memory)
+            # === 阶段三：综合重排 ===
+            scored_memories = []
+            current_time = time.time()
+            
+            for memory, vector_similarity in search_results:
+                # 1. 向量相似度得分（已归一化到 0-1）
+                vector_score = vector_similarity
+                
+                # 2. 时效性得分（指数衰减，30天半衰期）
+                age_seconds = current_time - memory.metadata.created_at
+                age_days = age_seconds / (24 * 3600)
+                # 使用 math.exp 而非 np.exp（避免依赖numpy）
+                import math
+                recency_score = math.exp(-age_days / 30)
+                
+                # 3. 重要性得分（枚举值转换为归一化得分 0-1）
+                # ImportanceLevel: LOW=1, NORMAL=2, HIGH=3, CRITICAL=4
+                importance_enum = memory.metadata.importance
+                if hasattr(importance_enum, 'value'):
+                    # 枚举类型，转换为0-1范围：(value - 1) / 3
+                    importance_score = (importance_enum.value - 1) / 3.0
+                else:
+                    # 如果已经是数值，直接使用
+                    importance_score = float(importance_enum) if importance_enum else 0.5
+                
+                # 4. 访问频率得分（归一化，访问10次以上得满分）
+                access_count = memory.metadata.access_count
+                frequency_score = min(access_count / 10.0, 1.0)
+                
+                # 综合得分（加权平均）
+                final_score = (
+                    self.config.vector_weight * vector_score +
+                    self.config.recency_weight * recency_score +
+                    self.config.context_weight * importance_score +
+                    0.1 * frequency_score  # 访问频率权重（固定10%）
+                )
+                
+                scored_memories.append((memory, final_score, {
+                    "vector": vector_score,
+                    "recency": recency_score,
+                    "importance": importance_score,
+                    "frequency": frequency_score,
+                    "final": final_score
+                }))
+                
+                # 更新访问记录
+                memory.update_access()
 
+            # 按综合得分排序
+            scored_memories.sort(key=lambda x: x[1], reverse=True)
+            
+            # 返回 Top-K
+            final_memories = [mem for mem, score, details in scored_memories[:effective_limit]]
+            
             retrieval_time = time.time() - start_time
 
+            # 详细日志
+            if scored_memories:
+                logger.info(f"[阶段三] 综合重排完成: Top 3 得分详情")
+                for i, (mem, score, details) in enumerate(scored_memories[:3], 1):
+                    try:
+                        summary = mem.content[:60] if hasattr(mem, 'content') and mem.content else ""
+                    except:
+                        summary = ""
+                    logger.info(
+                        f"  #{i} | final={details['final']:.3f} "
+                        f"(vec={details['vector']:.3f}, rec={details['recency']:.3f}, "
+                        f"imp={details['importance']:.3f}, freq={details['frequency']:.3f}) "
+                        f"| {summary}"
+                    )
+
             logger.info(
-                "✅ 简化记忆检索完成"
+                "✅ 三阶段记忆检索完成"
                 f" | user={resolved_user_id}"
-                f" | count={len(final_memories)}"
+                f" | 粗筛={len(search_results)}"
+                f" | 精筛={len(scored_memories)}"
+                f" | 返回={len(final_memories)}"
                 f" | duration={retrieval_time:.3f}s"
-                f" | query='{raw_query}'"
+                f" | query='{optimized_query[:60]}...'"
             )
 
             self.last_retrieval_time = time.time()
@@ -719,8 +823,8 @@ class MemorySystem:
             except Exception:
                 context = dict(raw_context or {})
 
-        # 基础字段（统一使用全局作用域）
-        context["user_id"] = GLOBAL_MEMORY_SCOPE
+        # 基础字段：强制使用传入的 user_id 参数（已统一为 GLOBAL_MEMORY_SCOPE）
+        context["user_id"] = user_id or GLOBAL_MEMORY_SCOPE
         context["timestamp"] = context.get("timestamp") or timestamp or time.time()
         context["message_type"] = context.get("message_type") or "normal"
         context["platform"] = context.get("platform") or context.get("source_platform") or "unknown"
@@ -759,6 +863,150 @@ class MemorySystem:
                 context.pop("history_limit", None)
 
         return context
+
+    async def _build_enhanced_query_context(self, raw_query: str, normalized_context: Dict[str, Any]) -> Dict[str, Any]:
+        """构建包含未读消息综合上下文的增强查询上下文
+
+        Args:
+            raw_query: 原始查询文本
+            normalized_context: 标准化后的基础上下文
+
+        Returns:
+            Dict[str, Any]: 包含未读消息综合信息的增强上下文
+        """
+        enhanced_context = dict(normalized_context)  # 复制基础上下文
+
+        try:
+            # 获取stream_id以查找未读消息
+            stream_id = normalized_context.get("stream_id")
+            if not stream_id:
+                logger.debug("未找到stream_id，使用基础上下文进行查询规划")
+                return enhanced_context
+
+            # 获取未读消息作为上下文
+            unread_messages_summary = await self._collect_unread_messages_context(stream_id)
+
+            if unread_messages_summary:
+                enhanced_context["unread_messages_context"] = unread_messages_summary
+                enhanced_context["has_unread_context"] = True
+
+                logger.debug(f"为查询规划构建了增强上下文，包含 {len(unread_messages_summary.get('messages', []))} 条未读消息")
+            else:
+                enhanced_context["has_unread_context"] = False
+                logger.debug("未找到未读消息，使用基础上下文进行查询规划")
+
+        except Exception as e:
+            logger.warning(f"构建增强查询上下文失败: {e}", exc_info=True)
+            enhanced_context["has_unread_context"] = False
+
+        return enhanced_context
+
+    async def _collect_unread_messages_context(self, stream_id: str) -> Optional[Dict[str, Any]]:
+        """收集未读消息的综合上下文信息
+
+        Args:
+            stream_id: 流ID
+
+        Returns:
+            Optional[Dict[str, Any]]: 未读消息的综合信息，包含消息列表、关键词、主题等
+        """
+        try:
+            from src.chat.message_receive.chat_stream import get_chat_manager
+
+            chat_manager = get_chat_manager()
+            chat_stream = chat_manager.get_stream(stream_id)
+
+            if not chat_stream or not hasattr(chat_stream, "context_manager"):
+                logger.debug(f"未找到stream_id={stream_id}的聊天流或上下文管理器")
+                return None
+
+            # 获取未读消息
+            context_manager = chat_stream.context_manager
+            unread_messages = context_manager.get_unread_messages()
+
+            if not unread_messages:
+                logger.debug(f"stream_id={stream_id}没有未读消息")
+                return None
+
+            # 构建未读消息摘要
+            messages_summary = []
+            all_keywords = set()
+            participant_names = set()
+
+            for msg in unread_messages[:10]:  # 限制处理最近10条未读消息
+                try:
+                    # 提取消息内容
+                    content = (getattr(msg, "processed_plain_text", None) or
+                              getattr(msg, "display_message", None) or "")
+                    if not content:
+                        continue
+
+                    # 提取发送者信息
+                    sender_name = "未知用户"
+                    if hasattr(msg, "user_info") and msg.user_info:
+                        sender_name = (getattr(msg.user_info, "user_nickname", None) or
+                                     getattr(msg.user_info, "user_cardname", None) or
+                                     getattr(msg.user_info, "user_id", None) or "未知用户")
+
+                    participant_names.add(sender_name)
+
+                    # 添加到消息摘要
+                    messages_summary.append({
+                        "sender": sender_name,
+                        "content": content[:200],  # 限制长度避免过长
+                        "timestamp": getattr(msg, "time", None)
+                    })
+
+                    # 提取关键词（简单实现）
+                    content_lower = content.lower()
+                    # 这里可以添加更复杂的关键词提取逻辑
+                    words = [w.strip() for w in content_lower.split() if len(w.strip()) > 1]
+                    all_keywords.update(words[:5])  # 每条消息最多取5个词
+
+                except Exception as msg_e:
+                    logger.debug(f"处理未读消息时出错: {msg_e}")
+                    continue
+
+            if not messages_summary:
+                return None
+
+            # 构建综合上下文信息
+            unread_context = {
+                "messages": messages_summary,
+                "total_count": len(unread_messages),
+                "processed_count": len(messages_summary),
+                "keywords": list(all_keywords)[:20],  # 最多20个关键词
+                "participants": list(participant_names),
+                "context_summary": self._build_unread_context_summary(messages_summary)
+            }
+
+            logger.debug(f"收集到未读消息上下文: {len(messages_summary)}条消息，{len(all_keywords)}个关键词，{len(participant_names)}个参与者")
+            return unread_context
+
+        except Exception as e:
+            logger.warning(f"收集未读消息上下文失败: {e}", exc_info=True)
+            return None
+
+    def _build_unread_context_summary(self, messages_summary: List[Dict[str, Any]]) -> str:
+        """构建未读消息的文本摘要
+
+        Args:
+            messages_summary: 未读消息摘要列表
+
+        Returns:
+            str: 未读消息的文本摘要
+        """
+        if not messages_summary:
+            return ""
+
+        summary_parts = []
+        for msg_info in messages_summary:
+            sender = msg_info.get("sender", "未知")
+            content = msg_info.get("content", "")
+            if content:
+                summary_parts.append(f"{sender}: {content}")
+
+        return " | ".join(summary_parts)
 
     async def _resolve_conversation_context(self, fallback_text: str, context: Optional[Dict[str, Any]]) -> str:
         """使用 stream_id 历史消息和相关记忆充实对话文本，默认回退到传入文本"""
