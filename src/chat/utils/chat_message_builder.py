@@ -171,7 +171,7 @@ async def replace_user_references_async(
     return content
 
 
-def get_raw_msg_by_timestamp(
+async def get_raw_msg_by_timestamp(
     timestamp_start: float, timestamp_end: float, limit: int = 0, limit_mode: str = "latest"
 ) -> List[Dict[str, Any]]:
     """
@@ -182,10 +182,10 @@ def get_raw_msg_by_timestamp(
     filter_query = {"time": {"$gt": timestamp_start, "$lt": timestamp_end}}
     # 只有当 limit 为 0 时才应用外部 sort
     sort_order = [("time", 1)] if limit == 0 else None
-    return find_messages(message_filter=filter_query, sort=sort_order, limit=limit, limit_mode=limit_mode)
+    return await find_messages(message_filter=filter_query, sort=sort_order, limit=limit, limit_mode=limit_mode)
 
 
-def get_raw_msg_by_timestamp_with_chat(
+async def get_raw_msg_by_timestamp_with_chat(
     chat_id: str,
     timestamp_start: float,
     timestamp_end: float,
@@ -202,7 +202,7 @@ def get_raw_msg_by_timestamp_with_chat(
     # 只有当 limit 为 0 时才应用外部 sort
     sort_order = [("time", 1)] if limit == 0 else None
     # 直接将 limit_mode 传递给 find_messages
-    return find_messages(
+    return await find_messages(
         message_filter=filter_query,
         sort=sort_order,
         limit=limit,
@@ -212,7 +212,7 @@ def get_raw_msg_by_timestamp_with_chat(
     )
 
 
-def get_raw_msg_by_timestamp_with_chat_inclusive(
+async def get_raw_msg_by_timestamp_with_chat_inclusive(
     chat_id: str,
     timestamp_start: float,
     timestamp_end: float,
@@ -229,12 +229,12 @@ def get_raw_msg_by_timestamp_with_chat_inclusive(
     sort_order = [("time", 1)] if limit == 0 else None
     # 直接将 limit_mode 传递给 find_messages
 
-    return find_messages(
+    return await find_messages(
         message_filter=filter_query, sort=sort_order, limit=limit, limit_mode=limit_mode, filter_bot=filter_bot
     )
 
 
-def get_raw_msg_by_timestamp_with_chat_users(
+async def get_raw_msg_by_timestamp_with_chat_users(
     chat_id: str,
     timestamp_start: float,
     timestamp_end: float,
@@ -253,7 +253,7 @@ def get_raw_msg_by_timestamp_with_chat_users(
     }
     # 只有当 limit 为 0 时才应用外部 sort
     sort_order = [("time", 1)] if limit == 0 else None
-    return find_messages(message_filter=filter_query, sort=sort_order, limit=limit, limit_mode=limit_mode)
+    return await find_messages(message_filter=filter_query, sort=sort_order, limit=limit, limit_mode=limit_mode)
 
 
 async def get_actions_by_timestamp_with_chat(
@@ -420,14 +420,14 @@ async def get_actions_by_timestamp_with_chat_inclusive(
         return [action.__dict__ for action in actions]
 
 
-def get_raw_msg_by_timestamp_random(
+async def get_raw_msg_by_timestamp_random(
     timestamp_start: float, timestamp_end: float, limit: int = 0, limit_mode: str = "latest"
 ) -> List[Dict[str, Any]]:
     """
     先在范围时间戳内随机选择一条消息，取得消息的chat_id，然后根据chat_id获取该聊天在指定时间戳范围内的消息
     """
     # 获取所有消息，只取chat_id字段
-    all_msgs = get_raw_msg_by_timestamp(timestamp_start, timestamp_end)
+    all_msgs = await get_raw_msg_by_timestamp(timestamp_start, timestamp_end)
     if not all_msgs:
         return []
     # 随机选一条
@@ -435,10 +435,10 @@ def get_raw_msg_by_timestamp_random(
     chat_id = msg["chat_id"]
     timestamp_start = msg["time"]
     # 用 chat_id 获取该聊天在指定时间戳范围内的消息
-    return get_raw_msg_by_timestamp_with_chat(chat_id, timestamp_start, timestamp_end, limit, "earliest")
+    return await get_raw_msg_by_timestamp_with_chat(chat_id, timestamp_start, timestamp_end, limit, "earliest")
 
 
-def get_raw_msg_by_timestamp_with_users(
+async def get_raw_msg_by_timestamp_with_users(
     timestamp_start: float, timestamp_end: float, person_ids: list, limit: int = 0, limit_mode: str = "latest"
 ) -> List[Dict[str, Any]]:
     """获取某些特定用户在 *所有聊天* 中从指定时间戳到指定时间戳的消息，按时间升序排序，返回消息列表
@@ -448,16 +448,16 @@ def get_raw_msg_by_timestamp_with_users(
     filter_query = {"time": {"$gt": timestamp_start, "$lt": timestamp_end}, "user_id": {"$in": person_ids}}
     # 只有当 limit 为 0 时才应用外部 sort
     sort_order = [("time", 1)] if limit == 0 else None
-    return find_messages(message_filter=filter_query, sort=sort_order, limit=limit, limit_mode=limit_mode)
+    return await find_messages(message_filter=filter_query, sort=sort_order, limit=limit, limit_mode=limit_mode)
 
 
-def get_raw_msg_before_timestamp(timestamp: float, limit: int = 0) -> List[Dict[str, Any]]:
+async def get_raw_msg_before_timestamp(timestamp: float, limit: int = 0) -> List[Dict[str, Any]]:
     """获取指定时间戳之前的消息，按时间升序排序，返回消息列表
     limit: 限制返回的消息数量，0为不限制
     """
     filter_query = {"time": {"$lt": timestamp}}
     sort_order = [("time", 1)]
-    return find_messages(message_filter=filter_query, sort=sort_order, limit=limit)
+    return await find_messages(message_filter=filter_query, sort=sort_order, limit=limit)
 
 
 async def get_raw_msg_before_timestamp_with_chat(chat_id: str, timestamp: float, limit: int = 0) -> List[Dict[str, Any]]:
@@ -469,16 +469,16 @@ async def get_raw_msg_before_timestamp_with_chat(chat_id: str, timestamp: float,
     return await find_messages(message_filter=filter_query, sort=sort_order, limit=limit)
 
 
-def get_raw_msg_before_timestamp_with_users(timestamp: float, person_ids: list, limit: int = 0) -> List[Dict[str, Any]]:
+async def get_raw_msg_before_timestamp_with_users(timestamp: float, person_ids: list, limit: int = 0) -> List[Dict[str, Any]]:
     """获取指定时间戳之前的消息，按时间升序排序，返回消息列表
     limit: 限制返回的消息数量，0为不限制
     """
     filter_query = {"time": {"$lt": timestamp}, "user_id": {"$in": person_ids}}
     sort_order = [("time", 1)]
-    return find_messages(message_filter=filter_query, sort=sort_order, limit=limit)
+    return await find_messages(message_filter=filter_query, sort=sort_order, limit=limit)
 
 
-def num_new_messages_since(chat_id: str, timestamp_start: float = 0.0, timestamp_end: Optional[float] = None) -> int:
+async def num_new_messages_since(chat_id: str, timestamp_start: float = 0.0, timestamp_end: Optional[float] = None) -> int:
     """
     检查特定聊天从 timestamp_start (不含) 到 timestamp_end (不含) 之间有多少新消息。
     如果 timestamp_end 为 None，则检查从 timestamp_start (不含) 到当前时间的消息。
@@ -492,10 +492,10 @@ def num_new_messages_since(chat_id: str, timestamp_start: float = 0.0, timestamp
         return 0  # 起始时间大于等于结束时间，没有新消息
 
     filter_query = {"chat_id": chat_id, "time": {"$gt": timestamp_start, "$lt": _timestamp_end}}
-    return count_messages(message_filter=filter_query)
+    return await count_messages(message_filter=filter_query)
 
 
-def num_new_messages_since_with_users(
+async def num_new_messages_since_with_users(
     chat_id: str, timestamp_start: float, timestamp_end: float, person_ids: list
 ) -> int:
     """检查某些特定用户在特定聊天在指定时间戳之间有多少新消息"""
@@ -506,7 +506,7 @@ def num_new_messages_since_with_users(
         "time": {"$gt": timestamp_start, "$lt": timestamp_end},
         "user_id": {"$in": person_ids},
     }
-    return count_messages(message_filter=filter_query)
+    return await count_messages(message_filter=filter_query)
 
 
 async def _build_readable_messages_internal(
@@ -645,7 +645,7 @@ async def _build_readable_messages_internal(
             person_name = f"{person_name}({user_id})"
 
         # 使用独立函数处理用户引用格式
-        content = replace_user_references_sync(content, platform, replace_bot_name=replace_bot_name)
+        content = await replace_user_references_async(content, platform, replace_bot_name=replace_bot_name)
 
         target_str = "这是QQ的一个功能，用于提及某人，但没那么明显"
         if target_str in content and random.random() < 0.6:
@@ -1216,13 +1216,15 @@ async def build_anonymous_messages(messages: List[Dict[str, Any]]) -> str:
             # print(f"anon_name:{anon_name}")
 
             # 使用独立函数处理用户引用格式，传入自定义的匿名名称解析器
-            def anon_name_resolver(platform: str, user_id: str) -> str:
+            async def anon_name_resolver(platform: str, user_id: str) -> str:
                 try:
                     return get_anon_name(platform, user_id)
                 except Exception:
                     return "?"
 
-            content = replace_user_references_sync(content, platform, anon_name_resolver, replace_bot_name=False)
+            content = await replace_user_references_async(
+                content, platform, anon_name_resolver, replace_bot_name=False
+            )
 
             header = f"{anon_name}说 "
             output_lines.append(header)
