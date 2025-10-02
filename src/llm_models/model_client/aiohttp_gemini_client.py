@@ -120,9 +120,9 @@ def _convert_tool_options(tool_options: list[ToolOption]) -> list[dict]:
     转换工具选项格式 - 将工具选项转换为Gemini REST API所需的格式
     """
 
-    def _convert_tool_param(param: ToolParam) -> dict:
+    def _convert_tool_param(param: ToolParam) -> dict[str, Any]:
         """转换工具参数"""
-        result = {
+        result: dict[str, Any] = {
             "type": param.param_type.value,
             "description": param.description,
         }
@@ -130,9 +130,9 @@ def _convert_tool_options(tool_options: list[ToolOption]) -> list[dict]:
             result["enum"] = param.enum_values
         return result
 
-    def _convert_tool_option_item(tool_option: ToolOption) -> dict:
+    def _convert_tool_option_item(tool_option: ToolOption) -> dict[str, Any]:
         """转换单个工具选项"""
-        function_declaration = {
+        function_declaration: dict[str, Any] = {
             "name": tool_option.name,
             "description": tool_option.description,
         }
@@ -341,7 +341,6 @@ class AiohttpGeminiClient(BaseClient):
         super().__init__(api_provider)
         self.base_url = "https://generativelanguage.googleapis.com/v1beta"
         self.session: aiohttp.ClientSession | None = None
-        self.api_key = api_provider.api_key
 
         # 如果提供了自定义base_url，使用它
         if api_provider.base_url:
@@ -388,11 +387,11 @@ class AiohttpGeminiClient(BaseClient):
         self, method: str, endpoint: str, data: dict | None = None, stream: bool = False
     ) -> aiohttp.ClientResponse:
         """发起HTTP请求（每次都用 with aiohttp.ClientSession() as session）"""
-        url = f"{self.base_url}/{endpoint}?key={self.api_key}"
-        timeout = aiohttp.ClientTimeout(total=300)
+        api_key = self.api_provider.get_api_key()
+        url = f"{self.base_url}/{endpoint}?key={api_key}"
         try:
             async with aiohttp.ClientSession(
-                timeout=timeout,
+                timeout=aiohttp.ClientTimeout(total=300),
                 headers={"Content-Type": "application/json", "User-Agent": "MMC-AioHTTP-Gemini-Client/1.0"},
             ) as session:
                 if method.upper() == "POST":
@@ -500,7 +499,7 @@ class AiohttpGeminiClient(BaseClient):
             # 直接重抛项目定义的异常
             raise
         except Exception as e:
-            logger.debug(e)
+            logger.debug(str(e))
             # 其他异常转换为网络连接错误
             raise NetworkConnectionError() from e
 

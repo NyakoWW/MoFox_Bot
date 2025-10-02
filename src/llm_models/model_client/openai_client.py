@@ -376,11 +376,14 @@ def _default_normal_response_parser(
 class OpenaiClient(BaseClient):
     def __init__(self, api_provider: APIProvider):
         super().__init__(api_provider)
-        self.client: AsyncOpenAI = AsyncOpenAI(
-            base_url=api_provider.base_url,
-            api_key=api_provider.api_key,
+
+    def _create_client(self) -> AsyncOpenAI:
+        """动态创建OpenAI客户端"""
+        return AsyncOpenAI(
+            base_url=self.api_provider.base_url,
+            api_key=self.api_provider.get_api_key(),
             max_retries=0,
-            timeout=api_provider.timeout,
+            timeout=self.api_provider.timeout,
         )
 
     async def get_response(
@@ -429,10 +432,11 @@ class OpenaiClient(BaseClient):
         # 将tool_options转换为OpenAI API所需的格式
         tools: Iterable[ChatCompletionToolParam] = _convert_tool_options(tool_options) if tool_options else NOT_GIVEN  # type: ignore
 
+        client = self._create_client()
         try:
             if model_info.force_stream_mode:
                 req_task = asyncio.create_task(
-                    self.client.chat.completions.create(
+                    client.chat.completions.create(
                         model=model_info.model_identifier,
                         messages=messages,
                         tools=tools,
@@ -455,7 +459,7 @@ class OpenaiClient(BaseClient):
                 # 发送请求并获取响应
                 # start_time = time.time()
                 req_task = asyncio.create_task(
-                    self.client.chat.completions.create(
+                    client.chat.completions.create(
                         model=model_info.model_identifier,
                         messages=messages,
                         tools=tools,
@@ -506,8 +510,9 @@ class OpenaiClient(BaseClient):
         :param embedding_input: 嵌入输入文本
         :return: 嵌入响应
         """
+        client = self._create_client()
         try:
-            raw_response = await self.client.embeddings.create(
+            raw_response = await client.embeddings.create(
                 model=model_info.model_identifier,
                 input=embedding_input,
                 extra_body=extra_params,
@@ -564,8 +569,9 @@ class OpenaiClient(BaseClient):
         :extra_params: 附加的请求参数
         :return: 音频转录响应
         """
+        client = self._create_client()
         try:
-            raw_response = await self.client.audio.transcriptions.create(
+            raw_response = await client.audio.transcriptions.create(
                 model=model_info.model_identifier,
                 file=("audio.wav", io.BytesIO(base64.b64decode(audio_base64))),
                 extra_body=extra_params,
