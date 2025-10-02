@@ -1217,21 +1217,36 @@ class DefaultReplyer:
         from src.chat.utils.prompt import Prompt
 
         # 并行执行六个构建任务
-        task_results = await asyncio.gather(
-            self._time_and_run_task(
-                self.build_expression_habits(chat_talking_prompt_short, target), "expression_habits"
-            ),
-            self._time_and_run_task(self.build_relation_info(sender, target), "relation_info"),
-            self._time_and_run_task(self.build_memory_block(chat_talking_prompt_short, target), "memory_block"),
-            self._time_and_run_task(
-                self.build_tool_info(chat_talking_prompt_short, sender, target, enable_tool=enable_tool), "tool_info"
-            ),
-            self._time_and_run_task(self.get_prompt_info(chat_talking_prompt_short, sender, target), "prompt_info"),
-            self._time_and_run_task(
-                Prompt.build_cross_context(chat_id, global_config.personality.prompt_mode, target_user_info),
-                "cross_context",
-            ),
-        )
+        tasks = {
+            "expression_habits": asyncio.create_task(self._time_and_run_task(self.build_expression_habits(chat_talking_prompt_short, target), "expression_habits")),
+            "relation_info": asyncio.create_task(self._time_and_run_task(self.build_relation_info(sender, target), "relation_info")),
+            "memory_block": asyncio.create_task(self._time_and_run_task(self.build_memory_block(chat_talking_prompt_short, target), "memory_block")),
+            "tool_info": asyncio.create_task(self._time_and_run_task(self.build_tool_info(chat_talking_prompt_short, sender, target, enable_tool=enable_tool), "tool_info")),
+            "prompt_info": asyncio.create_task(self._time_and_run_task(self.get_prompt_info(chat_talking_prompt_short, sender, target), "prompt_info")),
+            "cross_context": asyncio.create_task(self._time_and_run_task(Prompt.build_cross_context(chat_id, global_config.personality.prompt_mode, target_user_info), "cross_context")),
+        }
+
+        # 设置超时
+        timeout = 15.0  # 秒
+
+        async def get_task_result(task_name, task):
+            try:
+                return await asyncio.wait_for(task, timeout=timeout)
+            except asyncio.TimeoutError:
+                logger.warning(f"构建任务{task_name}超时 ({timeout}s)，使用默认值")
+                # 为超时任务提供默认值
+                default_values = {
+                    "expression_habits": "",
+                    "relation_info": "",
+                    "memory_block": "",
+                    "tool_info": "",
+                    "prompt_info": "",
+                    "cross_context": "",
+                }
+                logger.info(f"为超时任务 {task_name} 提供默认值")
+                return task_name, default_values[task_name], timeout
+
+        task_results = await asyncio.gather(*(get_task_result(name, task) for name, task in tasks.items()))
 
         # 任务名称中英文映射
         task_name_mapping = {
