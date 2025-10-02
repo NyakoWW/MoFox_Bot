@@ -9,13 +9,15 @@
 """
 
 import traceback
-from typing import Tuple, Any, Dict, List, Optional
+from typing import Any
+
 from rich.traceback import install
-from src.common.logger import get_logger
-from src.chat.replyer.default_generator import DefaultReplyer
+
 from src.chat.message_receive.chat_stream import ChatStream
-from src.chat.utils.utils import process_llm_response
+from src.chat.replyer.default_generator import DefaultReplyer
 from src.chat.replyer.replyer_manager import replyer_manager
+from src.chat.utils.utils import process_llm_response
+from src.common.logger import get_logger
 from src.plugin_system.base.component_types import ActionInfo
 
 install(extra_lines=3)
@@ -30,10 +32,10 @@ logger = get_logger("generator_api")
 
 
 def get_replyer(
-    chat_stream: Optional[ChatStream] = None,
-    chat_id: Optional[str] = None,
+    chat_stream: ChatStream | None = None,
+    chat_id: str | None = None,
     request_type: str = "replyer",
-) -> Optional[DefaultReplyer]:
+) -> DefaultReplyer | None:
     """获取回复器对象
 
     优先使用chat_stream，如果没有则使用chat_id直接查找。
@@ -71,13 +73,13 @@ def get_replyer(
 
 
 async def generate_reply(
-    chat_stream: Optional[ChatStream] = None,
-    chat_id: Optional[str] = None,
-    action_data: Optional[Dict[str, Any]] = None,
+    chat_stream: ChatStream | None = None,
+    chat_id: str | None = None,
+    action_data: dict[str, Any] | None = None,
     reply_to: str = "",
-    reply_message: Optional[Dict[str, Any]] = None,
+    reply_message: dict[str, Any] | None = None,
     extra_info: str = "",
-    available_actions: Optional[Dict[str, ActionInfo]] = None,
+    available_actions: dict[str, ActionInfo] | None = None,
     enable_tool: bool = False,
     enable_splitter: bool = True,
     enable_chinese_typo: bool = True,
@@ -85,7 +87,7 @@ async def generate_reply(
     request_type: str = "generator_api",
     from_plugin: bool = True,
     read_mark: float = 0.0,
-) -> Tuple[bool, List[Tuple[str, Any]], Optional[str]]:
+) -> tuple[bool, list[tuple[str, Any]], str | None]:
     """生成回复
 
     Args:
@@ -168,9 +170,9 @@ async def generate_reply(
 
 
 async def rewrite_reply(
-    chat_stream: Optional[ChatStream] = None,
-    reply_data: Optional[Dict[str, Any]] = None,
-    chat_id: Optional[str] = None,
+    chat_stream: ChatStream | None = None,
+    reply_data: dict[str, Any] | None = None,
+    chat_id: str | None = None,
     enable_splitter: bool = True,
     enable_chinese_typo: bool = True,
     raw_reply: str = "",
@@ -178,7 +180,7 @@ async def rewrite_reply(
     reply_to: str = "",
     return_prompt: bool = False,
     request_type: str = "generator_api",
-) -> Tuple[bool, List[Tuple[str, Any]], Optional[str]]:
+) -> tuple[bool, list[tuple[str, Any]], str | None]:
     """重写回复
 
     Args:
@@ -237,7 +239,7 @@ async def rewrite_reply(
         return False, [], None
 
 
-def process_human_text(content: str, enable_splitter: bool, enable_chinese_typo: bool) -> List[Tuple[str, Any]]:
+def process_human_text(content: str, enable_splitter: bool, enable_chinese_typo: bool) -> list[tuple[str, Any]]:
     """将文本处理为更拟人化的文本
 
     Args:
@@ -266,11 +268,11 @@ def process_human_text(content: str, enable_splitter: bool, enable_chinese_typo:
 
 
 async def generate_response_custom(
-    chat_stream: Optional[ChatStream] = None,
-    chat_id: Optional[str] = None,
+    chat_stream: ChatStream | None = None,
+    chat_id: str | None = None,
     request_type: str = "generator_api",
     prompt: str = "",
-) -> Optional[str]:
+) -> str | None:
     """
     使用自定义提示生成回复
 
