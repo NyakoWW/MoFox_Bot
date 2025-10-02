@@ -1,14 +1,15 @@
 import re
 import traceback
-import orjson
-from typing import Union
 
-from src.common.database.sqlalchemy_models import Messages, Images
-from src.common.logger import get_logger
-from .chat_stream import ChatStream
-from .message import MessageSending, MessageRecv
+import orjson
+from sqlalchemy import desc, select, update
+
 from src.common.database.sqlalchemy_database_api import get_db_session
-from sqlalchemy import select, update, desc
+from src.common.database.sqlalchemy_models import Images, Messages
+from src.common.logger import get_logger
+
+from .chat_stream import ChatStream
+from .message import MessageRecv, MessageSending
 
 logger = get_logger("message_storage")
 
@@ -32,7 +33,7 @@ class MessageStorage:
             return []
 
     @staticmethod
-    async def store_message(message: Union[MessageSending, MessageRecv], chat_stream: ChatStream) -> None:
+    async def store_message(message: MessageSending | MessageRecv, chat_stream: ChatStream) -> None:
         """存储消息到数据库"""
         try:
             # 过滤敏感信息的正则模式
@@ -52,7 +53,11 @@ class MessageStorage:
                     filtered_display_message = re.sub(pattern, "", display_message, flags=re.DOTALL)
                 else:
                     # 如果没有设置display_message，使用processed_plain_text作为显示消息
-                    filtered_display_message = re.sub(pattern, "", message.processed_plain_text, flags=re.DOTALL) if message.processed_plain_text else ""
+                    filtered_display_message = (
+                        re.sub(pattern, "", message.processed_plain_text, flags=re.DOTALL)
+                        if message.processed_plain_text
+                        else ""
+                    )
                 interest_value = 0
                 is_mentioned = False
                 reply_to = message.reply_to
@@ -175,9 +180,11 @@ class MessageStorage:
             from src.common.database.sqlalchemy_models import get_db_session
 
             async with get_db_session() as session:
-                matched_message = (await session.execute(
-                    select(Messages).where(Messages.message_id == mmc_message_id).order_by(desc(Messages.time))
-                )).scalar()
+                matched_message = (
+                    await session.execute(
+                        select(Messages).where(Messages.message_id == mmc_message_id).order_by(desc(Messages.time))
+                    )
+                ).scalar()
 
                 if matched_message:
                     await session.execute(
@@ -211,9 +218,11 @@ class MessageStorage:
                 from src.common.database.sqlalchemy_models import get_db_session
 
                 async with get_db_session() as session:
-                    image_record = (await session.execute(
-                        select(Images).where(Images.description == description).order_by(desc(Images.timestamp))
-                    )).scalar()
+                    image_record = (
+                        await session.execute(
+                            select(Images).where(Images.description == description).order_by(desc(Images.timestamp))
+                        )
+                    ).scalar()
                     return f"[picid:{image_record.image_id}]" if image_record else match.group(0)
             except Exception:
                 return match.group(0)
@@ -291,18 +300,23 @@ class MessageStorage:
         try:
             async with get_db_session() as session:
                 from sqlalchemy import select, update
+
                 from src.common.database.sqlalchemy_models import Messages
 
                 # 查找需要修复的记录：interest_value为0、null或很小的值
-                query = select(Messages).where(
-                    (Messages.chat_id == chat_id) &
-                    (Messages.time >= since_time) &
-                    (
-                        (Messages.interest_value == 0) |
-                        (Messages.interest_value.is_(None)) |
-                        (Messages.interest_value < 0.1)
+                query = (
+                    select(Messages)
+                    .where(
+                        (Messages.chat_id == chat_id)
+                        & (Messages.time >= since_time)
+                        & (
+                            (Messages.interest_value == 0)
+                            | (Messages.interest_value.is_(None))
+                            | (Messages.interest_value < 0.1)
+                        )
                     )
-                ).limit(50)  # 限制每次修复的数量，避免性能问题
+                    .limit(50)
+                )  # 限制每次修复的数量，避免性能问题
 
                 result = await session.execute(query)
                 messages_to_fix = result.scalars().all()
@@ -314,7 +328,7 @@ class MessageStorage:
                     default_interest = 0.3  # 默认中等兴趣度
 
                     # 如果消息内容较长，可能是重要消息，兴趣度稍高
-                    if hasattr(msg, 'processed_plain_text') and msg.processed_plain_text:
+                    if hasattr(msg, "processed_plain_text") and msg.processed_plain_text:
                         text_length = len(msg.processed_plain_text)
                         if text_length > 50:  # 长消息
                             default_interest = 0.4
@@ -322,13 +336,15 @@ class MessageStorage:
                             default_interest = 0.35
 
                     # 如果是被@的消息，兴趣度更高
-                    if getattr(msg, 'is_mentioned', False):
+                    if getattr(msg, "is_mentioned", False):
                         default_interest = min(default_interest + 0.2, 0.8)
 
                     # 执行更新
-                    update_stmt = update(Messages).where(
-                        Messages.message_id == msg.message_id
-                    ).values(interest_value=default_interest)
+                    update_stmt = (
+                        update(Messages)
+                        .where(Messages.message_id == msg.message_id)
+                        .values(interest_value=default_interest)
+                    )
 
                     result = await session.execute(update_stmt)
                     if result.rowcount > 0:

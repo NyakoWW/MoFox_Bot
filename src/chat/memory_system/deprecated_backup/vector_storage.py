@@ -1,33 +1,30 @@
-# -*- coding: utf-8 -*-
 """
 向量数据库存储接口
 为记忆系统提供高效的向量存储和语义搜索能力
 """
 
-import os
-import time
-import orjson
 import asyncio
-from typing import Dict, List, Optional, Tuple, Set, Any
-from dataclasses import dataclass
-from datetime import datetime
 import threading
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 import numpy as np
-import pandas as pd
-from pathlib import Path
+import orjson
 
-from src.common.logger import get_logger
-from src.llm_models.utils_model import LLMRequest
-from src.config.config import model_config, global_config
-from src.common.config_helpers import resolve_embedding_dimension
 from src.chat.memory_system.memory_chunk import MemoryChunk
+from src.common.config_helpers import resolve_embedding_dimension
+from src.common.logger import get_logger
+from src.config.config import model_config
+from src.llm_models.utils_model import LLMRequest
 
 logger = get_logger(__name__)
 
 # 尝试导入FAISS，如果不可用则使用简单替代
 try:
     import faiss
+
     FAISS_AVAILABLE = True
 except ImportError:
     FAISS_AVAILABLE = False
@@ -37,6 +34,7 @@ except ImportError:
 @dataclass
 class VectorStorageConfig:
     """向量存储配置"""
+
     dimension: int = 1024
     similarity_threshold: float = 0.8
     index_type: str = "flat"  # flat, ivf, hnsw
@@ -49,7 +47,7 @@ class VectorStorageConfig:
 class VectorStorageManager:
     """向量存储管理器"""
 
-    def __init__(self, config: Optional[VectorStorageConfig] = None):
+    def __init__(self, config: VectorStorageConfig | None = None):
         self.config = config or VectorStorageConfig()
 
         resolved_dimension = resolve_embedding_dimension(self.config.dimension)
@@ -69,8 +67,8 @@ class VectorStorageManager:
         self.index_to_memory_id = {}  # vector index -> memory_id
 
         # 内存缓存
-        self.memory_cache: Dict[str, MemoryChunk] = {}
-        self.vector_cache: Dict[str, List[float]] = {}
+        self.memory_cache: dict[str, MemoryChunk] = {}
+        self.vector_cache: dict[str, list[float]] = {}
 
         # 统计信息
         self.storage_stats = {
@@ -79,7 +77,7 @@ class VectorStorageManager:
             "average_search_time": 0.0,
             "cache_hit_rate": 0.0,
             "total_searches": 0,
-            "cache_hits": 0
+            "cache_hits": 0,
         }
 
         # 线程锁
@@ -122,12 +120,11 @@ class VectorStorageManager:
         """初始化嵌入模型"""
         if self.embedding_model is None:
             self.embedding_model = LLMRequest(
-                model_set=model_config.model_task_config.embedding,
-                request_type="memory.embedding"
+                model_set=model_config.model_task_config.embedding, request_type="memory.embedding"
             )
             logger.info("✅ 嵌入模型初始化完成")
 
-    async def generate_query_embedding(self, query_text: str) -> Optional[List[float]]:
+    async def generate_query_embedding(self, query_text: str) -> list[float] | None:
         """生成查询向量，用于记忆召回"""
         if not query_text:
             logger.warning("查询文本为空，无法生成向量")
@@ -137,20 +134,16 @@ class VectorStorageManager:
             await self.initialize_embedding_model()
 
             logger.debug(f"开始生成查询向量，文本: '{query_text[:50]}{'...' if len(query_text) > 50 else ''}'")
-            
+
             embedding, _ = await self.embedding_model.get_embedding(query_text)
             if not embedding:
                 logger.warning("嵌入模型返回空向量")
                 return None
 
             logger.debug(f"生成的向量维度: {len(embedding)}, 期望维度: {self.config.dimension}")
-            
+
             if len(embedding) != self.config.dimension:
-                logger.error(
-                    "查询向量维度不匹配: 期望 %d, 实际 %d",
-                    self.config.dimension,
-                    len(embedding)
-                )
+                logger.error("查询向量维度不匹配: 期望 %d, 实际 %d", self.config.dimension, len(embedding))
                 return None
 
             normalized_vector = self._normalize_vector(embedding)
@@ -161,7 +154,7 @@ class VectorStorageManager:
             logger.error(f"❌ 生成查询向量失败: {exc}", exc_info=True)
             return None
 
-    async def store_memories(self, memories: List[MemoryChunk]):
+    async def store_memories(self, memories: list[MemoryChunk]):
         """存储记忆向量"""
         if not memories:
             return
@@ -237,7 +230,7 @@ class VectorStorageManager:
         logger.debug("记忆 %s 缺少可用展示文本，使用占位符生成嵌入输入", memory.memory_id)
         return memory.memory_id
 
-    async def _batch_generate_and_store_embeddings(self, memory_texts: List[Tuple[str, str]]):
+    async def _batch_generate_and_store_embeddings(self, memory_texts: list[tuple[str, str]]):
         """批量生成和存储嵌入向量"""
         if not memory_texts:
             return
@@ -259,12 +252,12 @@ class VectorStorageManager:
         except Exception as e:
             logger.error(f"❌ 批量生成嵌入向量失败: {e}")
 
-    async def _batch_generate_embeddings(self, memory_ids: List[str], texts: List[str]) -> Dict[str, List[float]]:
+    async def _batch_generate_embeddings(self, memory_ids: list[str], texts: list[str]) -> dict[str, list[float]]:
         """批量生成嵌入向量"""
         if not texts:
             return {}
 
-        results: Dict[str, List[float]] = {}
+        results: dict[str, list[float]] = {}
 
         try:
             semaphore = asyncio.Semaphore(min(4, max(1, len(texts))))
@@ -287,7 +280,9 @@ class VectorStorageManager:
                         logger.warning("生成记忆 %s 的嵌入向量失败: %s", memory_id, exc)
                         results[memory_id] = []
 
-            tasks = [asyncio.create_task(generate_embedding(mid, text)) for mid, text in zip(memory_ids, texts)]
+            tasks = [
+                asyncio.create_task(generate_embedding(mid, text)) for mid, text in zip(memory_ids, texts, strict=False)
+            ]
             await asyncio.gather(*tasks, return_exceptions=True)
 
         except Exception as e:
@@ -297,7 +292,7 @@ class VectorStorageManager:
 
         return results
 
-    async def _add_single_memory(self, memory: MemoryChunk, embedding: List[float]):
+    async def _add_single_memory(self, memory: MemoryChunk, embedding: list[float]):
         """添加单个记忆到向量存储"""
         with self._lock:
             try:
@@ -313,12 +308,12 @@ class VectorStorageManager:
                 memory.set_embedding(embedding)
 
                 # 添加到向量索引
-                if hasattr(self.vector_index, 'add'):
+                if hasattr(self.vector_index, "add"):
                     # FAISS索引
                     if isinstance(embedding, np.ndarray):
-                        vector_array = embedding.reshape(1, -1).astype('float32')
+                        vector_array = embedding.reshape(1, -1).astype("float32")
                     else:
-                        vector_array = np.array([embedding], dtype='float32')
+                        vector_array = np.array([embedding], dtype="float32")
 
                     # 特殊处理IVF索引
                     if self.config.index_type == "ivf" and self.vector_index.ntotal == 0:
@@ -343,7 +338,7 @@ class VectorStorageManager:
             except Exception as e:
                 logger.error(f"❌ 添加记忆到向量存储失败: {e}")
 
-    def _normalize_vector(self, vector: List[float]) -> List[float]:
+    def _normalize_vector(self, vector: list[float]) -> list[float]:
         """L2归一化向量"""
         if not vector:
             return vector
@@ -363,18 +358,18 @@ class VectorStorageManager:
 
     async def search_similar_memories(
         self,
-        query_vector: Optional[List[float]] = None,
+        query_vector: list[float] | None = None,
         *,
-        query_text: Optional[str] = None,
+        query_text: str | None = None,
         limit: int = 10,
-        scope_id: Optional[str] = None
-    ) -> List[Tuple[str, float]]:
+        scope_id: str | None = None,
+    ) -> list[tuple[str, float]]:
         """搜索相似记忆"""
         start_time = time.time()
 
         try:
             logger.debug(f"开始向量搜索: query_text='{query_text[:30] if query_text else 'None'}', limit={limit}")
-            
+
             if query_vector is None:
                 if not query_text:
                     logger.warning("查询向量和查询文本都为空")
@@ -385,7 +380,7 @@ class VectorStorageManager:
                     logger.warning("查询向量生成失败")
                     return []
 
-            scope_filter: Optional[str] = None
+            scope_filter: str | None = None
             if isinstance(scope_id, str):
                 normalized_scope = scope_id.strip().lower()
                 if normalized_scope and normalized_scope not in {"global", "global_memory"}:
@@ -395,34 +390,34 @@ class VectorStorageManager:
 
             # 规范化查询向量
             query_vector = self._normalize_vector(query_vector)
-            
+
             logger.debug(f"查询向量维度: {len(query_vector)}, 存储总向量数: {self.storage_stats['total_vectors']}")
 
             # 检查向量索引状态
             if not self.vector_index:
                 logger.error("向量索引未初始化")
                 return []
-                
+
             total_vectors = 0
-            if hasattr(self.vector_index, 'ntotal'):
+            if hasattr(self.vector_index, "ntotal"):
                 total_vectors = self.vector_index.ntotal
-            elif hasattr(self.vector_index, 'vectors'):
+            elif hasattr(self.vector_index, "vectors"):
                 total_vectors = len(self.vector_index.vectors)
-                
+
             logger.debug(f"向量索引中实际向量数: {total_vectors}")
-            
+
             if total_vectors == 0:
                 logger.warning("向量索引为空，无法执行搜索")
                 return []
 
             # 执行向量搜索
             with self._lock:
-                if hasattr(self.vector_index, 'search'):
+                if hasattr(self.vector_index, "search"):
                     # FAISS索引
                     if isinstance(query_vector, np.ndarray):
-                        query_array = query_vector.reshape(1, -1).astype('float32')
+                        query_array = query_vector.reshape(1, -1).astype("float32")
                     else:
-                        query_array = np.array([query_vector], dtype='float32')
+                        query_array = np.array([query_vector], dtype="float32")
 
                     if self.config.index_type == "ivf" and self.vector_index.ntotal > 0:
                         # 设置IVF搜索参数
@@ -432,11 +427,11 @@ class VectorStorageManager:
 
                     search_limit = min(limit, total_vectors)
                     logger.debug(f"执行FAISS搜索，搜索限制: {search_limit}")
-                    
+
                     distances, indices = self.vector_index.search(query_array, search_limit)
                     distances = distances.flatten().tolist()
                     indices = indices.flatten().tolist()
-                    
+
                     logger.debug(f"FAISS搜索结果: {len(distances)} 个距离值, {len(indices)} 个索引")
                 else:
                     # 简单索引
@@ -451,8 +446,8 @@ class VectorStorageManager:
             valid_results = 0
             invalid_indices = 0
             filtered_by_scope = 0
-            
-            for distance, index in zip(distances, indices):
+
+            for distance, index in zip(distances, indices, strict=False):
                 if index == -1:  # FAISS的无效索引标记
                     invalid_indices += 1
                     continue
@@ -462,7 +457,7 @@ class VectorStorageManager:
                     logger.debug(f"索引 {index} 没有对应的记忆ID")
                     invalid_indices += 1
                     continue
-                
+
                 if scope_filter:
                     memory = self.memory_cache.get(memory_id)
                     if memory and str(memory.user_id) != scope_filter:
@@ -482,23 +477,22 @@ class VectorStorageManager:
             search_time = time.time() - start_time
             self.storage_stats["total_searches"] += 1
             self.storage_stats["average_search_time"] = (
-                (self.storage_stats["average_search_time"] * (self.storage_stats["total_searches"] - 1) + search_time) /
-                self.storage_stats["total_searches"]
-            )
+                self.storage_stats["average_search_time"] * (self.storage_stats["total_searches"] - 1) + search_time
+            ) / self.storage_stats["total_searches"]
 
             final_results = results[:limit]
             logger.info(
                 f"向量搜索完成: 查询='{query_text[:20] if query_text else 'vector'}' "
                 f"耗时={search_time:.3f}s, 返回={len(final_results)}个结果"
             )
-            
+
             return final_results
 
         except Exception as e:
             logger.error(f"❌ 向量搜索失败: {e}", exc_info=True)
             return []
 
-    async def get_memory_by_id(self, memory_id: str) -> Optional[MemoryChunk]:
+    async def get_memory_by_id(self, memory_id: str) -> MemoryChunk | None:
         """根据ID获取记忆"""
         # 先检查缓存
         if memory_id in self.memory_cache:
@@ -508,7 +502,7 @@ class VectorStorageManager:
         self.storage_stats["total_searches"] += 1
         return None
 
-    async def update_memory_embedding(self, memory_id: str, new_embedding: List[float]):
+    async def update_memory_embedding(self, memory_id: str, new_embedding: list[float]):
         """更新记忆的嵌入向量"""
         with self._lock:
             try:
@@ -520,7 +514,7 @@ class VectorStorageManager:
                 old_index = self.memory_id_to_index[memory_id]
 
                 # 删除旧向量（如果支持）
-                if hasattr(self.vector_index, 'remove_ids'):
+                if hasattr(self.vector_index, "remove_ids"):
                     try:
                         self.vector_index.remove_ids(np.array([old_index]))
                     except:
@@ -530,11 +524,11 @@ class VectorStorageManager:
                 new_embedding = self._normalize_vector(new_embedding)
 
                 # 添加新向量
-                if hasattr(self.vector_index, 'add'):
+                if hasattr(self.vector_index, "add"):
                     if isinstance(new_embedding, np.ndarray):
-                        vector_array = new_embedding.reshape(1, -1).astype('float32')
+                        vector_array = new_embedding.reshape(1, -1).astype("float32")
                     else:
-                        vector_array = np.array([new_embedding], dtype='float32')
+                        vector_array = np.array([new_embedding], dtype="float32")
 
                     self.vector_index.add(vector_array)
                     new_index = self.vector_index.ntotal - 1
@@ -569,7 +563,7 @@ class VectorStorageManager:
                 index = self.memory_id_to_index[memory_id]
 
                 # 从向量索引中删除（如果支持）
-                if hasattr(self.vector_index, 'remove_ids'):
+                if hasattr(self.vector_index, "remove_ids"):
                     try:
                         self.vector_index.remove_ids(np.array([index]))
                     except:
@@ -598,44 +592,37 @@ class VectorStorageManager:
             logger.info("正在保存向量存储...")
 
             # 保存记忆缓存
-            cache_data = {
-                memory_id: memory.to_dict()
-                for memory_id, memory in self.memory_cache.items()
-            }
+            cache_data = {memory_id: memory.to_dict() for memory_id, memory in self.memory_cache.items()}
 
             cache_file = self.storage_path / "memory_cache.json"
-            with open(cache_file, 'w', encoding='utf-8') as f:
-                f.write(orjson.dumps(cache_data, option=orjson.OPT_INDENT_2).decode('utf-8'))
+            with open(cache_file, "w", encoding="utf-8") as f:
+                f.write(orjson.dumps(cache_data, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
             # 保存向量缓存
             vector_cache_file = self.storage_path / "vector_cache.json"
-            with open(vector_cache_file, 'w', encoding='utf-8') as f:
-                f.write(orjson.dumps(self.vector_cache, option=orjson.OPT_INDENT_2).decode('utf-8'))
+            with open(vector_cache_file, "w", encoding="utf-8") as f:
+                f.write(orjson.dumps(self.vector_cache, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
             # 保存映射关系
             mapping_file = self.storage_path / "id_mapping.json"
             mapping_data = {
                 "memory_id_to_index": {
-                    str(memory_id): int(index)
-                    for memory_id, index in self.memory_id_to_index.items()
+                    str(memory_id): int(index) for memory_id, index in self.memory_id_to_index.items()
                 },
-                "index_to_memory_id": {
-                    str(index): memory_id
-                    for index, memory_id in self.index_to_memory_id.items()
-                }
+                "index_to_memory_id": {str(index): memory_id for index, memory_id in self.index_to_memory_id.items()},
             }
-            with open(mapping_file, 'w', encoding='utf-8') as f:
-                f.write(orjson.dumps(mapping_data, option=orjson.OPT_INDENT_2).decode('utf-8'))
+            with open(mapping_file, "w", encoding="utf-8") as f:
+                f.write(orjson.dumps(mapping_data, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
             # 保存FAISS索引（如果可用）
-            if FAISS_AVAILABLE and hasattr(self.vector_index, 'save'):
+            if FAISS_AVAILABLE and hasattr(self.vector_index, "save"):
                 index_file = self.storage_path / "vector_index.faiss"
                 faiss.write_index(self.vector_index, str(index_file))
 
             # 保存统计信息
             stats_file = self.storage_path / "storage_stats.json"
-            with open(stats_file, 'w', encoding='utf-8') as f:
-                f.write(orjson.dumps(self.storage_stats, option=orjson.OPT_INDENT_2).decode('utf-8'))
+            with open(stats_file, "w", encoding="utf-8") as f:
+                f.write(orjson.dumps(self.storage_stats, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
             logger.info("✅ 向量存储保存完成")
 
@@ -650,36 +637,31 @@ class VectorStorageManager:
             # 加载记忆缓存
             cache_file = self.storage_path / "memory_cache.json"
             if cache_file.exists():
-                with open(cache_file, 'r', encoding='utf-8') as f:
+                with open(cache_file, encoding="utf-8") as f:
                     cache_data = orjson.loads(f.read())
 
                 self.memory_cache = {
-                    memory_id: MemoryChunk.from_dict(memory_data)
-                    for memory_id, memory_data in cache_data.items()
+                    memory_id: MemoryChunk.from_dict(memory_data) for memory_id, memory_data in cache_data.items()
                 }
 
             # 加载向量缓存
             vector_cache_file = self.storage_path / "vector_cache.json"
             if vector_cache_file.exists():
-                with open(vector_cache_file, 'r', encoding='utf-8') as f:
+                with open(vector_cache_file, encoding="utf-8") as f:
                     self.vector_cache = orjson.loads(f.read())
 
             # 加载映射关系
             mapping_file = self.storage_path / "id_mapping.json"
             if mapping_file.exists():
-                with open(mapping_file, 'r', encoding='utf-8') as f:
+                with open(mapping_file, encoding="utf-8") as f:
                     mapping_data = orjson.loads(f.read())
                 raw_memory_to_index = mapping_data.get("memory_id_to_index", {})
                 self.memory_id_to_index = {
-                    str(memory_id): int(index)
-                    for memory_id, index in raw_memory_to_index.items()
+                    str(memory_id): int(index) for memory_id, index in raw_memory_to_index.items()
                 }
 
                 raw_index_to_memory = mapping_data.get("index_to_memory_id", {})
-                self.index_to_memory_id = {
-                    int(index): memory_id
-                    for index, memory_id in raw_index_to_memory.items()
-                }
+                self.index_to_memory_id = {int(index): memory_id for index, memory_id in raw_index_to_memory.items()}
 
             # 加载FAISS索引（如果可用）
             index_loaded = False
@@ -699,7 +681,7 @@ class VectorStorageManager:
                         logger.warning(f"加载FAISS索引失败: {e}，重新构建")
                 else:
                     logger.info("FAISS索引文件不存在，将重新构建")
-                
+
                 # 如果索引没有成功加载且有向量数据，则重建索引
                 if not index_loaded and self.vector_cache:
                     logger.info(f"检测到 {len(self.vector_cache)} 个向量缓存，重建索引")
@@ -708,7 +690,7 @@ class VectorStorageManager:
             # 加载统计信息
             stats_file = self.storage_path / "storage_stats.json"
             if stats_file.exists():
-                with open(stats_file, 'r', encoding='utf-8') as f:
+                with open(stats_file, encoding="utf-8") as f:
                     self.storage_stats = orjson.loads(f.read())
 
             # 更新向量计数
@@ -738,7 +720,7 @@ class VectorStorageManager:
             # 准备向量数据
             memory_ids = []
             vectors = []
-            
+
             for memory_id, embedding in self.vector_cache.items():
                 if embedding and len(embedding) == self.config.dimension:
                     memory_ids.append(memory_id)
@@ -753,18 +735,18 @@ class VectorStorageManager:
             logger.info(f"准备重建 {len(vectors)} 个向量到索引")
 
             # 批量添加向量到FAISS索引
-            if hasattr(self.vector_index, 'add'):
+            if hasattr(self.vector_index, "add"):
                 # FAISS索引
-                vector_array = np.array(vectors, dtype='float32')
-                
+                vector_array = np.array(vectors, dtype="float32")
+
                 # 特殊处理IVF索引
-                if self.config.index_type == "ivf" and hasattr(self.vector_index, 'train'):
+                if self.config.index_type == "ivf" and hasattr(self.vector_index, "train"):
                     logger.info("训练IVF索引...")
                     self.vector_index.train(vector_array)
 
                 # 添加向量
                 self.vector_index.add(vector_array)
-                
+
                 # 重建映射关系
                 for i, memory_id in enumerate(memory_ids):
                     self.memory_id_to_index[memory_id] = i
@@ -772,15 +754,15 @@ class VectorStorageManager:
 
             else:
                 # 简单索引
-                for i, (memory_id, vector) in enumerate(zip(memory_ids, vectors)):
+                for i, (memory_id, vector) in enumerate(zip(memory_ids, vectors, strict=False)):
                     index_id = self.vector_index.add_vector(vector)
                     self.memory_id_to_index[memory_id] = index_id
                     self.index_to_memory_id[index_id] = memory_id
 
             # 更新统计
             self.storage_stats["total_vectors"] = len(self.memory_id_to_index)
-            
-            final_count = getattr(self.vector_index, 'ntotal', len(self.memory_id_to_index))
+
+            final_count = getattr(self.vector_index, "ntotal", len(self.memory_id_to_index))
             logger.info(f"✅ 向量索引重建完成，索引中向量数: {final_count}")
 
         except Exception as e:
@@ -825,7 +807,7 @@ class VectorStorageManager:
             if invalid_memory_ids:
                 logger.info(f"清理了 {len(invalid_memory_ids)} 个无效引用")
 
-    def get_storage_stats(self) -> Dict[str, Any]:
+    def get_storage_stats(self) -> dict[str, Any]:
         """获取存储统计信息"""
         stats = self.storage_stats.copy()
         if stats["total_searches"] > 0:
@@ -840,11 +822,11 @@ class SimpleVectorIndex:
 
     def __init__(self, dimension: int):
         self.dimension = dimension
-        self.vectors: List[List[float]] = []
-        self.vector_ids: List[int] = []
+        self.vectors: list[list[float]] = []
+        self.vector_ids: list[int] = []
         self.next_id = 0
 
-    def add_vector(self, vector: List[float]) -> int:
+    def add_vector(self, vector: list[float]) -> int:
         """添加向量"""
         if len(vector) != self.dimension:
             raise ValueError(f"向量维度不匹配，期望 {self.dimension}，实际 {len(vector)}")
@@ -856,7 +838,7 @@ class SimpleVectorIndex:
 
         return vector_id
 
-    def search(self, query_vector: List[float], limit: int) -> List[Tuple[int, float]]:
+    def search(self, query_vector: list[float], limit: int) -> list[tuple[int, float]]:
         """搜索相似向量"""
         if len(query_vector) != self.dimension:
             raise ValueError(f"查询向量维度不匹配，期望 {self.dimension}，实际 {len(query_vector)}")
@@ -872,10 +854,10 @@ class SimpleVectorIndex:
 
         return results[:limit]
 
-    def _calculate_cosine_similarity(self, v1: List[float], v2: List[float]) -> float:
+    def _calculate_cosine_similarity(self, v1: list[float], v2: list[float]) -> float:
         """计算余弦相似度"""
         try:
-            dot_product = sum(x * y for x, y in zip(v1, v2))
+            dot_product = sum(x * y for x, y in zip(v1, v2, strict=False))
             norm1 = sum(x * x for x in v1) ** 0.5
             norm2 = sum(x * x for x in v2) ** 0.5
 

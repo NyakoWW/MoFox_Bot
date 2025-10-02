@@ -1,18 +1,17 @@
-# -*- coding: utf-8 -*-
 """
 增强记忆系统适配器
 将增强记忆系统集成到现有MoFox Bot架构中
 """
 
-import asyncio
 import time
-from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
+from typing import Any
 
-from src.common.logger import get_logger
-from src.chat.memory_system.integration_layer import MemoryIntegrationLayer, IntegrationConfig, IntegrationMode
+from src.chat.memory_system.integration_layer import IntegrationConfig, IntegrationMode, MemoryIntegrationLayer
+from src.chat.memory_system.memory_formatter import FormatterConfig, format_memories_for_llm
+
 from src.chat.memory_system.memory_chunk import MemoryChunk, MemoryType
-from src.chat.memory_system.memory_formatter import MemoryFormatter, FormatterConfig, format_memories_for_llm
+from src.common.logger import get_logger
 from src.llm_models.utils_model import LLMRequest
 
 logger = get_logger(__name__)
@@ -36,6 +35,7 @@ MEMORY_TYPE_LABELS = {
 @dataclass
 class AdapterConfig:
     """适配器配置"""
+
     enable_enhanced_memory: bool = True
     integration_mode: str = "enhanced_only"  # replace, enhanced_only
     auto_migration: bool = True
@@ -47,10 +47,10 @@ class AdapterConfig:
 class EnhancedMemoryAdapter:
     """增强记忆系统适配器"""
 
-    def __init__(self, llm_model: LLMRequest, config: Optional[AdapterConfig] = None):
+    def __init__(self, llm_model: LLMRequest, config: AdapterConfig | None = None):
         self.llm_model = llm_model
         self.config = config or AdapterConfig()
-        self.integration_layer: Optional[MemoryIntegrationLayer] = None
+        self.integration_layer: MemoryIntegrationLayer | None = None
         self._initialized = False
 
         # 统计信息
@@ -61,7 +61,7 @@ class EnhancedMemoryAdapter:
             "hybrid_used": 0,
             "memories_created": 0,
             "memories_retrieved": 0,
-            "average_processing_time": 0.0
+            "average_processing_time": 0.0,
         }
 
     async def initialize(self):
@@ -79,14 +79,11 @@ class EnhancedMemoryAdapter:
                 memory_value_threshold=self.config.memory_value_threshold,
                 fusion_threshold=self.config.fusion_threshold,
                 max_retrieval_results=self.config.max_retrieval_results,
-                enable_learning=True  # 启用学习功能
+                enable_learning=True,  # 启用学习功能
             )
 
             # 创建集成层
-            self.integration_layer = MemoryIntegrationLayer(
-                llm_model=self.llm_model,
-                config=integration_config
-            )
+            self.integration_layer = MemoryIntegrationLayer(llm_model=self.llm_model, config=integration_config)
 
             # 初始化集成层
             await self.integration_layer.initialize()
@@ -99,10 +96,7 @@ class EnhancedMemoryAdapter:
             # 如果初始化失败，禁用增强记忆功能
             self.config.enable_enhanced_memory = False
 
-    async def process_conversation_memory(
-        self,
-        context: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+    async def process_conversation_memory(self, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """处理对话记忆，以上下文为唯一输入"""
         if not self._initialized or not self.config.enable_enhanced_memory:
             return {"success": False, "error": "Enhanced memory not available"}
@@ -111,7 +105,7 @@ class EnhancedMemoryAdapter:
         self.adapter_stats["total_processed"] += 1
 
         try:
-            payload_context: Dict[str, Any] = dict(context or {})
+            payload_context: dict[str, Any] = dict(context or {})
 
             conversation_text = payload_context.get("conversation_text")
             if not conversation_text:
@@ -152,21 +146,15 @@ class EnhancedMemoryAdapter:
             return {"success": False, "error": str(e)}
 
     async def retrieve_relevant_memories(
-        self,
-        query: str,
-        user_id: str,
-        context: Optional[Dict[str, Any]] = None,
-        limit: Optional[int] = None
-    ) -> List[MemoryChunk]:
+        self, query: str, user_id: str, context: dict[str, Any] | None = None, limit: int | None = None
+    ) -> list[MemoryChunk]:
         """检索相关记忆"""
         if not self._initialized or not self.config.enable_enhanced_memory:
             return []
 
         try:
             limit = limit or self.config.max_retrieval_results
-            memories = await self.integration_layer.retrieve_relevant_memories(
-                query, None, context, limit
-            )
+            memories = await self.integration_layer.retrieve_relevant_memories(query, None, context, limit)
 
             self.adapter_stats["memories_retrieved"] += len(memories)
             logger.debug(f"检索到 {len(memories)} 条相关记忆")
@@ -178,11 +166,7 @@ class EnhancedMemoryAdapter:
             return []
 
     async def get_memory_context_for_prompt(
-        self,
-        query: str,
-        user_id: str,
-        context: Optional[Dict[str, Any]] = None,
-        max_memories: int = 5
+        self, query: str, user_id: str, context: dict[str, Any] | None = None, max_memories: int = 5
     ) -> str:
         """获取用于提示词的记忆上下文"""
         memories = await self.retrieve_relevant_memories(query, user_id, context, max_memories)
@@ -197,16 +181,12 @@ class EnhancedMemoryAdapter:
             include_confidence=False,
             use_emoji_icons=True,
             group_by_type=False,
-            max_display_length=150
-        )
-        
-        return format_memories_for_llm(
-            memories=memories,
-            query_context=query,
-            config=formatter_config
+            max_display_length=150,
         )
 
-    async def get_enhanced_memory_summary(self, user_id: str) -> Dict[str, Any]:
+        return format_memories_for_llm(memories=memories, query_context=query, config=formatter_config)
+
+    async def get_enhanced_memory_summary(self, user_id: str) -> dict[str, Any]:
         """获取增强记忆系统摘要"""
         if not self._initialized or not self.config.enable_enhanced_memory:
             return {"available": False, "reason": "Not initialized or disabled"}
@@ -227,7 +207,7 @@ class EnhancedMemoryAdapter:
                 "adapter_stats": adapter_stats,
                 "integration_stats": integration_stats,
                 "total_memories_created": adapter_stats["memories_created"],
-                "total_memories_retrieved": adapter_stats["memories_retrieved"]
+                "total_memories_retrieved": adapter_stats["memories_retrieved"],
             }
 
         except Exception as e:
@@ -242,7 +222,7 @@ class EnhancedMemoryAdapter:
             new_avg = (current_avg * (total_processed - 1) + processing_time) / total_processed
             self.adapter_stats["average_processing_time"] = new_avg
 
-    def get_adapter_stats(self) -> Dict[str, Any]:
+    def get_adapter_stats(self) -> dict[str, Any]:
         """获取适配器统计信息"""
         return self.adapter_stats.copy()
 
@@ -273,7 +253,7 @@ class EnhancedMemoryAdapter:
 
 
 # 全局适配器实例
-_enhanced_memory_adapter: Optional[EnhancedMemoryAdapter] = None
+_enhanced_memory_adapter: EnhancedMemoryAdapter | None = None
 
 
 async def get_enhanced_memory_adapter(llm_model: LLMRequest) -> EnhancedMemoryAdapter:
@@ -285,12 +265,12 @@ async def get_enhanced_memory_adapter(llm_model: LLMRequest) -> EnhancedMemoryAd
         from src.config.config import global_config
 
         adapter_config = AdapterConfig(
-            enable_enhanced_memory=getattr(global_config.memory, 'enable_enhanced_memory', True),
-            integration_mode=getattr(global_config.memory, 'enhanced_memory_mode', 'enhanced_only'),
-            auto_migration=getattr(global_config.memory, 'enable_memory_migration', True),
-            memory_value_threshold=getattr(global_config.memory, 'memory_value_threshold', 0.6),
-            fusion_threshold=getattr(global_config.memory, 'fusion_threshold', 0.85),
-            max_retrieval_results=getattr(global_config.memory, 'max_retrieval_results', 10)
+            enable_enhanced_memory=getattr(global_config.memory, "enable_enhanced_memory", True),
+            integration_mode=getattr(global_config.memory, "enhanced_memory_mode", "enhanced_only"),
+            auto_migration=getattr(global_config.memory, "enable_memory_migration", True),
+            memory_value_threshold=getattr(global_config.memory, "memory_value_threshold", 0.6),
+            fusion_threshold=getattr(global_config.memory, "fusion_threshold", 0.85),
+            max_retrieval_results=getattr(global_config.memory, "max_retrieval_results", 10),
         )
 
         _enhanced_memory_adapter = EnhancedMemoryAdapter(llm_model, adapter_config)
@@ -312,13 +292,13 @@ async def initialize_enhanced_memory_system(llm_model: LLMRequest):
 
 
 async def process_conversation_with_enhanced_memory(
-    context: Dict[str, Any],
-    llm_model: Optional[LLMRequest] = None
-) -> Dict[str, Any]:
+    context: dict[str, Any], llm_model: LLMRequest | None = None
+) -> dict[str, Any]:
     """使用增强记忆系统处理对话，上下文需包含 conversation_text 等信息"""
     if not llm_model:
         # 获取默认的LLM模型
         from src.llm_models.utils_model import get_global_llm_model
+
         llm_model = get_global_llm_model()
 
     try:
@@ -343,14 +323,15 @@ async def process_conversation_with_enhanced_memory(
 async def retrieve_memories_with_enhanced_system(
     query: str,
     user_id: str,
-    context: Optional[Dict[str, Any]] = None,
+    context: dict[str, Any] | None = None,
     limit: int = 10,
-    llm_model: Optional[LLMRequest] = None
-) -> List[MemoryChunk]:
+    llm_model: LLMRequest | None = None,
+) -> list[MemoryChunk]:
     """使用增强记忆系统检索记忆"""
     if not llm_model:
         # 获取默认的LLM模型
         from src.llm_models.utils_model import get_global_llm_model
+
         llm_model = get_global_llm_model()
 
     try:
@@ -364,14 +345,15 @@ async def retrieve_memories_with_enhanced_system(
 async def get_memory_context_for_prompt(
     query: str,
     user_id: str,
-    context: Optional[Dict[str, Any]] = None,
+    context: dict[str, Any] | None = None,
     max_memories: int = 5,
-    llm_model: Optional[LLMRequest] = None
+    llm_model: LLMRequest | None = None,
 ) -> str:
     """获取用于提示词的记忆上下文"""
     if not llm_model:
         # 获取默认的LLM模型
         from src.llm_models.utils_model import get_global_llm_model
+
         llm_model = get_global_llm_model()
 
     try:

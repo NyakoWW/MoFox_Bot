@@ -1,19 +1,20 @@
-from typing import Dict, List, Optional, Any
 import time
-from src.plugin_system.base.base_chatter import BaseChatter
-from src.common.data_models.message_manager_data_model import StreamContext
-from src.plugins.built_in.affinity_flow_chatter.planner import ChatterActionPlanner as ActionPlanner
+from typing import Any
+
 from src.chat.planner_actions.action_manager import ChatterActionManager
-from src.plugin_system.base.component_types import ChatType, ComponentType
+from src.common.data_models.message_manager_data_model import StreamContext
 from src.common.logger import get_logger
+from src.plugin_system.base.base_chatter import BaseChatter
+from src.plugin_system.base.component_types import ChatType
 
 logger = get_logger("chatter_manager")
+
 
 class ChatterManager:
     def __init__(self, action_manager: ChatterActionManager):
         self.action_manager = action_manager
-        self.chatter_classes: Dict[ChatType, List[type]] = {}
-        self.instances: Dict[str, BaseChatter] = {}
+        self.chatter_classes: dict[ChatType, list[type]] = {}
+        self.instances: dict[str, BaseChatter] = {}
 
         # 管理器统计
         self.stats = {
@@ -27,6 +28,7 @@ class ChatterManager:
         """从组件注册表自动注册已注册的chatter组件"""
         try:
             from src.plugin_system.core.component_registry import component_registry
+
             # 获取所有CHATTER类型的组件
             chatter_components = component_registry.get_enabled_chatter_registry()
             for chatter_name, chatter_class in chatter_components.items():
@@ -45,21 +47,21 @@ class ChatterManager:
 
         self.stats["chatters_registered"] += 1
 
-    def get_chatter_class(self, chat_type: ChatType) -> Optional[type]:
+    def get_chatter_class(self, chat_type: ChatType) -> type | None:
         """获取指定聊天类型的聊天处理器类"""
         if chat_type in self.chatter_classes:
             return self.chatter_classes[chat_type][0]
         return None
 
-    def get_supported_chat_types(self) -> List[ChatType]:
+    def get_supported_chat_types(self) -> list[ChatType]:
         """获取支持的聊天类型列表"""
         return list(self.chatter_classes.keys())
 
-    def get_registered_chatters(self) -> Dict[ChatType, List[type]]:
+    def get_registered_chatters(self) -> dict[ChatType, list[type]]:
         """获取已注册的聊天处理器"""
         return self.chatter_classes.copy()
 
-    def get_stream_instance(self, stream_id: str) -> Optional[BaseChatter]:
+    def get_stream_instance(self, stream_id: str) -> BaseChatter | None:
         """获取指定流的聊天处理器实例"""
         return self.instances.get(stream_id)
 
@@ -70,7 +72,7 @@ class ChatterManager:
 
         inactive_streams = []
         for stream_id, instance in self.instances.items():
-            if hasattr(instance, 'get_activity_time'):
+            if hasattr(instance, "get_activity_time"):
                 activity_time = instance.get_activity_time()
                 if (current_time - activity_time) > max_inactive_seconds:
                     inactive_streams.append(stream_id)
@@ -91,6 +93,7 @@ class ChatterManager:
         if not chatter_class:
             # 如果没有找到精确匹配，尝试查找支持ALL类型的chatter
             from src.plugin_system.base.component_types import ChatType
+
             all_chatter_class = self.get_chatter_class(ChatType.ALL)
             if all_chatter_class:
                 chatter_class = all_chatter_class
@@ -110,6 +113,7 @@ class ChatterManager:
             # 从 mood_manager 获取最新的 chat_stream 并同步回 StreamContext
             try:
                 from src.mood.mood_manager import mood_manager
+
                 mood = mood_manager.get_mood_by_chat_id(stream_id)
                 if mood and mood.chat_stream:
                     context.chat_stream = mood.chat_stream
@@ -125,6 +129,7 @@ class ChatterManager:
             # 在处理完成后，清除该流的未读消息
             try:
                 from src.chat.message_manager.message_manager import message_manager
+
                 await message_manager.clear_stream_unread_messages(stream_id)
             except Exception as clear_e:
                 logger.error(f"清除流 {stream_id} 未读消息时发生错误: {clear_e}")
@@ -135,7 +140,7 @@ class ChatterManager:
             logger.error(f"处理流 {stream_id} 时发生错误: {e}")
             raise
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """获取管理器统计信息"""
         stats = self.stats.copy()
         stats["active_instances"] = len(self.instances)

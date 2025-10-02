@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """记忆检索查询规划器"""
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import orjson
 
@@ -21,16 +20,16 @@ class MemoryQueryPlan:
     """查询规划结果"""
 
     semantic_query: str
-    memory_types: List[MemoryType] = field(default_factory=list)
-    subject_includes: List[str] = field(default_factory=list)
-    object_includes: List[str] = field(default_factory=list)
-    required_keywords: List[str] = field(default_factory=list)
-    optional_keywords: List[str] = field(default_factory=list)
-    owner_filters: List[str] = field(default_factory=list)
+    memory_types: list[MemoryType] = field(default_factory=list)
+    subject_includes: list[str] = field(default_factory=list)
+    object_includes: list[str] = field(default_factory=list)
+    required_keywords: list[str] = field(default_factory=list)
+    optional_keywords: list[str] = field(default_factory=list)
+    owner_filters: list[str] = field(default_factory=list)
     recency_preference: str = "any"
     limit: int = 10
-    emphasis: Optional[str] = None
-    raw_plan: Dict[str, Any] = field(default_factory=dict)
+    emphasis: str | None = None
+    raw_plan: dict[str, Any] = field(default_factory=dict)
 
     def ensure_defaults(self, fallback_query: str, default_limit: int) -> None:
         if not self.semantic_query:
@@ -46,11 +45,11 @@ class MemoryQueryPlan:
 class MemoryQueryPlanner:
     """基于小模型的记忆检索查询规划器"""
 
-    def __init__(self, planner_model: Optional[LLMRequest], default_limit: int = 10):
+    def __init__(self, planner_model: LLMRequest | None, default_limit: int = 10):
         self.model = planner_model
         self.default_limit = default_limit
 
-    async def plan_query(self, query_text: str, context: Dict[str, Any]) -> MemoryQueryPlan:
+    async def plan_query(self, query_text: str, context: dict[str, Any]) -> MemoryQueryPlan:
         if not self.model:
             logger.debug("未提供查询规划模型，使用默认规划")
             return self._default_plan(query_text)
@@ -80,15 +79,12 @@ class MemoryQueryPlanner:
             return self._default_plan(query_text)
 
     def _default_plan(self, query_text: str) -> MemoryQueryPlan:
-        return MemoryQueryPlan(
-            semantic_query=query_text,
-            limit=self.default_limit
-        )
+        return MemoryQueryPlan(semantic_query=query_text, limit=self.default_limit)
 
-    def _parse_plan_dict(self, data: Dict[str, Any], fallback_query: str) -> MemoryQueryPlan:
+    def _parse_plan_dict(self, data: dict[str, Any], fallback_query: str) -> MemoryQueryPlan:
         semantic_query = self._safe_str(data.get("semantic_query")) or fallback_query
 
-        def _collect_list(key: str) -> List[str]:
+        def _collect_list(key: str) -> list[str]:
             value = data.get(key)
             if isinstance(value, str):
                 return [value]
@@ -97,7 +93,7 @@ class MemoryQueryPlanner:
             return []
 
         memory_type_values = _collect_list("memory_types")
-        memory_types: List[MemoryType] = []
+        memory_types: list[MemoryType] = []
         for item in memory_type_values:
             if not item:
                 continue
@@ -122,11 +118,11 @@ class MemoryQueryPlanner:
             recency_preference=self._safe_str(data.get("recency")) or "any",
             limit=self._safe_int(data.get("limit"), self.default_limit),
             emphasis=self._safe_str(data.get("emphasis")) or "balanced",
-            raw_plan=data
+            raw_plan=data,
         )
         return plan
 
-    def _build_prompt(self, query_text: str, context: Dict[str, Any]) -> str:
+    def _build_prompt(self, query_text: str, context: dict[str, Any]) -> str:
         participants = context.get("participants") or context.get("speaker_names") or []
         if isinstance(participants, str):
             participants = [participants]
@@ -154,18 +150,18 @@ class MemoryQueryPlanner:
 
                 context_section = f"""
 
-## 📋 未读消息上下文 (共{unread_context.get('total_count', 0)}条未读消息)
+## 📋 未读消息上下文 (共{unread_context.get("total_count", 0)}条未读消息)
 ### 最近消息预览:
 {chr(10).join(message_previews)}
 
 ### 上下文关键词:
-{', '.join(unread_keywords[:15]) if unread_keywords else '无'}
+{", ".join(unread_keywords[:15]) if unread_keywords else "无"}
 
 ### 对话参与者:
-{', '.join(unread_participants) if unread_participants else '无'}
+{", ".join(unread_participants) if unread_participants else "无"}
 
 ### 上下文摘要:
-{context_summary[:300] if context_summary else '无'}
+{context_summary[:300] if context_summary else "无"}
 """
         else:
             context_section = """
@@ -209,7 +205,7 @@ class MemoryQueryPlanner:
 请直接输出符合要求的 JSON 对象，禁止添加额外文本或 Markdown 代码块。
 """
 
-    def _extract_json_payload(self, response: str) -> Optional[str]:
+    def _extract_json_payload(self, response: str) -> str | None:
         if not response:
             return None
 
@@ -223,7 +219,7 @@ class MemoryQueryPlanner:
         start = stripped.find("{")
         end = stripped.rfind("}")
         if start != -1 and end != -1 and end > start:
-            return stripped[start:end + 1]
+            return stripped[start : end + 1]
 
         return stripped if stripped.startswith("{") and stripped.endswith("}") else None
 

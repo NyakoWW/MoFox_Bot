@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 记忆构建模块
 从对话流中提取高质量、结构化记忆单元
@@ -33,19 +32,19 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Iterable, List, Optional, Union, Type
+from typing import Any
 
 import orjson
 
-from src.common.logger import get_logger
-from src.llm_models.utils_model import LLMRequest
 from src.chat.memory_system.memory_chunk import (
-    MemoryChunk,
-    MemoryType,
     ConfidenceLevel,
     ImportanceLevel,
+    MemoryChunk,
+    MemoryType,
     create_memory_chunk,
 )
+from src.common.logger import get_logger
+from src.llm_models.utils_model import LLMRequest
 
 logger = get_logger(__name__)
 
@@ -53,16 +52,17 @@ logger = get_logger(__name__)
 class ExtractionStrategy(Enum):
     """提取策略"""
 
-    LLM_BASED = "llm_based"           # 基于LLM的智能提取
-    RULE_BASED = "rule_based"         # 基于规则的提取
-    HYBRID = "hybrid"                 # 混合策略
+    LLM_BASED = "llm_based"  # 基于LLM的智能提取
+    RULE_BASED = "rule_based"  # 基于规则的提取
+    HYBRID = "hybrid"  # 混合策略
 
 
 @dataclass
 class ExtractionResult:
     """提取结果"""
-    memories: List[MemoryChunk]
-    confidence_scores: List[float]
+
+    memories: list[MemoryChunk]
+    confidence_scores: list[float]
     extraction_time: float
     strategy_used: ExtractionStrategy
 
@@ -80,16 +80,12 @@ class MemoryBuilder:
             "total_extractions": 0,
             "successful_extractions": 0,
             "failed_extractions": 0,
-            "average_confidence": 0.0
+            "average_confidence": 0.0,
         }
 
     async def build_memories(
-        self,
-        conversation_text: str,
-        context: Dict[str, Any],
-        user_id: str,
-        timestamp: float
-    ) -> List[MemoryChunk]:
+        self, conversation_text: str, context: dict[str, Any], user_id: str, timestamp: float
+    ) -> list[MemoryChunk]:
         """从对话中构建记忆"""
         start_time = time.time()
 
@@ -119,19 +115,13 @@ class MemoryBuilder:
             raise
 
     async def _extract_with_llm(
-        self,
-        text: str,
-        context: Dict[str, Any],
-        user_id: str,
-        timestamp: float
-    ) -> List[MemoryChunk]:
+        self, text: str, context: dict[str, Any], user_id: str, timestamp: float
+    ) -> list[MemoryChunk]:
         """使用LLM提取记忆"""
         try:
             prompt = self._build_llm_extraction_prompt(text, context)
 
-            response, _ = await self.llm_model.generate_response_async(
-                prompt, temperature=0.3
-            )
+            response, _ = await self.llm_model.generate_response_async(prompt, temperature=0.3)
 
             # 解析LLM响应
             memories = self._parse_llm_response(response, user_id, timestamp, context)
@@ -144,7 +134,7 @@ class MemoryBuilder:
             logger.error(f"LLM提取失败: {e}")
             raise MemoryExtractionError(str(e)) from e
 
-    def _build_llm_extraction_prompt(self, text: str, context: Dict[str, Any]) -> str:
+    def _build_llm_extraction_prompt(self, text: str, context: dict[str, Any]) -> str:
         """构建LLM提取提示"""
         current_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         message_type = context.get("message_type", "normal")
@@ -324,7 +314,7 @@ class MemoryBuilder:
 
         return prompt
 
-    def _extract_json_payload(self, response: str) -> Optional[str]:
+    def _extract_json_payload(self, response: str) -> str | None:
         """从模型响应中提取JSON部分，兼容Markdown代码块等格式"""
         if not response:
             return None
@@ -342,17 +332,13 @@ class MemoryBuilder:
         start = stripped.find("{")
         end = stripped.rfind("}")
         if start != -1 and end != -1 and end > start:
-            return stripped[start:end + 1].strip()
+            return stripped[start : end + 1].strip()
 
         return stripped if stripped.startswith("{") and stripped.endswith("}") else None
 
     def _parse_llm_response(
-        self,
-        response: str,
-        user_id: str,
-        timestamp: float,
-        context: Dict[str, Any]
-    ) -> List[MemoryChunk]:
+        self, response: str, user_id: str, timestamp: float, context: dict[str, Any]
+    ) -> list[MemoryChunk]:
         """解析LLM响应"""
         if not response:
             raise MemoryExtractionError("LLM未返回任何响应")
@@ -366,9 +352,7 @@ class MemoryBuilder:
             data = orjson.loads(json_payload)
         except Exception as e:
             preview = json_payload[:200]
-            raise MemoryExtractionError(
-                f"LLM响应JSON解析失败: {e}, 片段: {preview}"
-            ) from e
+            raise MemoryExtractionError(f"LLM响应JSON解析失败: {e}, 片段: {preview}") from e
 
         memory_list = data.get("memories", [])
 
@@ -400,23 +384,21 @@ class MemoryBuilder:
 
         bot_display = self._clean_subject_text(bot_display)
 
-        memories: List[MemoryChunk] = []
+        memories: list[MemoryChunk] = []
 
         for mem_data in memory_list:
             try:
                 # 检查是否包含模糊代称
                 display_text = mem_data.get("display", "")
-                if any(ambiguous_term in display_text for ambiguous_term in ["用户", "user", "the user", "对方", "对手"]):
+                if any(
+                    ambiguous_term in display_text for ambiguous_term in ["用户", "user", "the user", "对方", "对手"]
+                ):
                     logger.debug(f"拒绝构建包含模糊代称的记忆，display字段: {display_text}")
                     continue
 
                 subject_value = mem_data.get("subject")
                 normalized_subject = self._normalize_subjects(
-                    subject_value,
-                    bot_identifiers,
-                    system_identifiers,
-                    default_subjects,
-                    bot_display
+                    subject_value, bot_identifiers, system_identifiers, default_subjects, bot_display
                 )
 
                 if not normalized_subject:
@@ -425,17 +407,11 @@ class MemoryBuilder:
 
                 # 创建记忆块
                 importance_level = self._parse_enum_value(
-                    ImportanceLevel,
-                    mem_data.get("importance"),
-                    ImportanceLevel.NORMAL,
-                    "importance"
+                    ImportanceLevel, mem_data.get("importance"), ImportanceLevel.NORMAL, "importance"
                 )
 
                 confidence_level = self._parse_enum_value(
-                    ConfidenceLevel,
-                    mem_data.get("confidence"),
-                    ConfidenceLevel.MEDIUM,
-                    "confidence"
+                    ConfidenceLevel, mem_data.get("confidence"), ConfidenceLevel.MEDIUM, "confidence"
                 )
 
                 predicate_value = mem_data.get("predicate", "")
@@ -457,7 +433,7 @@ class MemoryBuilder:
                     source_context=mem_data.get("reasoning", ""),
                     importance=importance_level,
                     confidence=confidence_level,
-                    display=display_text
+                    display=display_text,
                 )
 
                 if used_fallback_display:
@@ -483,13 +459,7 @@ class MemoryBuilder:
 
         return memories
 
-    def _parse_enum_value(
-        self,
-        enum_cls: Type[Enum],
-        raw_value: Any,
-        default: Enum,
-        field_name: str
-    ) -> Enum:
+    def _parse_enum_value(self, enum_cls: type[Enum], raw_value: Any, default: Enum, field_name: str) -> Enum:
         """解析枚举值，兼容数字/字符串表示"""
         if isinstance(raw_value, enum_cls):
             return raw_value
@@ -533,15 +503,17 @@ class MemoryBuilder:
         try:
             return enum_cls(raw_value)
         except Exception:
-            logger.debug("%s=%s 类型 %s 无法解析为 %s，使用默认值 %s",
-                         field_name,
-                         raw_value,
-                         type(raw_value).__name__,
-                         enum_cls.__name__,
-                         default.name)
+            logger.debug(
+                "%s=%s 类型 %s 无法解析为 %s，使用默认值 %s",
+                field_name,
+                raw_value,
+                type(raw_value).__name__,
+                enum_cls.__name__,
+                default.name,
+            )
             return default
 
-    def _collect_bot_identifiers(self, context: Optional[Dict[str, Any]]) -> set[str]:
+    def _collect_bot_identifiers(self, context: dict[str, Any] | None) -> set[str]:
         identifiers: set[str] = {"bot", "机器人", "ai助手"}
         if not context:
             return identifiers
@@ -567,7 +539,7 @@ class MemoryBuilder:
 
         return identifiers
 
-    def _collect_system_identifiers(self, context: Optional[Dict[str, Any]]) -> set[str]:
+    def _collect_system_identifiers(self, context: dict[str, Any] | None) -> set[str]:
         identifiers: set[str] = set()
         if not context:
             return identifiers
@@ -595,8 +567,8 @@ class MemoryBuilder:
 
         return identifiers
 
-    def _resolve_conversation_participants(self, context: Optional[Dict[str, Any]], user_id: str) -> List[str]:
-        participants: List[str] = []
+    def _resolve_conversation_participants(self, context: dict[str, Any] | None, user_id: str) -> list[str]:
+        participants: list[str] = []
 
         if context:
             candidate_keys = [
@@ -606,7 +578,7 @@ class MemoryBuilder:
                 "members",
                 "member_names",
                 "mention_users",
-                "audiences"
+                "audiences",
             ]
 
             for key in candidate_keys:
@@ -636,7 +608,7 @@ class MemoryBuilder:
         if not participants:
             participants = ["对话参与者"]
 
-        deduplicated: List[str] = []
+        deduplicated: list[str] = []
         seen = set()
         for name in participants:
             key = name.lower()
@@ -647,7 +619,7 @@ class MemoryBuilder:
 
         return deduplicated
 
-    def _resolve_user_display(self, context: Optional[Dict[str, Any]], user_id: str) -> str:
+    def _resolve_user_display(self, context: dict[str, Any] | None, user_id: str) -> str:
         candidate_keys = [
             "user_display_name",
             "user_name",
@@ -710,7 +682,7 @@ class MemoryBuilder:
 
         return False
 
-    def _split_subject_string(self, value: str) -> List[str]:
+    def _split_subject_string(self, value: str) -> list[str]:
         if not value:
             return []
 
@@ -726,12 +698,12 @@ class MemoryBuilder:
         subject: Any,
         bot_identifiers: set[str],
         system_identifiers: set[str],
-        default_subjects: List[str],
-        bot_display: Optional[str] = None
-    ) -> List[str]:
+        default_subjects: list[str],
+        bot_display: str | None = None,
+    ) -> list[str]:
         defaults = default_subjects or ["对话参与者"]
 
-        raw_candidates: List[str] = []
+        raw_candidates: list[str] = []
         if isinstance(subject, list):
             for item in subject:
                 if isinstance(item, str):
@@ -743,7 +715,7 @@ class MemoryBuilder:
         elif subject is not None:
             raw_candidates.extend(self._split_subject_string(str(subject)))
 
-        normalized: List[str] = []
+        normalized: list[str] = []
         bot_primary = self._clean_subject_text(bot_display or "")
 
         for candidate in raw_candidates:
@@ -768,7 +740,7 @@ class MemoryBuilder:
         if not normalized:
             normalized = list(defaults)
 
-        deduplicated: List[str] = []
+        deduplicated: list[str] = []
         seen = set()
         for name in normalized:
             key = name.lower()
@@ -779,7 +751,7 @@ class MemoryBuilder:
 
         return deduplicated
 
-    def _extract_value_from_object(self, obj: Union[str, Dict[str, Any], List[Any]], keys: List[str]) -> Optional[str]:
+    def _extract_value_from_object(self, obj: str | dict[str, Any] | list[Any], keys: list[str]) -> str | None:
         if isinstance(obj, dict):
             for key in keys:
                 value = obj.get(key)
@@ -800,7 +772,7 @@ class MemoryBuilder:
             return obj.strip() or None
         return None
 
-    def _compose_display_text(self, subjects: List[str], predicate: str, obj: Union[str, Dict[str, Any], List[Any]]) -> str:
+    def _compose_display_text(self, subjects: list[str], predicate: str, obj: str | dict[str, Any] | list[Any]) -> str:
         subject_phrase = "、".join(subjects) if subjects else "对话参与者"
         predicate = (predicate or "").strip()
 
@@ -866,11 +838,7 @@ class MemoryBuilder:
             return f"{subject_phrase}{predicate}".strip()
         return subject_phrase
 
-    def _validate_and_enhance_memories(
-        self,
-        memories: List[MemoryChunk],
-        context: Dict[str, Any]
-    ) -> List[MemoryChunk]:
+    def _validate_and_enhance_memories(self, memories: list[MemoryChunk], context: dict[str, Any]) -> list[MemoryChunk]:
         """验证和增强记忆"""
         validated_memories = []
 
@@ -905,11 +873,7 @@ class MemoryBuilder:
 
         return True
 
-    def _enhance_memory(
-        self,
-        memory: MemoryChunk,
-        context: Dict[str, Any]
-    ) -> MemoryChunk:
+    def _enhance_memory(self, memory: MemoryChunk, context: dict[str, Any]) -> MemoryChunk:
         """增强记忆块"""
         # 时间规范化处理
         self._normalize_time_in_memory(memory)
@@ -919,7 +883,7 @@ class MemoryBuilder:
             memory.temporal_context = {
                 "timestamp": memory.metadata.created_at,
                 "timezone": context.get("timezone", "UTC"),
-                "day_of_week": datetime.fromtimestamp(memory.metadata.created_at).strftime("%A")
+                "day_of_week": datetime.fromtimestamp(memory.metadata.created_at).strftime("%A"),
             }
 
         # 添加情感上下文（如果有）
@@ -941,22 +905,22 @@ class MemoryBuilder:
 
         # 定义相对时间映射
         relative_time_patterns = {
-            r'今天|今日': current_time.strftime('%Y-%m-%d'),
-            r'昨天|昨日': (current_time - timedelta(days=1)).strftime('%Y-%m-%d'),
-            r'明天|明日': (current_time + timedelta(days=1)).strftime('%Y-%m-%d'),
-            r'后天': (current_time + timedelta(days=2)).strftime('%Y-%m-%d'),
-            r'大后天': (current_time + timedelta(days=3)).strftime('%Y-%m-%d'),
-            r'前天': (current_time - timedelta(days=2)).strftime('%Y-%m-%d'),
-            r'大前天': (current_time - timedelta(days=3)).strftime('%Y-%m-%d'),
-            r'本周|这周|这星期': current_time.strftime('%Y-%m-%d'),
-            r'上周|上星期': (current_time - timedelta(weeks=1)).strftime('%Y-%m-%d'),
-            r'下周|下星期': (current_time + timedelta(weeks=1)).strftime('%Y-%m-%d'),
-            r'本月|这个月': current_time.strftime('%Y-%m-01'),
-            r'上月|上个月': (current_time.replace(day=1) - timedelta(days=1)).strftime('%Y-%m-01'),
-            r'下月|下个月': (current_time.replace(day=1) + timedelta(days=32)).replace(day=1).strftime('%Y-%m-01'),
-            r'今年|今年': current_time.strftime('%Y'),
-            r'去年|上一年': str(current_time.year - 1),
-            r'明年|下一年': str(current_time.year + 1),
+            r"今天|今日": current_time.strftime("%Y-%m-%d"),
+            r"昨天|昨日": (current_time - timedelta(days=1)).strftime("%Y-%m-%d"),
+            r"明天|明日": (current_time + timedelta(days=1)).strftime("%Y-%m-%d"),
+            r"后天": (current_time + timedelta(days=2)).strftime("%Y-%m-%d"),
+            r"大后天": (current_time + timedelta(days=3)).strftime("%Y-%m-%d"),
+            r"前天": (current_time - timedelta(days=2)).strftime("%Y-%m-%d"),
+            r"大前天": (current_time - timedelta(days=3)).strftime("%Y-%m-%d"),
+            r"本周|这周|这星期": current_time.strftime("%Y-%m-%d"),
+            r"上周|上星期": (current_time - timedelta(weeks=1)).strftime("%Y-%m-%d"),
+            r"下周|下星期": (current_time + timedelta(weeks=1)).strftime("%Y-%m-%d"),
+            r"本月|这个月": current_time.strftime("%Y-%m-01"),
+            r"上月|上个月": (current_time.replace(day=1) - timedelta(days=1)).strftime("%Y-%m-01"),
+            r"下月|下个月": (current_time.replace(day=1) + timedelta(days=32)).replace(day=1).strftime("%Y-%m-01"),
+            r"今年|今年": current_time.strftime("%Y"),
+            r"去年|上一年": str(current_time.year - 1),
+            r"明年|下一年": str(current_time.year + 1),
         }
 
         def _normalize_value(value):
@@ -1009,12 +973,16 @@ class MemoryBuilder:
 
         # 更新平均置信度
         if self.extraction_stats["successful_extractions"] > 0:
-            total_confidence = self.extraction_stats["average_confidence"] * (self.extraction_stats["successful_extractions"] - success_count)
+            total_confidence = self.extraction_stats["average_confidence"] * (
+                self.extraction_stats["successful_extractions"] - success_count
+            )
             # 假设新记忆的平均置信度为0.8
             total_confidence += 0.8 * success_count
-            self.extraction_stats["average_confidence"] = total_confidence / self.extraction_stats["successful_extractions"]
+            self.extraction_stats["average_confidence"] = (
+                total_confidence / self.extraction_stats["successful_extractions"]
+            )
 
-    def get_extraction_stats(self) -> Dict[str, Any]:
+    def get_extraction_stats(self) -> dict[str, Any]:
         """获取提取统计信息"""
         return self.extraction_stats.copy()
 
@@ -1024,5 +992,5 @@ class MemoryBuilder:
             "total_extractions": 0,
             "successful_extractions": 0,
             "failed_extractions": 0,
-            "average_confidence": 0.0
+            "average_confidence": 0.0,
         }

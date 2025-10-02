@@ -1,9 +1,9 @@
-import asyncio
 import copy
 import datetime
 import hashlib
 import time
-from typing import Any, Callable, Dict, Union, Optional
+from collections.abc import Callable
+from typing import Any
 
 import orjson
 from json_repair import repair_json
@@ -87,7 +87,7 @@ class PersonInfoManager:
             logger.error(f"从 SQLAlchemy 加载 person_name_list 失败: {e}")
 
     @staticmethod
-    def get_person_id(platform: str, user_id: Union[int, str]) -> str:
+    def get_person_id(platform: str, user_id: int | str) -> str:
         """获取唯一id（同步）
 
         说明: 原来该方法为异步并在内部尝试执行数据库检查/迁移，导致在许多调用处未 await 时返回 coroutine 对象。
@@ -145,7 +145,7 @@ class PersonInfoManager:
         except Exception as e:
             logger.error(f"根据用户名 {person_name} 获取用户ID时出错: {e}")
             return ""
-        
+
     @staticmethod
     async def first_knowing_some_one(platform: str, user_id: str, user_nickname: str, user_cardname: str):
         """判断是否认识某人"""
@@ -166,9 +166,9 @@ class PersonInfoManager:
         await person_info_manager.update_one_field(
             person_id=person_id, field_name="nickname", value=user_nickname, data=data
         )
-        
+
     @staticmethod
-    async def create_person_info(person_id: str, data: Optional[dict] = None):
+    async def create_person_info(person_id: str, data: dict | None = None):
         """创建一个项"""
         if not person_id:
             logger.debug("创建失败，person_id不存在")
@@ -229,7 +229,7 @@ class PersonInfoManager:
         await _db_create_async(final_data)
 
     @staticmethod
-    async def _safe_create_person_info(person_id: str, data: Optional[dict] = None):
+    async def _safe_create_person_info(person_id: str, data: dict | None = None):
         """安全地创建用户信息，处理竞态条件"""
         if not person_id:
             logger.debug("创建失败，person_id不存在")
@@ -297,7 +297,7 @@ class PersonInfoManager:
 
         await _db_safe_create_async(final_data)
 
-    async def update_one_field(self, person_id: str, field_name: str, value, data: Optional[Dict] = None):
+    async def update_one_field(self, person_id: str, field_name: str, value, data: dict | None = None):
         """更新某一个字段，会补全"""
         # 获取 SQLAlchemy 模型的所有字段名
         model_fields = [column.name for column in PersonInfo.__table__.columns]
@@ -491,7 +491,9 @@ class PersonInfoManager:
 
                 async def _db_check_name_exists_async(name_to_check):
                     async with get_db_session() as session:
-                        result = await session.execute(select(PersonInfo).where(PersonInfo.person_name == name_to_check))
+                        result = await session.execute(
+                            select(PersonInfo).where(PersonInfo.person_name == name_to_check)
+                        )
                         record = result.scalar()
                         return record is not None
 
@@ -551,7 +553,6 @@ class PersonInfoManager:
             logger.debug(f"删除成功：person_id={person_id}")
         else:
             logger.debug(f"删除失败：未找到 person_id={person_id} 或删除未影响行")
-
 
     @staticmethod
     async def get_value(person_id: str, field_name: str) -> Any:
@@ -623,11 +624,12 @@ class PersonInfoManager:
                 result[field_name] = copy.deepcopy(person_info_default.get(field_name))
 
         return result
+
     @staticmethod
     async def get_specific_value_list(
         field_name: str,
         way: Callable[[Any], bool],
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         获取满足条件的字段值字典
         """
@@ -648,18 +650,18 @@ class PersonInfoManager:
                             found_results[record.person_id] = value
             except Exception as e_query:
                 logger.error(
-                    f"数据库查询失败 (SQLAlchemy specific_value_list for {f_name}): {str(e_query)}", exc_info=True
+                    f"数据库查询失败 (SQLAlchemy specific_value_list for {f_name}): {e_query!s}", exc_info=True
                 )
             return found_results
 
         try:
             return await _db_get_specific_async(field_name)
         except Exception as e:
-            logger.error(f"执行 get_specific_value_list 时出错: {str(e)}", exc_info=True)
+            logger.error(f"执行 get_specific_value_list 时出错: {e!s}", exc_info=True)
             return {}
 
     async def get_or_create_person(
-        self, platform: str, user_id: int, nickname: str, user_cardname: str, user_avatar: Optional[str] = None
+        self, platform: str, user_id: int, nickname: str, user_cardname: str, user_avatar: str | None = None
     ) -> str:
         """
         根据 platform 和 user_id 获取 person_id。
@@ -694,7 +696,7 @@ class PersonInfoManager:
                         return record, False  # 其他协程已创建，返回现有记录
                     # 如果仍然失败，重新抛出异常
                     raise e
-        
+
         unique_nickname = await self._generate_unique_person_name(nickname)
         initial_data = {
             "person_id": person_id,

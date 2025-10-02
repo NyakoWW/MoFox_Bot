@@ -1,40 +1,40 @@
 # 再用这个就写一行注释来混提交的我直接全部🌿飞😡
 import asyncio
-import time
 import signal
 import sys
-from functools import partial
+import time
 import traceback
-from typing import Dict, Any
+from functools import partial
+from typing import Any
 
 from maim_message import MessageServer
-
-from src.common.remote import TelemetryHeartBeatTask
-from src.manager.async_task_manager import async_task_manager
-from src.chat.utils.statistic import OnlineTimeRecordTask, StatisticOutputTask
-from src.chat.emoji_system.emoji_manager import get_emoji_manager
-from src.chat.message_receive.chat_stream import get_chat_manager
-from src.config.config import global_config
-from src.chat.message_receive.bot import chat_bot
-from src.common.logger import get_logger
-from src.individuality.individuality import get_individuality, Individuality
-from src.common.server import get_global_server, Server
-from src.mood.mood_manager import mood_manager
 from rich.traceback import install
-from src.schedule.schedule_manager import schedule_manager
-from src.schedule.monthly_plan_manager import monthly_plan_manager
-from src.plugin_system.core.event_manager import event_manager
-from src.plugin_system.base.component_types import EventType
-# from src.api.main import start_api_server
 
-# 导入新的插件管理器
-from src.plugin_system.core.plugin_manager import plugin_manager
-
-# 导入消息API和traceback模块
-from src.common.message import get_global_api
+from src.chat.emoji_system.emoji_manager import get_emoji_manager
 
 # 导入增强记忆系统管理器
 from src.chat.memory_system.memory_manager import memory_manager
+from src.chat.message_receive.bot import chat_bot
+from src.chat.message_receive.chat_stream import get_chat_manager
+from src.chat.utils.statistic import OnlineTimeRecordTask, StatisticOutputTask
+from src.common.logger import get_logger
+
+# 导入消息API和traceback模块
+from src.common.message import get_global_api
+from src.common.remote import TelemetryHeartBeatTask
+from src.common.server import Server, get_global_server
+from src.config.config import global_config
+from src.individuality.individuality import Individuality, get_individuality
+from src.manager.async_task_manager import async_task_manager
+from src.mood.mood_manager import mood_manager
+from src.plugin_system.base.component_types import EventType
+from src.plugin_system.core.event_manager import event_manager
+
+# from src.api.main import start_api_server
+# 导入新的插件管理器
+from src.plugin_system.core.plugin_manager import plugin_manager
+from src.schedule.monthly_plan_manager import monthly_plan_manager
+from src.schedule.schedule_manager import schedule_manager
 
 # 插件系统现在使用统一的插件加载器
 
@@ -78,6 +78,7 @@ class MainSystem:
             logger.info("收到退出信号，正在优雅关闭系统...")
 
             import asyncio
+
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
@@ -106,6 +107,7 @@ class MainSystem:
             # 停止消息管理器
             try:
                 from src.chat.message_manager import message_manager
+
                 await message_manager.stop()
                 logger.info("🛑 消息管理器已停止")
             except Exception as e:
@@ -113,8 +115,8 @@ class MainSystem:
 
             # 停止消息重组器
             try:
-                from src.plugin_system.core.event_manager import event_manager
                 from src.plugin_system import EventType
+                from src.plugin_system.core.event_manager import event_manager
                 from src.utils.message_chunker import reassembler
 
                 await event_manager.trigger_event(EventType.ON_STOP, permission_group="SYSTEM")
@@ -149,7 +151,7 @@ class MainSystem:
         except Exception as e:
             logger.error(f"同步清理资源时出错: {e}")
 
-    async def _message_process_wrapper(self, message_data: Dict[str, Any]):
+    async def _message_process_wrapper(self, message_data: dict[str, Any]):
         """并行处理消息的包装器"""
         try:
             start_time = time.time()
@@ -223,8 +225,8 @@ MoFox_Bot(第三方修改版)
         event_manager.init_default_events()
 
         # 初始化权限管理器
-        from src.plugin_system.core.permission_manager import PermissionManager
         from src.plugin_system.apis.permission_api import permission_api
+        from src.plugin_system.core.permission_manager import PermissionManager
 
         permission_manager = PermissionManager()
         await permission_manager.initialize()
@@ -241,7 +243,6 @@ MoFox_Bot(第三方修改版)
         # 处理所有缓存的事件订阅（插件加载完成后）
         event_manager.process_all_pending_subscriptions()
 
-  
         # 初始化表情管理器
         get_emoji_manager().initialize()
         logger.info("表情包管理器初始化成功")

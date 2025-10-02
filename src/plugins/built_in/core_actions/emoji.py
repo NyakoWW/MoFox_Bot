@@ -1,19 +1,18 @@
 import random
-from typing import Tuple
 
-# 导入新插件系统
-from src.plugin_system import BaseAction, ActionActivationType, ChatMode
+from src.chat.emoji_system.emoji_history import add_emoji_to_history, get_recent_emojis
+from src.chat.emoji_system.emoji_manager import MaiEmoji, get_emoji_manager
+from src.chat.utils.utils_image import image_path_to_base64
 
 # 导入依赖的系统组件
 from src.common.logger import get_logger
+from src.config.config import global_config
+
+# 导入新插件系统
+from src.plugin_system import ActionActivationType, BaseAction, ChatMode
 
 # 导入API模块 - 标准Python包方式
 from src.plugin_system.apis import llm_api, message_api
-from src.chat.emoji_system.emoji_manager import get_emoji_manager, MaiEmoji
-from src.chat.utils.utils_image import image_path_to_base64
-from src.config.config import global_config
-from src.chat.emoji_system.emoji_history import get_recent_emojis, add_emoji_to_history
-
 
 logger = get_logger("emoji")
 
@@ -59,7 +58,7 @@ class EmojiAction(BaseAction):
     # 关联类型
     associated_types = ["emoji"]
 
-    async def execute(self) -> Tuple[bool, str]:
+    async def execute(self) -> tuple[bool, str]:
         """执行表情动作"""
         logger.info(f"{self.log_prefix} 决定发送表情")
 
@@ -268,7 +267,7 @@ class EmojiAction(BaseAction):
             if not success:
                 logger.error(f"{self.log_prefix} 表情包发送失败")
                 await self.store_action_info(
-                    action_build_into_prompt=True, action_prompt_display=f"发送了一个表情包,但失败了", action_done=False
+                    action_build_into_prompt=True, action_prompt_display="发送了一个表情包,但失败了", action_done=False
                 )
                 return False, "表情包发送失败"
 
@@ -279,11 +278,11 @@ class EmojiAction(BaseAction):
                 logger.error(f"{self.log_prefix} 添加表情到历史记录时出错: {e}")
 
             await self.store_action_info(
-                action_build_into_prompt=True, action_prompt_display=f"发送了一个表情包", action_done=True
+                action_build_into_prompt=True, action_prompt_display="发送了一个表情包", action_done=True
             )
 
             return True, f"发送表情包: {emoji_description}"
 
         except Exception as e:
             logger.error(f"{self.log_prefix} 表情动作执行失败: {e}", exc_info=True)
-            return False, f"表情发送失败: {str(e)}"
+            return False, f"表情发送失败: {e!s}"

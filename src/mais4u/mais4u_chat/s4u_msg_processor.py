@@ -1,33 +1,33 @@
 import asyncio
 import math
-from typing import Tuple
+
+from maim_message.message_base import GroupInfo
+
+from src.chat.message_receive.chat_stream import get_chat_manager
 
 # 旧的Hippocampus系统已被移除，现在使用增强记忆系统
 # from src.chat.memory_system.enhanced_memory_manager import enhanced_memory_manager
 from src.chat.message_receive.message import MessageRecv, MessageRecvS4U
-from maim_message.message_base import GroupInfo
 from src.chat.message_receive.storage import MessageStorage
-from src.chat.message_receive.chat_stream import get_chat_manager
 from src.chat.utils.timer_calculator import Timer
 from src.chat.utils.utils import is_mentioned_bot_in_message
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.mais4u.mais4u_chat.body_emotion_action_manager import action_manager
-from src.mais4u.mais4u_chat.s4u_mood_manager import mood_manager
-from src.mais4u.mais4u_chat.s4u_watching_manager import watching_manager
 from src.mais4u.mais4u_chat.context_web_manager import get_context_web_manager
 from src.mais4u.mais4u_chat.gift_manager import gift_manager
+from src.mais4u.mais4u_chat.s4u_mood_manager import mood_manager
+from src.mais4u.mais4u_chat.s4u_watching_manager import watching_manager
 from src.mais4u.mais4u_chat.screen_manager import screen_manager
 
 from .s4u_chat import get_s4u_chat_manager
-
 
 # from ..message_receive.message_buffer import message_buffer
 
 logger = get_logger("chat")
 
 
-async def _calculate_interest(message: MessageRecv) -> Tuple[float, bool]:
+async def _calculate_interest(message: MessageRecv) -> tuple[float, bool]:
     """计算消息的兴趣度
 
     Args:
@@ -50,13 +50,13 @@ async def _calculate_interest(message: MessageRecv) -> Tuple[float, bool]:
                     query_text=message.processed_plain_text,
                     user_id=str(message.user_info.user_id),
                     scope_id=message.chat_id,
-                    limit=5
+                    limit=5,
                 )
 
                 # 基于检索结果计算兴趣度
                 if enhanced_memories:
                     # 有相关记忆，兴趣度基于相似度计算
-                    max_score = max(getattr(memory, 'relevance_score', 0.5) for memory in enhanced_memories)
+                    max_score = max(getattr(memory, "relevance_score", 0.5) for memory in enhanced_memories)
                     interested_rate = min(max_score, 1.0)  # 限制在0-1之间
                 else:
                     # 没有相关记忆，给予基础兴趣度
