@@ -293,11 +293,14 @@ class StatisticOutputTask(AsyncTask):
 
         # 以最早的时间戳为起始时间获取记录
         query_start_time = collect_period[-1][1]
-        records = await db_get(
-            model_class=LLMUsage,
-            filters={"timestamp": {"$gte": query_start_time}},
-            order_by="-timestamp",
-        ) or []
+        records = (
+            await db_get(
+                model_class=LLMUsage,
+                filters={"timestamp": {"$gte": query_start_time}},
+                order_by="-timestamp",
+            )
+            or []
+        )
 
         for record in records:
             if not isinstance(record, dict):
@@ -389,7 +392,9 @@ class StatisticOutputTask(AsyncTask):
         return stats
 
     @staticmethod
-    async def _collect_online_time_for_period(collect_period: List[Tuple[str, datetime]], now: datetime) -> Dict[str, Any]:
+    async def _collect_online_time_for_period(
+        collect_period: List[Tuple[str, datetime]], now: datetime
+    ) -> Dict[str, Any]:
         """
         收集指定时间段的在线时间统计数据
 
@@ -408,11 +413,14 @@ class StatisticOutputTask(AsyncTask):
         }
 
         query_start_time = collect_period[-1][1]
-        records = await db_get(
-            model_class=OnlineTime,
-            filters={"end_timestamp": {"$gte": query_start_time}},
-            order_by="-end_timestamp",
-        ) or []
+        records = (
+            await db_get(
+                model_class=OnlineTime,
+                filters={"end_timestamp": {"$gte": query_start_time}},
+                order_by="-end_timestamp",
+            )
+            or []
+        )
 
         for record in records:
             if not isinstance(record, dict):
@@ -464,11 +472,14 @@ class StatisticOutputTask(AsyncTask):
         }
 
         query_start_timestamp = collect_period[-1][1].timestamp()  # Messages.time is a DoubleField (timestamp)
-        records = await db_get(
-            model_class=Messages,
-            filters={"time": {"$gte": query_start_timestamp}},
-            order_by="-time",
-        ) or []
+        records = (
+            await db_get(
+                model_class=Messages,
+                filters={"time": {"$gte": query_start_timestamp}},
+                order_by="-time",
+            )
+            or []
+        )
 
         for message in records:
             if not isinstance(message, dict):
@@ -1026,11 +1037,14 @@ class StatisticOutputTask(AsyncTask):
         interval_seconds = interval_minutes * 60
 
         # 单次查询 LLMUsage
-        llm_records = await db_get(
-            model_class=LLMUsage,
-            filters={"timestamp": {"$gte": start_time}},
-            order_by="-timestamp",
-        ) or []
+        llm_records = (
+            await db_get(
+                model_class=LLMUsage,
+                filters={"timestamp": {"$gte": start_time}},
+                order_by="-timestamp",
+            )
+            or []
+        )
         for record in llm_records:
             if not isinstance(record, dict) or not record.get("timestamp"):
                 continue
@@ -1056,11 +1070,14 @@ class StatisticOutputTask(AsyncTask):
                 cost_by_module[module_name][idx] += cost
 
         # 单次查询 Messages
-        msg_records = await db_get(
-            model_class=Messages,
-            filters={"time": {"$gte": start_time.timestamp()}},
-            order_by="-time",
-        ) or []
+        msg_records = (
+            await db_get(
+                model_class=Messages,
+                filters={"time": {"$gte": start_time.timestamp()}},
+                order_by="-time",
+            )
+            or []
+        )
         for msg in msg_records:
             if not isinstance(msg, dict) or not msg.get("time"):
                 continue
