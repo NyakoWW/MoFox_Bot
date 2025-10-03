@@ -1,6 +1,7 @@
 import asyncio
 import random
 import time
+import traceback
 from datetime import datetime
 
 from maim_message import UserInfo
@@ -20,77 +21,69 @@ logger = get_logger(__name__)
 
 class ColdStartTask(AsyncTask):
     """
-    冷启动任务，专门用于处理那些在白名单里，但从未与机器人发生过交互的用户。
-    它的核心职责是“破冰”，主动创建聊天流并发起第一次问候。
+    “冷启动”任务，在机器人启动时执行一次。
+    它的核心职责是“唤醒”那些因重启而“沉睡”的聊天流，确保它们能够接收主动思考。
+    对于在白名单中但从未有过记录的全新用户，它也会发起第一次“破冰”问候。
     """
 
-    def __init__(self):
+    def __init__(self, bot_start_time: float):
         super().__init__(task_name="ColdStartTask")
         self.chat_manager = get_chat_manager()
         self.executor = ProactiveThinkerExecutor()
+        self.bot_start_time = bot_start_time
 
     async def run(self):
-        """任务主循环，周期性地检查是否有需要“破冰”的新用户。"""
-        logger.info("冷启动任务已启动，将周期性检查白名单中的新朋友。")
-        # 初始等待一段时间，确保其他服务（如数据库）完全启动
-        await asyncio.sleep(100)
+        """任务主逻辑，在启动后执行一次白名单扫描。"""
+        logger.info("冷启动任务已启动，将在短暂延迟后开始唤醒沉睡的聊天流...")
+        await asyncio.sleep(30)  # 延迟以确保所有服务和聊天流已从数据库加载完毕
 
-        while True:
-            try:
-                logger.info("【冷启动】开始扫描白名单，寻找从未聊过的用户...")
+        try:
+            logger.info("【冷启动】开始扫描白名单，唤醒沉睡的聊天流...")
 
-                # 从全局配置中获取私聊白名单
-                enabled_private_chats = global_config.proactive_thinking.enabled_private_chats
-                if not enabled_private_chats:
-                    logger.debug("【冷启动】私聊白名单为空，任务暂停一小时。")
-                    await asyncio.sleep(3600)  # 白名单为空时，没必要频繁检查
-                    continue
+            enabled_private_chats = global_config.proactive_thinking.enabled_private_chats
+            if not enabled_private_chats:
+                logger.debug("【冷启动】私聊白名单为空，任务结束。")
+                return
 
-                # 遍历白名单中的每一个用户
-                for chat_id in enabled_private_chats:
-                    try:
-                        platform, user_id_str = chat_id.split(":")
-                        user_id = int(user_id_str)
+            for chat_id in enabled_private_chats:
+                try:
+                    platform, user_id_str = chat_id.split(":")
+                    user_id = int(user_id_str)
 
-                        # 【核心逻辑】使用 chat_api 检查该用户是否已经存在聊天流（ChatStream）
-                        # 如果返回了 ChatStream 对象，说明已经聊过天了，不是本次任务的目标
-                        if chat_api.get_stream_by_user_id(user_id_str, platform):
-                            continue  # 跳过已存在的用户
+                    should_wake_up = False
+                    stream = chat_api.get_stream_by_user_id(user_id_str, platform)
 
-                        logger.info(f"【冷启动】发现白名单新用户 {chat_id}，准备发起第一次问候。")
+                    if not stream:
+                        should_wake_up = True
+                        logger.info(f"【冷启动】发现全新用户 {chat_id}，准备发起第一次问候。")
+                    elif stream.last_active_time < self.bot_start_time:
+                        should_wake_up = True
+                        logger.info(f"【冷启动】发现沉睡的聊天流 {chat_id} (最后活跃于 {datetime.fromtimestamp(stream.last_active_time)})，准备唤醒。")
 
-                        # 【增强体验】尝试从关系数据库中获取该用户的昵称
-                        # 这样打招呼时可以更亲切，而不是只知道一个冷冰冰的ID
+                    if should_wake_up:
                         person_id = person_api.get_person_id(platform, user_id)
                         nickname = await person_api.get_person_value(person_id, "nickname")
-
-                        # 如果数据库里有昵称，就用数据库里的；如果没有，就用 "用户+ID" 作为备用
                         user_nickname = nickname or f"用户{user_id}"
-
-                        # 创建 UserInfo 对象，这是创建聊天流的必要信息
                         user_info = UserInfo(platform=platform, user_id=str(user_id), user_nickname=user_nickname)
-
-                        # 【关键步骤】主动创建聊天流。
-                        # 创建后，该用户就进入了机器人的“好友列表”，后续将由 ProactiveThinkingTask 接管
+                        
+                        # 使用 get_or_create_stream 来安全地获取或创建流
                         stream = await self.chat_manager.get_or_create_stream(platform, user_info)
+                        
+                        formatted_stream_id = f"{stream.user_info.platform}:{stream.user_info.user_id}:private"
+                        await self.executor.execute(stream_id=formatted_stream_id, start_mode="cold_start")
+                        logger.info(f"【冷启动】已为用户 {chat_id} (昵称: {user_nickname}) 发送唤醒/问候消息。")
 
-                        await self.executor.execute(stream_id=stream.stream_id, start_mode="cold_start")
-                        logger.info(f"【冷启动】已为新用户 {chat_id} (昵称: {user_nickname}) 创建聊天流并发送问候。")
+                except ValueError:
+                    logger.warning(f"【冷启动】白名单条目格式错误或用户ID无效，已跳过: {chat_id}")
+                except Exception as e:
+                    logger.error(f"【冷启动】处理用户 {chat_id} 时发生未知错误: {e}", exc_info=True)
 
-                    except ValueError:
-                        logger.warning(f"【冷启动】白名单条目格式错误或用户ID无效，已跳过: {chat_id}")
-                    except Exception as e:
-                        logger.error(f"【冷启动】处理用户 {chat_id} 时发生未知错误: {e}", exc_info=True)
-
-                # 完成一轮检查后，进入长时休眠
-                await asyncio.sleep(3600)
-
-            except asyncio.CancelledError:
-                logger.info("冷启动任务被正常取消。")
-                break
-            except Exception as e:
-                logger.error(f"【冷启动】任务出现严重错误，将在5分钟后重试: {e}", exc_info=True)
-                await asyncio.sleep(300)
+        except asyncio.CancelledError:
+            logger.info("冷启动任务被正常取消。")
+        except Exception as e:
+            logger.error(f"【冷启动】任务出现严重错误: {e}", exc_info=True)
+        finally:
+            logger.info("【冷启动】任务执行完毕。")
 
 
 class ProactiveThinkingTask(AsyncTask):
@@ -156,49 +149,56 @@ class ProactiveThinkingTask(AsyncTask):
                 enabled_private = set(global_config.proactive_thinking.enabled_private_chats)
                 enabled_groups = set(global_config.proactive_thinking.enabled_group_chats)
 
-                # 获取当前所有聊天流的快照
-                all_streams = list(self.chat_manager.streams.values())
-
-                for stream in all_streams:
-                    # 1. 检查该聊天是否在白名单内（或白名单为空时默认允许）
-                    is_whitelisted = False
-                    if stream.group_info:  # 群聊
-                        if not enabled_groups or f"qq:{stream.group_info.group_id}" in enabled_groups:
-                            is_whitelisted = True
-                    else:  # 私聊
-                        if not enabled_private or f"qq:{stream.user_info.user_id}" in enabled_private:
-                            is_whitelisted = True
-
-                    if not is_whitelisted:
-                        continue  # 不在白名单内，跳过
-
-                    # 2. 【核心逻辑】检查聊天冷却时间是否足够长
-                    time_since_last_active = time.time() - stream.last_active_time
-                    if time_since_last_active > next_interval:
-                        logger.info(
-                            f"【日常唤醒】聊天流 {stream.stream_id} 已冷却 {time_since_last_active:.2f} 秒，触发主动对话。"
-                        )
-
-                        # 构建符合 executor 期望的 stream_id 格式
-                        if stream.group_info and stream.group_info.group_id:
-                            formatted_stream_id = f"{stream.user_info.platform}:{stream.group_info.group_id}:group"
-                        elif stream.user_info and stream.user_info.user_id:
-                            formatted_stream_id = f"{stream.user_info.platform}:{stream.user_info.user_id}:private"
-                        else:
-                            logger.warning(f"【日常唤醒】跳过 stream {stream.stream_id}，因为它缺少有效的用户信息或群组信息。")
+                # 分别处理私聊和群聊
+                # 1. 处理私聊：直接遍历白名单，确保能覆盖到所有（包括本次运行尚未活跃的）用户
+                for chat_id in enabled_private:
+                    try:
+                        platform, user_id_str = chat_id.split(":")
+                        # 【核心逻辑】检查聊天流是否存在。不存在则跳过，交由ColdStartTask处理。
+                        stream = chat_api.get_stream_by_user_id(user_id_str, platform)
+                        if not stream:
                             continue
 
-                        await self.executor.execute(stream_id=formatted_stream_id, start_mode="wake_up")
+                        # 检查冷却时间
+                        time_since_last_active = time.time() - stream.last_active_time
+                        if time_since_last_active > next_interval:
+                            logger.info(
+                                f"【日常唤醒-私聊】聊天流 {stream.stream_id} 已冷却 {time_since_last_active:.2f} 秒，触发主动对话。"
+                            )
+                            formatted_stream_id = f"{stream.user_info.platform}:{stream.user_info.user_id}:private"
+                            await self.executor.execute(stream_id=formatted_stream_id, start_mode="wake_up")
+                            stream.update_active_time()
+                            await self.chat_manager._save_stream(stream)
 
-                        # 【关键步骤】在触发后，立刻更新活跃时间并保存。
-                        # 这可以防止在同一个检查周期内，对同一个目标因为意外的延迟而发送多条消息。
-                        stream.update_active_time()
-                        await self.chat_manager._save_stream(stream)
+                    except ValueError:
+                        logger.warning(f"【日常唤醒】私聊白名单条目格式错误，已跳过: {chat_id}")
+                    except Exception as e:
+                        logger.error(f"【日常唤醒】处理私聊用户 {chat_id} 时发生未知错误: {e}", exc_info=True)
+
+                # 2. 处理群聊：遍历内存中的活跃流（群聊不存在冷启动问题）
+                all_streams = list(self.chat_manager.streams.values())
+                for stream in all_streams:
+                    if not stream.group_info:
+                        continue  # 只处理群聊
+
+                    # 检查群聊是否在白名单内
+                    if not enabled_groups or f"qq:{stream.group_info.group_id}" in enabled_groups:
+                        # 检查冷却时间
+                        time_since_last_active = time.time() - stream.last_active_time
+                        if time_since_last_active > next_interval:
+                            logger.info(
+                                f"【日常唤醒-群聊】聊天流 {stream.stream_id} 已冷却 {time_since_last_active:.2f} 秒，触发主动对话。"
+                            )
+                            formatted_stream_id = f"{stream.user_info.platform}:{stream.group_info.group_id}:group"
+                            await self.executor.execute(stream_id=formatted_stream_id, start_mode="wake_up")
+                            stream.update_active_time()
+                            await self.chat_manager._save_stream(stream)
 
             except asyncio.CancelledError:
                 logger.info("日常唤醒任务被正常取消。")
                 break
             except Exception as e:
+                traceback.print_exc() # 打印完整的堆栈跟踪
                 logger.error(f"【日常唤醒】任务出现错误，将在60秒后重试: {e}", exc_info=True)
                 await asyncio.sleep(60)
 
@@ -215,13 +215,15 @@ class ProactiveThinkerEventHandler(BaseEventHandler):
         logger.info("检测到插件启动事件，正在初始化【主动思考】")
         # 检查总开关
         if global_config.proactive_thinking.enable:
+            bot_start_time = time.time()  # 记录“诞生时刻”
+
             # 启动负责“日常唤醒”的核心任务
             proactive_task = ProactiveThinkingTask()
             await async_task_manager.add_task(proactive_task)
 
             # 检查“冷启动”功能的独立开关
             if global_config.proactive_thinking.enable_cold_start:
-                cold_start_task = ColdStartTask()
+                cold_start_task = ColdStartTask(bot_start_time)
                 await async_task_manager.add_task(cold_start_task)
 
         else:
