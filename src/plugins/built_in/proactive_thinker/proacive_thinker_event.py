@@ -1,6 +1,7 @@
 import asyncio
 import random
 import time
+import traceback
 from datetime import datetime
 
 from maim_message import UserInfo
@@ -199,6 +200,7 @@ class ProactiveThinkingTask(AsyncTask):
                 logger.info("日常唤醒任务被正常取消。")
                 break
             except Exception as e:
+                traceback.print_exc() # 打印完整的堆栈跟踪
                 logger.error(f"【日常唤醒】任务出现错误，将在60秒后重试: {e}", exc_info=True)
                 await asyncio.sleep(60)
 
