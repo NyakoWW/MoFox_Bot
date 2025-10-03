@@ -5,6 +5,7 @@ import orjson
 
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
+from src.mood.mood_manager import mood_manager
 from src.person_info.person_info import get_person_info_manager
 from src.plugin_system.apis import (
     chat_api,
@@ -110,8 +111,8 @@ class ProactiveThinkerExecutor:
             elif stream_type == "group":
                 return chat_api.ChatManager.get_group_stream_by_group_id(platform=platform, group_id=chat_id)
         except Exception as e:
-            logger.error(f"解析 stream_id ({stream_id}) 或获取 stream 失败: {e}")
-        return None
+            logger.error(f"获取 stream_id ({stream_id}) 失败: {e}")
+            return None
 
     async def _gather_context(self, stream_id: str) -> dict[str, Any] | None:
         """
@@ -157,10 +158,12 @@ class ProactiveThinkerExecutor:
         )
 
         # 2. 构建基础上下文
+        mood_state = mood_manager.get_mood_by_chat_id(stream_id).mood_state
         base_context = {
             "schedule_context": schedule_context,
             "recent_chat_history": recent_chat_history,
             "action_history_context": action_history_context,
+            "mood_state": mood_state,
             "persona": {
                 "core": global_config.personality.personality_core,
                 "side": global_config.personality.personality_side,
@@ -230,6 +233,8 @@ class ProactiveThinkerExecutor:
 - 核心人设: {persona["core"]}
 - 侧面人设: {persona["side"]}
 - 身份: {persona["identity"]}
+
+你的当前情绪状态是: {context["mood_state"]}
 """
         # 根据聊天类型构建任务和情境
         if chat_type == "private":
@@ -359,7 +364,7 @@ class ProactiveThinkerExecutor:
 # 对话指引
 - 你的目标是“破冰”，让对话自然地开始。
 - 你应该围绕这个话题展开: {topic}
-- 你的语气应该符合你的人设，友好且真诚。
+- 你的语气应该符合你的人设和你当前的心情({context["mood_state"]})，友好且真诚。
 """
         else:  # wake_up
             return f"""
@@ -383,7 +388,7 @@ class ProactiveThinkerExecutor:
 # 对话指引
 - 你决定和Ta聊聊关于“{topic}”的话题。
 - 请结合以上所有情境信息，自然地开启对话。
-- 你的语气应该符合你的人设以及你对Ta的好感度。
+- 你的语气应该符合你的人设({context["mood_state"]})以及你对Ta的好感度。
 """
 
     def _build_group_plan_prompt(self, context: dict[str, Any], topic: str, reason: str) -> str:
@@ -408,6 +413,7 @@ class ProactiveThinkerExecutor:
 
 # 情境分析
 1.  **你的日程**:
+你当前的心情({context["mood_state"]}
 {context["schedule_context"]}
 2.  **群聊信息**:
     - 群名称: {group_info["group_name"]}
@@ -418,8 +424,9 @@ class ProactiveThinkerExecutor:
 
 # 对话指引
 - 你决定和大家聊聊关于“{topic}”的话题。
-- 你的语气应该更活泼、更具包容性，以吸引更多群成员参与讨论。
+- 你的语气应该更活泼、更具包容性，以吸引更多群成员参与讨论。你的语气应该符合你的人设)。
 - 请结合以上所有情境信息，自然地开启对话。
+- 可以分享你的看法、提出相关问题，或者开个合适的玩笑。
 """
 
     def _build_plan_prompt(self, context: dict[str, Any], start_mode: str, topic: str, reason: str) -> str:
@@ -453,7 +460,16 @@ class ProactiveThinkerExecutor:
             prompt += self._build_group_plan_prompt(context, topic, reason)
 
         # 3. 添加通用结尾
-        prompt += "\n- 直接输出你要说的第一句话，不要包含任何额外的前缀或解释。"
+        final_instructions = """
+
+# 输出要求
+- **简洁**: 不要输出任何多余内容（如前缀、后缀、冒号、引号、at/@等）。
+- **原创**: 不要重复之前的内容，即使意思相近也不行。
+- **直接**: 只输出最终的回复文本本身。
+- **风格**: 回复需简短、完整且口语化。
+
+现在，你说："""
+        prompt += final_instructions
 
         if global_config.debug.show_prompt:
             logger.info(f"主动思考回复器原始提示词:{prompt}")
