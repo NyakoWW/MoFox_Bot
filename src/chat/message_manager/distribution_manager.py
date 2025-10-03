@@ -81,7 +81,7 @@ class StreamLoopManager:
                         if not task.done():
                             task.cancel()
                             cancel_tasks.append((stream_id, task))
-                    
+
                     # 并发等待所有任务取消
                     if cancel_tasks:
                         logger.info(f"正在取消 {len(cancel_tasks)} 个流循环任务...")
@@ -89,7 +89,7 @@ class StreamLoopManager:
                             *[self._wait_for_task_cancel(stream_id, task) for stream_id, task in cancel_tasks],
                             return_exceptions=True
                         )
-                    
+
                     self.stream_loops.clear()
                     logger.info("所有流循环已清理")
                 finally:
@@ -235,7 +235,7 @@ class StreamLoopManager:
                     logger.warning(f"流循环任务取消超时: {stream_id}")
                 except Exception as e:
                     logger.error(f"等待流循环任务结束时出错: {stream_id} - {e}")
-            
+
             del self.stream_loops[stream_id]
             logger.info(f"停止流循环: {stream_id} (剩余: {len(self.stream_loops)})")
             return True
@@ -568,7 +568,7 @@ class StreamLoopManager:
             stream_id: 流ID
         """
         logger.info(f"强制分发流处理: {stream_id}")
-        
+
         try:
             # 检查是否有现有的分发循环
             if stream_id in self.stream_loops:
@@ -588,24 +588,24 @@ class StreamLoopManager:
                     )
                 # 从字典中移除
                 del self.stream_loops[stream_id]
-                
+
             # 获取聊天管理器和流
             chat_manager = get_chat_manager()
             chat_stream = chat_manager.get_stream(stream_id)
             if not chat_stream:
                 logger.warning(f"强制分发时未找到流: {stream_id}")
                 return
-                
+
             # 获取流上下文
             context = chat_stream.context_manager.context
             if not context:
                 logger.warning(f"强制分发时未找到流上下文: {stream_id}")
                 return
-                
+
             # 检查未读消息数量
             unread_count = self._get_unread_count(context)
             logger.info(f"流 {stream_id} 当前未读消息数: {unread_count}")
-            
+
             # 创建新的流循环任务
             new_task = asyncio.create_task(
                 self._stream_loop(stream_id),
@@ -613,9 +613,9 @@ class StreamLoopManager:
             )
             self.stream_loops[stream_id] = new_task
             self.stats["total_loops"] += 1
-            
+
             logger.info(f"已创建强制分发流循环: {stream_id} (当前总数: {len(self.stream_loops)})")
-                
+
         except Exception as e:
             logger.error(f"强制分发流处理失败 {stream_id}: {e}", exc_info=True)
 
