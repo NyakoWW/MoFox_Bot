@@ -5,9 +5,8 @@
 
 import asyncio
 import time
-import weakref
 from contextlib import asynccontextmanager
-from typing import Any, Dict, Optional, Set
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -69,7 +68,7 @@ class ConnectionPoolManager:
         self.max_idle = max_idle
 
         # 连接池
-        self._connections: Set[ConnectionInfo] = set()
+        self._connections: set[ConnectionInfo] = set()
         self._lock = asyncio.Lock()
 
         # 统计信息
@@ -79,11 +78,11 @@ class ConnectionPoolManager:
             "total_expired": 0,
             "active_connections": 0,
             "pool_hits": 0,
-            "pool_misses": 0
+            "pool_misses": 0,
         }
 
         # 后台清理任务
-        self._cleanup_task: Optional[asyncio.Task] = None
+        self._cleanup_task: asyncio.Task | None = None
         self._should_cleanup = False
 
         logger.info(f"连接池管理器初始化完成 (最大池大小: {max_pool_size})")
@@ -144,7 +143,7 @@ class ConnectionPoolManager:
 
             yield connection_info.session
 
-        except Exception as e:
+        except Exception:
             # 发生错误时回滚连接
             if connection_info and connection_info.session:
                 try:
@@ -157,7 +156,9 @@ class ConnectionPoolManager:
             if connection_info:
                 connection_info.mark_released()
 
-    async def _get_reusable_connection(self, session_factory: async_sessionmaker[AsyncSession]) -> Optional[ConnectionInfo]:
+    async def _get_reusable_connection(
+        self, session_factory: async_sessionmaker[AsyncSession]
+    ) -> ConnectionInfo | None:
         """获取可复用的连接"""
         async with self._lock:
             # 清理过期连接
@@ -165,9 +166,7 @@ class ConnectionPoolManager:
 
             # 查找可复用的连接
             for connection_info in list(self._connections):
-                if (not connection_info.in_use and
-                    not connection_info.is_expired(self.max_lifetime, self.max_idle)):
-
+                if not connection_info.in_use and not connection_info.is_expired(self.max_lifetime, self.max_idle):
                     # 验证连接是否仍然有效
                     try:
                         # 执行一个简单的查询来验证连接
@@ -192,8 +191,7 @@ class ConnectionPoolManager:
         expired_connections = []
 
         for connection_info in list(self._connections):
-            if (connection_info.is_expired(self.max_lifetime, self.max_idle) and
-                not connection_info.in_use):
+            if connection_info.is_expired(self.max_lifetime, self.max_idle) and not connection_info.in_use:
                 expired_connections.append(connection_info)
 
         for connection_info in expired_connections:
@@ -231,7 +229,7 @@ class ConnectionPoolManager:
             self._connections.clear()
             logger.info("所有连接已关闭")
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """获取连接池统计信息"""
         return {
             **self._stats,
@@ -239,12 +237,13 @@ class ConnectionPoolManager:
             "max_pool_size": self.max_pool_size,
             "pool_efficiency": (
                 self._stats["pool_hits"] / max(1, self._stats["pool_hits"] + self._stats["pool_misses"])
-            ) * 100
+            )
+            * 100,
         }
 
 
 # 全局连接池管理器实例
-_connection_pool_manager: Optional[ConnectionPoolManager] = None
+_connection_pool_manager: ConnectionPoolManager | None = None
 
 
 def get_connection_pool_manager() -> ConnectionPoolManager:

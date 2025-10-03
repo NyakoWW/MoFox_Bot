@@ -21,6 +21,7 @@ class BasePlugin(PluginBase):
     - Command组件：处理命令请求
     - 未来可扩展：Scheduler、Listener等
     """
+
     @abstractmethod
     def get_plugin_components(
         self,

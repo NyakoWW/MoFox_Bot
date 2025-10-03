@@ -58,17 +58,19 @@ class ColdStartTask(AsyncTask):
                         logger.info(f"【冷启动】发现全新用户 {chat_id}，准备发起第一次问候。")
                     elif stream.last_active_time < self.bot_start_time:
                         should_wake_up = True
-                        logger.info(f"【冷启动】发现沉睡的聊天流 {chat_id} (最后活跃于 {datetime.fromtimestamp(stream.last_active_time)})，准备唤醒。")
+                        logger.info(
+                            f"【冷启动】发现沉睡的聊天流 {chat_id} (最后活跃于 {datetime.fromtimestamp(stream.last_active_time)})，准备唤醒。"
+                        )
 
                     if should_wake_up:
                         person_id = person_api.get_person_id(platform, user_id)
                         nickname = await person_api.get_person_value(person_id, "nickname")
                         user_nickname = nickname or f"用户{user_id}"
                         user_info = UserInfo(platform=platform, user_id=str(user_id), user_nickname=user_nickname)
-                        
+
                         # 使用 get_or_create_stream 来安全地获取或创建流
                         stream = await self.chat_manager.get_or_create_stream(platform, user_info)
-                        
+
                         formatted_stream_id = f"{stream.user_info.platform}:{stream.user_info.user_id}:private"
                         await self.executor.execute(stream_id=formatted_stream_id, start_mode="cold_start")
                         logger.info(f"【冷启动】已为用户 {chat_id} (昵称: {user_nickname}) 发送唤醒/问候消息。")
@@ -198,7 +200,7 @@ class ProactiveThinkingTask(AsyncTask):
                 logger.info("日常唤醒任务被正常取消。")
                 break
             except Exception as e:
-                traceback.print_exc() # 打印完整的堆栈跟踪
+                traceback.print_exc()  # 打印完整的堆栈跟踪
                 logger.error(f"【日常唤醒】任务出现错误，将在60秒后重试: {e}", exc_info=True)
                 await asyncio.sleep(60)
 

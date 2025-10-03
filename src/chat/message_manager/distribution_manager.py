@@ -80,7 +80,7 @@ class StreamLoopManager:
                 logger.info(f"正在取消 {len(cancel_tasks)} 个流循环任务...")
                 await asyncio.gather(
                     *[self._wait_for_task_cancel(stream_id, task) for stream_id, task in cancel_tasks],
-                    return_exceptions=True
+                    return_exceptions=True,
                 )
 
             # 取消所有活跃的 chatter 处理任务
@@ -137,12 +137,12 @@ class StreamLoopManager:
                     existing_task.cancel()
                     # 创建异步任务来等待取消完成，并添加异常处理
                     cancel_task = asyncio.create_task(
-                        self._wait_for_task_cancel(stream_id, existing_task),
-                        name=f"cancel_existing_loop_{stream_id}"
+                        self._wait_for_task_cancel(stream_id, existing_task), name=f"cancel_existing_loop_{stream_id}"
                     )
                     # 为取消任务添加异常处理，避免孤儿任务
                     cancel_task.add_done_callback(
-                        lambda task: logger.debug(f"取消任务完成: {stream_id}") if not task.exception()
+                        lambda task: logger.debug(f"取消任务完成: {stream_id}")
+                        if not task.exception()
                         else logger.error(f"取消任务异常: {stream_id} - {task.exception()}")
                     )
                 # 从字典中移除
@@ -153,7 +153,7 @@ class StreamLoopManager:
         try:
             task = asyncio.create_task(
                 self._stream_loop(stream_id),
-                name=f"stream_loop_{stream_id}"  # 为任务添加名称，便于调试
+                name=f"stream_loop_{stream_id}",  # 为任务添加名称，便于调试
             )
             self.stream_loops[stream_id] = task
             self.stats["total_loops"] += 1
@@ -488,7 +488,7 @@ class StreamLoopManager:
 
     async def _wait_for_task_cancel(self, stream_id: str, task: asyncio.Task) -> None:
         """等待任务取消完成，带有超时控制
-        
+
         Args:
             stream_id: 流ID
             task: 要等待取消的任务
@@ -505,12 +505,12 @@ class StreamLoopManager:
 
     def _force_dispatch_stream(self, stream_id: str) -> None:
         """强制分发流处理
-        
+
         当流的未读消息超过阈值时，强制触发分发处理
         这个方法主要用于突破并发限制时的紧急处理
-        
+
         注意：此方法目前未被使用，相关功能已集成到 start_stream_loop 方法中
-        
+
         Args:
             stream_id: 流ID
         """
@@ -525,12 +525,12 @@ class StreamLoopManager:
                     existing_task.cancel()
                     # 创建异步任务来等待取消完成，并添加异常处理
                     cancel_task = asyncio.create_task(
-                        self._wait_for_task_cancel(stream_id, existing_task),
-                        name=f"cancel_existing_loop_{stream_id}"
+                        self._wait_for_task_cancel(stream_id, existing_task), name=f"cancel_existing_loop_{stream_id}"
                     )
                     # 为取消任务添加异常处理，避免孤儿任务
                     cancel_task.add_done_callback(
-                        lambda task: logger.debug(f"取消任务完成: {stream_id}") if not task.exception()
+                        lambda task: logger.debug(f"取消任务完成: {stream_id}")
+                        if not task.exception()
                         else logger.error(f"取消任务异常: {stream_id} - {task.exception()}")
                     )
                 # 从字典中移除
@@ -554,10 +554,7 @@ class StreamLoopManager:
             logger.info(f"流 {stream_id} 当前未读消息数: {unread_count}")
 
             # 创建新的流循环任务
-            new_task = asyncio.create_task(
-                self._stream_loop(stream_id),
-                name=f"force_stream_loop_{stream_id}"
-            )
+            new_task = asyncio.create_task(self._stream_loop(stream_id), name=f"force_stream_loop_{stream_id}")
             self.stream_loops[stream_id] = new_task
             self.stats["total_loops"] += 1
 

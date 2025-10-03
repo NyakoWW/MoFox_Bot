@@ -23,17 +23,28 @@ class PluginManager:
     负责加载，重载和卸载插件，同时管理插件的所有组件
     """
 
+    plugin_classes: dict[str, type[PluginBase]]
+    plugin_directories: list[str]
+    plugin_paths: dict[str, str]
+    loaded_plugins: dict[str, PluginBase]
+    failed_plugins: dict[str, str]
+    _instance = None
+
     def __init__(self):
-        self.plugin_directories: list[str] = []  # 插件根目录列表
-        self.plugin_classes: dict[str, type[PluginBase]] = {}  # 全局插件类注册表，插件名 -> 插件类
-        self.plugin_paths: dict[str, str] = {}  # 记录插件名到目录路径的映射，插件名 -> 目录路径
-
-        self.loaded_plugins: dict[str, PluginBase] = {}  # 已加载的插件类实例注册表，插件名 -> 插件类实例
-        self.failed_plugins: dict[str, str] = {}  # 记录加载失败的插件文件及其错误信息，插件名 -> 错误信息
-
         # 确保插件目录存在
         self._ensure_plugin_directories()
-        logger.info("插件管理器初始化完成")
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            self = cls._instance
+            self.plugin_directories = []  # 插件根目录列表
+            self.plugin_classes = {}  # 全局插件类注册表，插件名 -> 插件类
+            self.plugin_paths = {}  # 记录插件名到目录路径的映射，插件名 -> 目录路径
+            self.loaded_plugins = {}  # 已加载的插件类实例注册表，插件名 -> 插件类实例
+            self.failed_plugins = {}  # 记录加载失败的插件文件及其错误信息，插件名 -> 错误信息
+            logger.info("插件管理器初始化完成")
+        return cls._instance
 
     # === 插件目录管理 ===
 
@@ -124,11 +135,13 @@ class PluginManager:
                 self._show_plugin_components(plugin_name)
 
                 # 检查并调用 on_plugin_loaded 钩子（如果存在）
-                if hasattr(plugin_instance, "on_plugin_loaded") and callable(plugin_instance.on_plugin_loaded):
+                if hasattr(plugin_instance, "on_plugin_loaded") and callable(
+                    getattr(plugin_instance, "on_plugin_loaded", None)
+                ):
                     logger.debug(f"为插件 '{plugin_name}' 调用 on_plugin_loaded 钩子")
                     try:
                         # 使用 asyncio.create_task 确保它不会阻塞加载流程
-                        asyncio.create_task(plugin_instance.on_plugin_loaded())
+                        asyncio.create_task(getattr(plugin_instance, "on_plugin_loaded"))  # noqa: RUF006
                     except Exception as e:
                         logger.error(f"调用插件 '{plugin_name}' 的 on_plugin_loaded 钩子时出错: {e}")
 
@@ -261,8 +274,6 @@ class PluginManager:
             if directory not in self.plugin_directories:
                 self.plugin_directories.append(directory)
                 logger.debug(f"已添加插件根目录: {directory}")
-            else:
-                logger.warning(f"根目录不可重复加载: {directory}")
 
     # == 插件加载 ==
 
@@ -368,13 +379,13 @@ class PluginManager:
         # sourcery skip: low-code-quality
         # 获取组件统计信息
         stats = component_registry.get_registry_stats()
-        action_count = stats.get("action_components", 0)
-        command_count = stats.get("command_components", 0)
-        tool_count = stats.get("tool_components", 0)
-        event_handler_count = stats.get("event_handlers", 0)
-        plus_command_count = stats.get("plus_command_components", 0)
-        chatter_count = stats.get("chatter_components", 0)
-        total_components = stats.get("total_components", 0)
+        action_count = stats.action_components
+        command_count = stats.command_components
+        tool_count = stats.tool_components
+        event_handler_count = stats.event_handlers
+        plus_command_count = stats.plus_command_components
+        chatter_count = stats.chatter_components
+        total_components = stats.total_components
 
         # 📋 显示插件加载总览
         if total_registered > 0:
@@ -534,7 +545,7 @@ class PluginManager:
 
             # 调用插件的清理方法（如果有的话）
             if hasattr(plugin_instance, "on_unload"):
-                plugin_instance.on_unload()
+                getattr(plugin_instance, "on_unload")()
 
             # 从组件注册表中移除插件的所有组件
             try:
@@ -545,12 +556,7 @@ class PluginManager:
                 else:
                     asyncio.run(component_registry.unregister_plugin(plugin_name))
             except Exception:
-                # 最后兜底：直接同步调用（如果 unregister_plugin 为非协程）或忽略错误
-                try:
-                    # 如果 unregister_plugin 是普通函数
-                    component_registry.unregister_plugin(plugin_name)
-                except Exception as e:
-                    logger.debug(f"卸载插件时调用 component_registry.unregister_plugin 失败: {e}")
+                raise
 
             # 从已加载插件中移除
             del self.loaded_plugins[plugin_name]
@@ -630,5 +636,5 @@ class PluginManager:
             logger.error(f"❌ 清理模块缓存时发生错误: {e}", exc_info=True)
 
 
-# 全局插件管理器实例
+# 全局插件管理器实例, 但是前面已经单例处理了，此处保留作为兼容。
 plugin_manager = PluginManager()

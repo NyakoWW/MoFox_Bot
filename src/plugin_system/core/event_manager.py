@@ -7,7 +7,6 @@ from threading import Lock
 from typing import Any, Optional
 
 from src.common.logger import get_logger
-from src.plugin_system import BaseEventHandler
 from src.plugin_system.base.base_event import BaseEvent, HandlerResultsCollection
 from src.plugin_system.base.base_events_handler import BaseEventHandler
 from src.plugin_system.base.component_types import EventType
@@ -46,8 +45,8 @@ class EventManager:
     def register_event(
         self,
         event_name: EventType | str,
-        allowed_subscribers: list[str] = None,
-        allowed_triggers: list[str] = None,
+        allowed_subscribers: list[str] | None = None,
+        allowed_triggers: list[str] | None = None,
     ) -> bool:
         """注册一个新的事件
 

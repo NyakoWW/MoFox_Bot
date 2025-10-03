@@ -274,13 +274,15 @@ class DefaultReplyer:
         try:
             # 构建 Prompt
             with Timer("构建Prompt", {}):  # 内部计时器，可选保留
-                prompt = await asyncio.create_task(self.build_prompt_reply_context(
-                    reply_to=reply_to,
-                    extra_info=extra_info,
-                    available_actions=available_actions,
-                    enable_tool=enable_tool,
-                    reply_message=reply_message,
-                ))
+                prompt = await asyncio.create_task(
+                    self.build_prompt_reply_context(
+                        reply_to=reply_to,
+                        extra_info=extra_info,
+                        available_actions=available_actions,
+                        enable_tool=enable_tool,
+                        reply_message=reply_message,
+                    )
+                )
 
             if not prompt:
                 logger.warning("构建prompt失败，跳过回复生成")
@@ -576,7 +578,7 @@ class DefaultReplyer:
                 # 获取记忆系统实例
                 memory_system = get_memory_system()
 
-                    # 使用统一记忆系统检索相关记忆
+                # 使用统一记忆系统检索相关记忆
                 enhanced_memories = await memory_system.retrieve_relevant_memories(
                     query=target, user_id=memory_user_id, scope_id=stream.stream_id, context=memory_context, limit=10
                 )
@@ -1218,12 +1220,32 @@ class DefaultReplyer:
 
         # 并行执行六个构建任务
         tasks = {
-            "expression_habits": asyncio.create_task(self._time_and_run_task(self.build_expression_habits(chat_talking_prompt_short, target), "expression_habits")),
-            "relation_info": asyncio.create_task(self._time_and_run_task(self.build_relation_info(sender, target), "relation_info")),
-            "memory_block": asyncio.create_task(self._time_and_run_task(self.build_memory_block(chat_talking_prompt_short, target), "memory_block")),
-            "tool_info": asyncio.create_task(self._time_and_run_task(self.build_tool_info(chat_talking_prompt_short, sender, target, enable_tool=enable_tool), "tool_info")),
-            "prompt_info": asyncio.create_task(self._time_and_run_task(self.get_prompt_info(chat_talking_prompt_short, sender, target), "prompt_info")),
-            "cross_context": asyncio.create_task(self._time_and_run_task(Prompt.build_cross_context(chat_id, global_config.personality.prompt_mode, target_user_info), "cross_context")),
+            "expression_habits": asyncio.create_task(
+                self._time_and_run_task(
+                    self.build_expression_habits(chat_talking_prompt_short, target), "expression_habits"
+                )
+            ),
+            "relation_info": asyncio.create_task(
+                self._time_and_run_task(self.build_relation_info(sender, target), "relation_info")
+            ),
+            "memory_block": asyncio.create_task(
+                self._time_and_run_task(self.build_memory_block(chat_talking_prompt_short, target), "memory_block")
+            ),
+            "tool_info": asyncio.create_task(
+                self._time_and_run_task(
+                    self.build_tool_info(chat_talking_prompt_short, sender, target, enable_tool=enable_tool),
+                    "tool_info",
+                )
+            ),
+            "prompt_info": asyncio.create_task(
+                self._time_and_run_task(self.get_prompt_info(chat_talking_prompt_short, sender, target), "prompt_info")
+            ),
+            "cross_context": asyncio.create_task(
+                self._time_and_run_task(
+                    Prompt.build_cross_context(chat_id, global_config.personality.prompt_mode, target_user_info),
+                    "cross_context",
+                )
+            ),
         }
 
         # 设置超时

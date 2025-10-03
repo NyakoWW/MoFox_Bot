@@ -31,13 +31,13 @@
 **MoFox_Bot** 是一个基于 [MaiCore](https://github.com/MaiM-with-u/MaiBot) `0.10.0 snapshot.5` 版本的增强型 `fork` 项目。
 我们在保留原版几乎所有功能的基础上，进行了一系列的改进和功能拓展，致力于提供更强的稳定性、更丰富的功能和更流畅的用户体验
  
-> [!IMPORTANT]
+> ![IMPORTANT]
 > **第三方项目声明**
 >
 > 本项目是由 **MoFox Studio** 独立维护的第三方项目，并非 MaiBot 官方版本。
 > 所有后续更新和维护均由我们团队负责，与 MaiBot 官方无直接关系。
  
-> [!WARNING]
+> ![WARNING]
 > **迁移风险提示**
 >
 > 由于我们对数据库结构进行了重构和优化，从 MaiBot 官方版本直接迁移到 MoFox_Bot **可能会遇到数据不兼容的问题**。
@@ -122,7 +122,7 @@
  
 </div>
  
-> [!NOTE]
+> ![NOTE]
 > 详细的安装和配置步骤，请务必参考我们的官方文档：
 > *   **Windows 用户部署指南**: [https://mofox-studio.github.io/MoFox-Bot-Docs/docs/guides/deployment_guide.html](https://mofox-studio.github.io/MoFox-Bot-Docs/docs/guides/deployment_guide.html)
 > *   **`bot_config.toml` 究极详细教程**: [https://mofox-studio.github.io/MoFox-Bot-Docs/docs/guides/bot_config_guide.html](https://mofox-studio.github.io/MoFox-Bot-Docs/docs/guides/bot_config_guide.html)
@@ -160,7 +160,7 @@
  
 ## ⚠️ 注意事项
  
-> [!CAUTION]
+> ![CAUTION]
 > **重要提醒**
 >
 > - 使用本项目前，你必须阅读并同意 [**📋 用户协议 (EULA.md)**](EULA.md)。
@@ -177,7 +177,7 @@
  
 本项目基于 **[GPL-3.0](LICENSE)** 协议开源。
  
-[![GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=for-the-badge&logo=gnu)](LICENSE)
+![[GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=for-the-badge&logo=gnu)](LICENSE)
  
 ```
                         Copyright © 2025 MoFox Studio

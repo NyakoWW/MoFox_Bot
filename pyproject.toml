@@ -75,11 +75,19 @@ dependencies = [
     "aiomysql>=0.2.0",
     "aiosqlite>=0.21.0",
     "inkfox>=0.1.0",
+    "sqlmodel>=0.0.25",
 ]
 
-[[tool.uv.index]]
-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-default = true
+[tool.uv]
+dev-dependencies = [
+    "ruff>=0.13.3",
+    "pyright>=1.1.406",
+    "pip>=25.2",
+]
+
+#[[tool.uv.index]]
+#url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+#default = true
 
 [tool.uv.sources]
 amrita = { workspace = true }

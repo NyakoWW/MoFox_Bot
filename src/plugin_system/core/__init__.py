@@ -7,9 +7,10 @@
 from src.plugin_system.core.component_registry import component_registry
 from src.plugin_system.core.event_manager import event_manager
 from src.plugin_system.core.global_announcement_manager import global_announcement_manager
-from src.plugin_system.core.plugin_manager import plugin_manager
+from src.plugin_system.core.plugin_manager import PluginManager, plugin_manager
 
 __all__ = [
+    "PluginManager",
     "component_registry",
     "event_manager",
     "global_announcement_manager",

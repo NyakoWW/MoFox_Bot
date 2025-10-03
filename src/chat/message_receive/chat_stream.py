@@ -648,7 +648,7 @@ class ChatManager:
                 result = await batch_update(
                     model_class=ChatStreams,
                     conditions={"stream_id": stream_data_dict["stream_id"]},
-                    data=ChatManager._prepare_stream_data(stream_data_dict)
+                    data=ChatManager._prepare_stream_data(stream_data_dict),
                 )
                 if result and result > 0:
                     stream.saved = True
