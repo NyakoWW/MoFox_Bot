@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from re import Pattern
-from typing import Any, Literal, Optional, Union, overload
+from typing import Any, Literal, overload
 
 from src.common.logger import get_logger
 from src.plugin_system.base.base_action import BaseAction
@@ -145,7 +145,7 @@ class ComponentRegistry:
     def register_component(
         self,
         component_info: ComponentInfo,
-        component_class: type[Union[BaseCommand, BaseAction, BaseEventHandler, BaseTool, BaseChatter]],
+        component_class: type[BaseCommand | BaseAction | BaseEventHandler | BaseTool | BaseChatter],
     ) -> bool:
         """注册组件
 

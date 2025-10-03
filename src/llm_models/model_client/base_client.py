@@ -96,8 +96,7 @@ class BaseClient(ABC):
         :param interrupt_flag: 中断信号量（可选，默认为None）
         :return: (响应文本, 推理文本, 工具调用, 其他数据)
         """
-        raise NotImplementedError("'get_response' method should be overridden in subclasses")
-
+        ...
     @abstractmethod
     async def get_embedding(
         self,
@@ -111,7 +110,7 @@ class BaseClient(ABC):
         :param embedding_input: 嵌入输入文本
         :return: 嵌入响应
         """
-        raise NotImplementedError("'get_embedding' method should be overridden in subclasses")
+        ...
 
     @abstractmethod
     async def get_audio_transcriptions(
@@ -127,7 +126,7 @@ class BaseClient(ABC):
         :extra_params: 附加的请求参数
         :return: 音频转录响应
         """
-        raise NotImplementedError("'get_audio_transcriptions' method should be overridden in subclasses")
+        ...
 
     @abstractmethod
     def get_support_image_formats(self) -> list[str]:
@@ -135,8 +134,7 @@ class BaseClient(ABC):
         获取支持的图片格式
         :return: 支持的图片格式列表
         """
-        raise NotImplementedError("'get_support_image_formats' method should be overridden in subclasses")
-
+        ...
 
 class ClientRegistry:
     def __init__(self) -> None:
