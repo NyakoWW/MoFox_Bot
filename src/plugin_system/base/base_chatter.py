@@ -24,6 +24,7 @@ class BaseChatter(ABC):
     """Chatter组件的描述"""
     chat_types: list[ChatType] = field(default_factory=lambda: [ChatType.PRIVATE, ChatType.GROUP])
     """Chatter组件支持的聊天类型"""
+
     @abstractmethod
     async def execute(self, context: StreamContext) -> dict:
         """

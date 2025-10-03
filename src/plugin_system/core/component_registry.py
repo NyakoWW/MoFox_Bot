@@ -80,9 +80,7 @@ class ComponentRegistry:
         # 命名空间式组件名构成法 f"{component_type}.{component_name}"
         self._components: dict[str, ComponentInfo] = {}
         """组件注册表 命名空间式组件名 -> 组件信息"""
-        self._components_by_type: dict[ComponentType, dict[str, ComponentInfo]] = {
-            types: {} for types in ComponentType
-        }
+        self._components_by_type: dict[ComponentType, dict[str, ComponentInfo]] = {types: {} for types in ComponentType}
         """类型 -> 组件原名称 -> 组件信息"""
         self._components_classes: dict[
             str, type[BaseCommand | BaseAction | BaseTool | BaseEventHandler | PlusCommand | BaseChatter]

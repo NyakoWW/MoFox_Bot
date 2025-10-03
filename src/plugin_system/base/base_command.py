@@ -18,6 +18,7 @@ class BaseCommand(ABC):
     - command_help: 命令帮助信息
     - command_examples: 命令使用示例列表
     """
+
     message: MessageRecv
     """接收到的消息对象"""
     plugin_config: dict | None

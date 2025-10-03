@@ -97,6 +97,7 @@ class BaseClient(ABC):
         :return: (响应文本, 推理文本, 工具调用, 其他数据)
         """
         ...
+
     @abstractmethod
     async def get_embedding(
         self,
@@ -135,6 +136,7 @@ class BaseClient(ABC):
         :return: 支持的图片格式列表
         """
         ...
+
 
 class ClientRegistry:
     def __init__(self) -> None:

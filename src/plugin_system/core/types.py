@@ -1,3 +1,3 @@
 class NOT_GIVEN:
-   def __bool__(self):
-       return False
+    def __bool__(self):
+        return False

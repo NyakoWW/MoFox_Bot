@@ -55,7 +55,7 @@ class MessageReassembler:
                     logger.warning(f"清理过期的切片缓冲区: {chunk_id}")
                     del self.chunk_buffers[chunk_id]
 
-            except asyncio.CancelledError:
+            except asyncio.CancelledError:  # noqa: PERF203
                 break
             except Exception as e:
                 logger.error(f"清理过期切片时出错: {e}")

@@ -4,6 +4,8 @@
 """
 
 import traceback
+import typing
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 
@@ -15,6 +17,7 @@ from src.common.config_helpers import resolve_embedding_dimension
 from src.common.data_models.bot_interest_data_model import BotInterestTag, BotPersonalityInterests, InterestMatchResult
 from src.common.logger import get_logger
 from src.config.config import global_config
+from src.llm_models.utils_model import LLMRequest
 
 logger = get_logger("bot_interest_manager")
 
@@ -355,7 +358,7 @@ class BotInterestManager:
 
         # 使用LLMRequest获取embedding
         logger.debug(f"🔄 正在获取embedding: '{text[:30]}...'")
-        embedding, model_name = await self.embedding_request.get_embedding(text)
+        embedding, model_name = await typing.cast(LLMRequest, self.embedding_request).get_embedding(text)
 
         if embedding and len(embedding) > 0:
             self.embedding_cache[text] = embedding
@@ -429,7 +432,7 @@ class BotInterestManager:
         except Exception as e:
             logger.error(f"❌ 计算相似度分数失败: {e}")
 
-    async def calculate_interest_match(self, message_text: str, keywords: list[str] = None) -> InterestMatchResult:
+    async def calculate_interest_match(self, message_text: str, keywords: list[str] = []) -> InterestMatchResult:
         """计算消息与机器人兴趣的匹配度"""
         if not self.current_interests or not self._initialized:
             raise RuntimeError("❌ 兴趣标签系统未初始化")
@@ -611,7 +614,7 @@ class BotInterestManager:
 
         return previous_row[-1]
 
-    def _calculate_cosine_similarity(self, vec1: list[float], vec2: list[float]) -> float:
+    def _calculate_cosine_similarity(self, vec1: Iterable[float], vec2: Iterable[float]) -> float:
         """计算余弦相似度"""
         try:
             vec1 = np.array(vec1)
@@ -756,7 +759,7 @@ class BotInterestManager:
                 if existing_record:
                     # 更新现有记录
                     logger.info("🔄 更新现有的兴趣标签配置")
-                    existing_record.interest_tags = json_data
+                    existing_record.interest_tags = json_data.decode()
                     existing_record.personality_description = interests.personality_description
                     existing_record.embedding_model = interests.embedding_model
                     existing_record.version = interests.version
@@ -825,7 +828,7 @@ class BotInterestManager:
             "cache_size": len(self.embedding_cache),
         }
 
-    async def update_interest_tags(self, new_personality_description: str = None):
+    async def update_interest_tags(self, new_personality_description: str = ""):
         """更新兴趣标签"""
         try:
             if not self.current_interests:

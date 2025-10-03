@@ -57,6 +57,7 @@ class EventManager:
         Returns:
             bool: 注册成功返回True，已存在返回False
         """
+        event_name = event_name.value if isinstance(event_name, EventType) else event_name
         if allowed_triggers is None:
             allowed_triggers = []
         if allowed_subscribers is None:
@@ -83,7 +84,7 @@ class EventManager:
         Returns:
             BaseEvent: 事件实例，不存在返回None
         """
-        return self._events.get(event_name)
+        return self._events.get(event_name.value if isinstance(event_name, EventType) else event_name)
 
     def get_all_events(self) -> dict[str, BaseEvent]:
         """获取所有已注册的事件
@@ -170,15 +171,15 @@ class EventManager:
         if plugin_config is not None and hasattr(handler_instance, "set_plugin_config"):
             handler_instance.set_plugin_config(plugin_config)
 
-        self._event_handlers[handler_name] = handler_instance
+        self._event_handlers[handler_name] = type(handler_instance)
 
         # 处理init_subscribe，缓存失败的订阅
         if self._event_handlers[handler_name].init_subscribe:
-            failed_subscriptions = []
-            for event_name in self._event_handlers[handler_name].init_subscribe:
-                if not self.subscribe_handler_to_event(handler_name, event_name):
-                    failed_subscriptions.append(event_name)
-
+            failed_subscriptions = [
+                event_name.value if isinstance(event_name, EventType) else event_name
+                for event_name in self._event_handlers[handler_name].init_subscribe
+                if not self.subscribe_handler_to_event(handler_name, event_name)
+            ]
             # 缓存失败的订阅
             if failed_subscriptions:
                 self._pending_subscriptions[handler_name] = failed_subscriptions
@@ -372,7 +373,7 @@ class EventManager:
         for handler_name, pending_events in self._pending_subscriptions.items():
             if event_name in pending_events:
                 if self.subscribe_handler_to_event(handler_name, event_name):
-                    pending_events.remove(event_name)
+                    pending_events.remove(event_name if isinstance(event_name, str) else event_name.value)
                     logger.info(f"成功处理缓存订阅: {handler_name} -> {event_name}")
 
                 # 如果该处理器没有更多待处理订阅，标记为移除
