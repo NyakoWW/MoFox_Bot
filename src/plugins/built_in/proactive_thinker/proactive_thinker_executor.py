@@ -240,6 +240,9 @@ class ProactiveThinkerExecutor:
 - 身份: {persona["identity"]}
 
 你的当前情绪状态是: {context["mood_state"]}
+
+# 你最近的相关决策历史 (供参考)
+{context["action_history_context"]}
 """
         # 根据聊天类型构建任务和情境
         if chat_type == "private":
@@ -282,6 +285,10 @@ class ProactiveThinkerExecutor:
 - `should_reply`: bool, 是否应该发起对话。
 - `topic`: str, 如果 `should_reply` 为 true，你打算聊什么话题？(例如：问候一下今天的日程、关心一下昨天的某件事、分享一个你自己的趣事等)
 - `reason`: str, 做出此决策的简要理由。
+
+# 决策原则
+- **避免打扰**: 如果你最近（尤其是在最近的几次决策中）已经主动发起过对话，请倾向于选择“不回复”，除非有非常重要和紧急的事情。
+
 
 ---
 示例1 (应该回复):
