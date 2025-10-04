@@ -98,14 +98,15 @@ class InterestManager:
                 logger.error(f"注册兴趣值计算组件失败: {e}", exc_info=True)
                 return False
 
-    async def calculate_interest(self, message: "DatabaseMessages") -> InterestCalculationResult:
+    async def calculate_interest(self, message: "DatabaseMessages", timeout: float = 0.5) -> InterestCalculationResult:
         """计算消息兴趣值
 
         Args:
             message: 数据库消息对象
+            timeout: 最大等待时间（秒），超时则使用默认值返回
 
         Returns:
-            InterestCalculationResult: 计算结果
+            InterestCalculationResult: 计算结果或默认结果
         """
         if not self._current_calculator:
             # 返回默认结果
@@ -116,9 +117,33 @@ class InterestManager:
                 error_message="没有可用的兴趣值计算组件"
             )
 
-        # 异步执行计算，避免阻塞
-        future = asyncio.create_task(self._async_calculate(message))
-        return await future
+        # 使用 create_task 异步执行计算
+        task = asyncio.create_task(self._async_calculate(message))
+
+        try:
+            # 等待计算结果，但有超时限制
+            result = await asyncio.wait_for(task, timeout=timeout)
+            return result
+        except asyncio.TimeoutError:
+            # 超时返回默认结果，但计算仍在后台继续
+            logger.debug(f"兴趣值计算超时，消息 {getattr(message, 'message_id', '')} 将使用默认值")
+            return InterestCalculationResult(
+                success=True,
+                message_id=getattr(message, 'message_id', ''),
+                interest_value=0.5,  # 默认中等兴趣值
+                should_reply=False,
+                should_act=False,
+                error_message="计算超时，使用默认值"
+            )
+        except Exception as e:
+            # 发生异常，返回默认结果
+            logger.error(f"兴趣值计算异常: {e}")
+            return InterestCalculationResult(
+                success=False,
+                message_id=getattr(message, 'message_id', ''),
+                interest_value=0.3,
+                error_message=f"计算异常: {str(e)}"
+            )
 
     async def _async_calculate(self, message: "DatabaseMessages") -> InterestCalculationResult:
         """异步执行兴趣值计算"""
