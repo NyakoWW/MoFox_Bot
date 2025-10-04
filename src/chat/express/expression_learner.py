@@ -262,7 +262,7 @@ class ExpressionLearner:
 
                 if new_count <= 0.01:
                     # 如果count太小，删除这个表达方式
-                    session.delete(expr)
+                    await session.delete(expr)
                     await session.commit()
                     deleted_count += 1
                 else:
@@ -536,7 +536,7 @@ class ExpressionLearnerManager:
             return
 
         if os.path.exists(done_flag):
-            logger.info("表达方式JSON已迁移，无需重复迁移。")
+            logger.debug("表达方式JSON已迁移，无需重复迁移。")
             return
 
         logger.info("开始迁移表达方式JSON到数据库...")
