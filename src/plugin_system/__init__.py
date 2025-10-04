@@ -50,13 +50,6 @@ from .base import (
     create_plus_command_adapter,
 )
 
-# 导入工具模块
-from .utils import (
-    ManifestValidator,
-    # ManifestGenerator,
-    # validate_plugin_manifest,
-    # generate_plugin_manifest,
-)
 from .utils.dependency_config import configure_dependency_settings, get_dependency_config
 
 # 导入依赖管理模块
