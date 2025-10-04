@@ -339,8 +339,8 @@ class MemoryConfig(ValidatedConfigBase):
 
     # === 混合记忆系统配置 ===
     # 采样模式配置
-    memory_sampling_mode: Literal["adaptive", "hippocampus", "precision"] = Field(
-        default="adaptive", description="记忆采样模式：adaptive(自适应)，hippocampus(海马体双峰采样)，precision(精准记忆)"
+    memory_sampling_mode: Literal["immediate", "hippocampus", "all"] = Field(
+        default="immediate", description="记忆采样模式：'immediate'(即时采样), 'hippocampus'(海马体定时采样) or 'all'(双模式)"
     )
 
     # 海马体双峰采样配置
