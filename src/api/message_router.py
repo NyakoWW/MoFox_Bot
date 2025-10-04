@@ -44,7 +44,7 @@ async def get_message_stats(
                 "message_type": message_type,
                 "sent_count": sent_count,
                 "received_count": received_count,
-                "total_count": len(messages),
+                "total_count": len(messages)
             }
 
     except Exception as e:
