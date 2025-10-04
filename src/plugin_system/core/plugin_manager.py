@@ -9,7 +9,7 @@ from typing import Any, Optional
 from src.common.logger import get_logger
 from src.plugin_system.base.component_types import ComponentType
 from src.plugin_system.base.plugin_base import PluginBase
-from src.plugin_system.utils.manifest_utils import VersionComparator
+from src.plugin_system.base.plugin_metadata import PluginMetadata
 
 from .component_registry import component_registry
 
@@ -27,6 +27,7 @@ class PluginManager:
         self.plugin_directories: list[str] = []  # 插件根目录列表
         self.plugin_classes: dict[str, type[PluginBase]] = {}  # 全局插件类注册表，插件名 -> 插件类
         self.plugin_paths: dict[str, str] = {}  # 记录插件名到目录路径的映射，插件名 -> 目录路径
+        self.plugin_modules: dict[str, Any] = {}  # 记录插件名到模块的映射
 
         self.loaded_plugins: dict[str, PluginBase] = {}  # 已加载的插件类实例注册表，插件名 -> 插件类实例
         self.failed_plugins: dict[str, str] = {}  # 记录加载失败的插件文件及其错误信息，插件名 -> 错误信息
@@ -102,23 +103,25 @@ class PluginManager:
             if not plugin_dir:
                 return False, 1
 
-            plugin_instance = plugin_class(plugin_dir=plugin_dir)  # 实例化插件（可能因为缺少manifest而失败）
+            module = self.plugin_modules.get(plugin_name)
+            
+            if not module or not hasattr(module, "__plugin_meta__"):
+                self.failed_plugins[plugin_name] = "插件模块中缺少 __plugin_meta__"
+                logger.error(f"❌ 插件加载失败: {plugin_name} - 缺少 __plugin_meta__")
+                return False, 1
+
+            metadata: PluginMetadata = getattr(module, "__plugin_meta__")
+
+            plugin_instance = plugin_class(plugin_dir=plugin_dir, metadata=metadata)
             if not plugin_instance:
                 logger.error(f"插件 {plugin_name} 实例化失败")
                 return False, 1
+
             # 检查插件是否启用
             if not plugin_instance.enable_plugin:
                 logger.info(f"插件 {plugin_name} 已禁用，跳过加载")
                 return False, 0
 
-            # 检查版本兼容性
-            is_compatible, compatibility_error = self._check_plugin_version_compatibility(
-                plugin_name, plugin_instance.manifest_data
-            )
-            if not is_compatible:
-                self.failed_plugins[plugin_name] = compatibility_error
-                logger.error(f"❌ 插件加载失败: {plugin_name} - {compatibility_error}")
-                return False, 1
             if plugin_instance.register_plugin():
                 self.loaded_plugins[plugin_name] = plugin_instance
                 self._show_plugin_components(plugin_name)
@@ -137,21 +140,6 @@ class PluginManager:
                 self.failed_plugins[plugin_name] = "插件注册失败"
                 logger.error(f"❌ 插件注册失败: {plugin_name}")
                 return False, 1
-
-        except FileNotFoundError as e:
-            # manifest文件缺失
-            error_msg = f"缺少manifest文件: {e!s}"
-            self.failed_plugins[plugin_name] = error_msg
-            logger.error(f"❌ 插件加载失败: {plugin_name} - {error_msg}")
-            return False, 1
-
-        except ValueError as e:
-            # manifest文件格式错误或验证失败
-            traceback.print_exc()
-            error_msg = f"manifest验证失败: {e!s}"
-            self.failed_plugins[plugin_name] = error_msg
-            logger.error(f"❌ 插件加载失败: {plugin_name} - {error_msg}")
-            return False, 1
 
         except Exception as e:
             # 其他错误
@@ -284,14 +272,23 @@ class PluginManager:
             if os.path.isdir(item_path) and not item.startswith(".") and not item.startswith("__"):
                 plugin_file = os.path.join(item_path, "plugin.py")
                 if os.path.exists(plugin_file):
-                    if self._load_plugin_module_file(plugin_file):
+                    module = self._load_plugin_module_file(plugin_file)
+                    if module:
+                        # 动态查找插件类并获取真实的 plugin_name
+                        for attr_name in dir(module):
+                            attr = getattr(module, attr_name)
+                            if isinstance(attr, type) and issubclass(attr, PluginBase) and attr is not PluginBase:
+                                plugin_name = getattr(attr, "plugin_name", None)
+                                if plugin_name:
+                                    self.plugin_modules[plugin_name] = module
+                                    break
                         loaded_count += 1
                     else:
                         failed_count += 1
 
         return loaded_count, failed_count
 
-    def _load_plugin_module_file(self, plugin_file: str) -> bool:
+    def _load_plugin_module_file(self, plugin_file: str) -> Optional[Any]:
         # sourcery skip: extract-method
         """加载单个插件模块文件
 
@@ -305,62 +302,36 @@ class PluginManager:
         module_name = ".".join(plugin_path.parent.parts)
 
         try:
-            # 动态导入插件模块
+            # 首先加载 __init__.py 来获取元数据
+            init_file = os.path.join(plugin_dir, "__init__.py")
+            if os.path.exists(init_file):
+                init_spec = spec_from_file_location(f"{module_name}.__init__", init_file)
+                if init_spec and init_spec.loader:
+                    init_module = module_from_spec(init_spec)
+                    init_spec.loader.exec_module(init_module)
+
+            # 然后加载 plugin.py
             spec = spec_from_file_location(module_name, plugin_file)
             if spec is None or spec.loader is None:
                 logger.error(f"无法创建模块规范: {plugin_file}")
-                return False
+                return None
 
             module = module_from_spec(spec)
-            module.__package__ = module_name  # 设置模块包名
+            module.__package__ = module_name
             spec.loader.exec_module(module)
 
+            # 将 __plugin_meta__ 从 init_module 附加到主模块
+            if init_module and hasattr(init_module, "__plugin_meta__"):
+                setattr(module, "__plugin_meta__", getattr(init_module, "__plugin_meta__"))
+
             logger.debug(f"插件模块加载成功: {plugin_file} -> {plugin_name} ({plugin_dir})")
-            return True
+            return module
 
         except Exception as e:
             error_msg = f"加载插件模块 {plugin_file} 失败: {e}"
             logger.error(error_msg)
             self.failed_plugins[plugin_name if "plugin_name" in locals() else module_name] = error_msg
-            return False
-
-    # == 兼容性检查 ==
-
-    @staticmethod
-    def _check_plugin_version_compatibility(plugin_name: str, manifest_data: dict[str, Any]) -> tuple[bool, str]:
-        """检查插件版本兼容性
-
-        Args:
-            plugin_name: 插件名称
-            manifest_data: manifest数据
-
-        Returns:
-            Tuple[bool, str]: (是否兼容, 错误信息)
-        """
-        if "host_application" not in manifest_data:
-            return True, ""  # 没有版本要求，默认兼容
-
-        host_app = manifest_data["host_application"]
-        if not isinstance(host_app, dict):
-            return True, ""
-
-        min_version = host_app.get("min_version", "")
-        max_version = host_app.get("max_version", "")
-
-        if not min_version and not max_version:
-            return True, ""  # 没有版本要求，默认兼容
-
-        try:
-            current_version = VersionComparator.get_current_host_version()
-            is_compatible, error_msg = VersionComparator.is_version_in_range(current_version, min_version, max_version)
-            if not is_compatible:
-                return False, f"版本不兼容: {error_msg}"
-            logger.debug(f"插件 {plugin_name} 版本兼容性检查通过")
-            return True, ""
-
-        except Exception as e:
-            logger.warning(f"插件 {plugin_name} 版本兼容性检查失败: {e}")
-            return False, f"插件 {plugin_name} 版本兼容性检查失败: {e}"  # 检查失败时默认不允许加载
+            return None
 
     # == 显示统计与插件信息 ==
 
@@ -395,17 +366,6 @@ class PluginManager:
                     extra_info = f" ({', '.join(info_parts)})" if info_parts else ""
 
                     logger.info(f"  📦 {plugin_info.display_name}{extra_info}")
-
-                    # Manifest信息
-                    if plugin_info.manifest_data:
-                        """
-                        if plugin_info.keywords:
-                            logger.info(f"    🏷️ 关键词: {', '.join(plugin_info.keywords)}")
-                        if plugin_info.categories:
-                            logger.info(f"    📁 分类: {', '.join(plugin_info.categories)}")
-                        """
-                        if plugin_info.homepage_url:
-                            logger.info(f"    🌐 主页: {plugin_info.homepage_url}")
 
                     # 组件列表
                     if plugin_info.components:

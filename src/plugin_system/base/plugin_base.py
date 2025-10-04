@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
-import orjson
 import toml
 
 from src.common.logger import get_logger
@@ -15,7 +14,7 @@ from src.plugin_system.base.component_types import (
     PythonDependency,
 )
 from src.plugin_system.base.config_types import ConfigField
-from src.plugin_system.utils.manifest_utils import ManifestValidator
+from src.plugin_system.base.plugin_metadata import PluginMetadata
 
 logger = get_logger("plugin_base")
 
@@ -33,27 +32,22 @@ class PluginBase(ABC):
     dependencies: list[str] = []
     python_dependencies: list[str | PythonDependency] = []
 
-    # manifest文件相关
-    manifest_file_name: str = "_manifest.json"  # manifest文件名
-    manifest_data: dict[str, Any] = {}  # manifest数据
-
     config_schema: dict[str, dict[str, ConfigField] | str] = {}
 
     config_section_descriptions: dict[str, str] = {}
 
-    def __init__(self, plugin_dir: str):
+    def __init__(self, plugin_dir: str, metadata: PluginMetadata):
         """初始化插件
 
         Args:
             plugin_dir: 插件目录路径，由插件管理器传递
+            metadata: 插件元数据对象
         """
         self.config: dict[str, Any] = {}  # 插件配置
         self.plugin_dir = plugin_dir  # 插件目录路径
+        self.plugin_meta = metadata  # 插件元数据
         self.log_prefix = f"[Plugin:{self.plugin_name}]"
         self._is_enabled = self.enable_plugin  # 从插件定义中获取默认启用状态
-
-        # 加载manifest文件
-        self._load_manifest()
 
         # 验证插件信息
         self._validate_plugin_info()
@@ -61,11 +55,11 @@ class PluginBase(ABC):
         # 加载插件配置
         self._load_plugin_config()
 
-        # 从manifest获取显示信息
-        self.display_name = self.get_manifest_info("name", self.plugin_name)
-        self.plugin_version = self.get_manifest_info("version", "1.0.0")
-        self.plugin_description = self.get_manifest_info("description", "")
-        self.plugin_author = self._get_author_name()
+        # 从元数据获取显示信息
+        self.display_name = self.plugin_meta.name
+        self.plugin_version = self.plugin_meta.version
+        self.plugin_description = self.plugin_meta.description
+        self.plugin_author = self.plugin_meta.author
 
         # 标准化Python依赖为PythonDependency对象
         normalized_python_deps = self._normalize_python_dependencies(self.python_dependencies)
@@ -85,15 +79,6 @@ class PluginBase(ABC):
             config_file=self.config_file_name or "",
             dependencies=self.dependencies.copy(),
             python_dependencies=normalized_python_deps,
-            # manifest相关信息
-            manifest_data=self.manifest_data.copy(),
-            license=self.get_manifest_info("license", ""),
-            homepage_url=self.get_manifest_info("homepage_url", ""),
-            repository_url=self.get_manifest_info("repository_url", ""),
-            keywords=self.get_manifest_info("keywords", []).copy() if self.get_manifest_info("keywords") else [],
-            categories=self.get_manifest_info("categories", []).copy() if self.get_manifest_info("categories") else [],
-            min_host_version=self.get_manifest_info("host_application.min_version", ""),
-            max_host_version=self.get_manifest_info("host_application.max_version", ""),
         )
 
         logger.debug(f"{self.log_prefix} 插件基类初始化完成")
@@ -103,93 +88,10 @@ class PluginBase(ABC):
         if not self.plugin_name:
             raise ValueError(f"插件类 {self.__class__.__name__} 必须定义 plugin_name")
 
-        # 验证manifest中的必需信息
-        if not self.get_manifest_info("name"):
-            raise ValueError(f"插件 {self.plugin_name} 的manifest中缺少name字段")
-        if not self.get_manifest_info("description"):
-            raise ValueError(f"插件 {self.plugin_name} 的manifest中缺少description字段")
-
-    def _load_manifest(self):  # sourcery skip: raise-from-previous-error
-        """加载manifest文件（强制要求）"""
-        if not self.plugin_dir:
-            raise ValueError(f"{self.log_prefix} 没有插件目录路径，无法加载manifest")
-
-        manifest_path = os.path.join(self.plugin_dir, self.manifest_file_name)
-
-        if not os.path.exists(manifest_path):
-            error_msg = f"{self.log_prefix} 缺少必需的manifest文件: {manifest_path}"
-            logger.error(error_msg)
-            raise FileNotFoundError(error_msg)
-
-        try:
-            with open(manifest_path, encoding="utf-8") as f:
-                self.manifest_data = orjson.loads(f.read())
-
-            logger.debug(f"{self.log_prefix} 成功加载manifest文件: {manifest_path}")
-
-            # 验证manifest格式
-            self._validate_manifest()
-
-        except orjson.JSONDecodeError as e:
-            error_msg = f"{self.log_prefix} manifest文件格式错误: {e}"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-        except OSError as e:
-            error_msg = f"{self.log_prefix} 读取manifest文件失败: {e}"
-            logger.error(error_msg)
-            raise IOError(error_msg)  # noqa
-
-    def _get_author_name(self) -> str:
-        """从manifest获取作者名称"""
-        author_info = self.get_manifest_info("author", {})
-        if isinstance(author_info, dict):
-            return author_info.get("name", "")
-        else:
-            return str(author_info) if author_info else ""
-
-    def _validate_manifest(self):
-        """验证manifest文件格式（使用强化的验证器）"""
-        if not self.manifest_data:
-            raise ValueError(f"{self.log_prefix} manifest数据为空，验证失败")
-
-        validator = ManifestValidator()
-        is_valid = validator.validate_manifest(self.manifest_data)
-
-        # 记录验证结果
-        if validator.validation_errors or validator.validation_warnings:
-            report = validator.get_validation_report()
-            logger.info(f"{self.log_prefix} Manifest验证结果:\n{report}")
-
-        # 如果有验证错误，抛出异常
-        if not is_valid:
-            error_msg = f"{self.log_prefix} Manifest文件验证失败"
-            if validator.validation_errors:
-                error_msg += f": {'; '.join(validator.validation_errors)}"
-            raise ValueError(error_msg)
-
-    def get_manifest_info(self, key: str, default: Any = None) -> Any:
-        """获取manifest信息
-
-        Args:
-            key: 信息键，支持点分割的嵌套键（如 "author.name"）
-            default: 默认值
-
-        Returns:
-            Any: 对应的值
-        """
-        if not self.manifest_data:
-            return default
-
-        keys = key.split(".")
-        value = self.manifest_data
-
-        for k in keys:
-            if isinstance(value, dict) and k in value:
-                value = value[k]
-            else:
-                return default
-
-        return value
+        if not self.plugin_meta.name:
+            raise ValueError(f"插件 {self.plugin_name} 的元数据中缺少 name 字段")
+        if not self.plugin_meta.description:
+            raise ValueError(f"插件 {self.plugin_name} 的元数据中缺少 description 字段")
 
     def _generate_and_save_default_config(self, config_file_path: str):
         """根据插件的Schema生成并保存默认配置文件"""
@@ -198,7 +100,7 @@ class PluginBase(ABC):
             return
 
         toml_str = f"# {self.plugin_name} - 自动生成的配置文件\n"
-        plugin_description = self.get_manifest_info("description", "插件配置文件")
+        plugin_description = self.plugin_meta.description or "插件配置文件"
         toml_str += f"# {plugin_description}\n\n"
 
         # 遍历每个配置节
@@ -333,7 +235,7 @@ class PluginBase(ABC):
             return
 
         toml_str = f"# {self.plugin_name} - 配置文件\n"
-        plugin_description = self.get_manifest_info("description", "插件配置文件")
+        plugin_description = self.plugin_meta.description or "插件配置文件"
         toml_str += f"# {plugin_description}\n\n"
 
         # 遍历每个配置节
@@ -564,3 +466,11 @@ class PluginBase(ABC):
             bool: 是否成功注册插件
         """
         raise NotImplementedError("Subclasses must implement this method")
+
+    async def on_plugin_loaded(self):
+        """插件加载完成后的钩子函数"""
+        pass
+
+    def on_unload(self):
+        """插件卸载时的钩子函数"""
+        pass
