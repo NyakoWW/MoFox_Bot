@@ -4,6 +4,7 @@
 """
 
 import time
+import orjson
 from typing import TYPE_CHECKING
 
 from src.chat.interest_system import bot_interest_manager
@@ -42,6 +43,9 @@ class AffinityInterestCalculator(BaseInterestCalculator):
         self.reply_threshold = affinity_config.reply_action_interest_threshold  # 回复动作兴趣阈值
         self.mention_threshold = affinity_config.mention_bot_adjustment_threshold  # 提及bot后的调整阈值
 
+        # 兴趣匹配系统配置
+        self.use_smart_matching = True
+
         # 连续不回复概率提升
         self.no_reply_count = 0
         self.max_no_reply_count = affinity_config.max_no_reply_count
@@ -71,7 +75,11 @@ class AffinityInterestCalculator(BaseInterestCalculator):
             start_time = time.time()
             message_id = getattr(message, "message_id", "")
             content = getattr(message, "processed_plain_text", "")
-            user_id = getattr(message, "user_info", {}).user_id if hasattr(message, "user_info") and hasattr(message.user_info, "user_id") else ""
+            user_info = getattr(message, "user_info", None)
+            if user_info and hasattr(user_info, "user_id"):
+                user_id = user_info.user_id
+            else:
+                user_id = ""
 
             logger.debug(f"[Affinity兴趣计算] 开始处理消息 {message_id}")
             logger.debug(f"[Affinity兴趣计算] 消息内容: {content[:50]}...")
@@ -111,10 +119,18 @@ class AffinityInterestCalculator(BaseInterestCalculator):
             logger.debug(f"[Affinity兴趣计算] 应用不回复提升后: {total_score:.3f} → {adjusted_score:.3f}")
 
             # 6. 决定是否回复和执行动作
-            should_reply = adjusted_score > self.reply_threshold
-            should_take_action = adjusted_score > (self.reply_threshold + 0.1)
-            logger.debug(f"[Affinity兴趣计算] 阈值判断: {adjusted_score:.3f} > 回复阈值:{self.reply_threshold:.3f}? = {should_reply}")
-            logger.debug(f"[Affinity兴趣计算] 阈值判断: {adjusted_score:.3f} > 动作阈值:{self.reply_threshold + 0.1:.3f}? = {should_take_action}")
+            reply_threshold = self.reply_threshold
+            action_threshold = global_config.affinity_flow.non_reply_action_interest_threshold
+
+            should_reply = adjusted_score >= reply_threshold
+            should_take_action = adjusted_score >= action_threshold
+
+            logger.debug(
+                f"[Affinity兴趣计算] 阈值判断: {adjusted_score:.3f} >= 回复阈值:{reply_threshold:.3f}? = {should_reply}"
+            )
+            logger.debug(
+                f"[Affinity兴趣计算] 阈值判断: {adjusted_score:.3f} >= 动作阈值:{action_threshold:.3f}? = {should_take_action}"
+            )
 
             calculation_time = time.time() - start_time
 
@@ -140,7 +156,7 @@ class AffinityInterestCalculator(BaseInterestCalculator):
                 error_message=str(e)
             )
 
-    async def _calculate_interest_match_score(self, content: str, keywords: list[str] = None) -> float:
+    async def _calculate_interest_match_score(self, content: str, keywords: list[str] | None = None) -> float:
         """计算兴趣匹配度（使用智能兴趣匹配系统）"""
 
         # 调试日志：检查各个条件
@@ -158,7 +174,7 @@ class AffinityInterestCalculator(BaseInterestCalculator):
 
         try:
             # 使用机器人的兴趣标签系统进行智能匹配
-            match_result = await bot_interest_manager.calculate_interest_match(content, keywords)
+            match_result = await bot_interest_manager.calculate_interest_match(content, keywords or [])
             logger.debug(f"兴趣匹配结果: {match_result}")
 
             if match_result:
@@ -241,7 +257,6 @@ class AffinityInterestCalculator(BaseInterestCalculator):
         key_words = getattr(message, "key_words", "")
         if key_words:
             try:
-                import orjson
                 extracted = orjson.loads(key_words)
                 if isinstance(extracted, list):
                     keywords = extracted
@@ -253,7 +268,6 @@ class AffinityInterestCalculator(BaseInterestCalculator):
             key_words_lite = getattr(message, "key_words_lite", "")
             if key_words_lite:
                 try:
-                    import orjson
                     extracted = orjson.loads(key_words_lite)
                     if isinstance(extracted, list):
                         keywords = extracted
@@ -296,6 +310,3 @@ class AffinityInterestCalculator(BaseInterestCalculator):
             self.no_reply_count = 0
         else:
             self.no_reply_count = min(self.no_reply_count + 1, self.max_no_reply_count)
-
-    # 是否使用智能兴趣匹配（作为类属性）
-    use_smart_matching = True

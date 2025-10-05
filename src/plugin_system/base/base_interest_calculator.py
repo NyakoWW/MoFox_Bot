@@ -32,7 +32,7 @@ class InterestCalculationResult:
     ):
         self.success = success
         self.message_id = message_id
-        self.interest_value = max(0.0, min(1.0, interest_value))  # 确保在0-1范围内
+        self.interest_value = interest_value
         self.should_take_action = should_take_action
         self.should_reply = should_reply
         self.should_act = should_act
