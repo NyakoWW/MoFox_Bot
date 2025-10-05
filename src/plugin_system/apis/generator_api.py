@@ -9,16 +9,17 @@
 """
 
 import traceback
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from rich.traceback import install
 
 from src.chat.message_receive.chat_stream import ChatStream
-from src.chat.replyer.default_generator import DefaultReplyer
-from src.chat.replyer.replyer_manager import replyer_manager
 from src.chat.utils.utils import process_llm_response
 from src.common.logger import get_logger
 from src.plugin_system.base.component_types import ActionInfo
+
+if TYPE_CHECKING:
+    from src.chat.replyer.default_generator import DefaultReplyer
 
 install(extra_lines=3)
 
@@ -32,10 +33,11 @@ logger = get_logger("generator_api")
 
 
 async def get_replyer(
+async def get_replyer(
     chat_stream: ChatStream | None = None,
     chat_id: str | None = None,
     request_type: str = "replyer",
-) -> DefaultReplyer | None:
+) -> Any | None:
     """获取回复器对象
 
     优先使用chat_stream，如果没有则使用chat_id直接查找。
@@ -56,6 +58,8 @@ async def get_replyer(
         raise ValueError("chat_stream 和 chat_id 不可均为空")
     try:
         logger.debug(f"[GeneratorAPI] 正在获取回复器，chat_id: {chat_id}, chat_stream: {'有' if chat_stream else '无'}")
+        # 动态导入避免循环依赖
+        from src.chat.replyer.replyer_manager import replyer_manager
         return await replyer_manager.get_replyer(
             chat_stream=chat_stream,
             chat_id=chat_id,
