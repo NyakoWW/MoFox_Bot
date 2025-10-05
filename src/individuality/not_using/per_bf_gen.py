@@ -40,10 +40,10 @@ def adapt_scene(scene: str) -> str:
 
     """
     根据config中的属性，改编场景使其更适合当前角色
-    
+
     Args:
         scene: 原始场景描述
-        
+
     Returns:
         str: 改编后的场景描述
     """

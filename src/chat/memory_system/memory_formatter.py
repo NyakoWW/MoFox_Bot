@@ -17,15 +17,16 @@
 """
 from __future__ import annotations
 
-from typing import Any, Iterable
 import time
+from collections.abc import Iterable
+from typing import Any
 
 
 def _format_timestamp(ts: Any) -> str:
     try:
         if ts in (None, ""):
             return ""
-        if isinstance(ts, (int, float)) and ts > 0:
+        if isinstance(ts, int | float) and ts > 0:
             return time.strftime("%Y-%m-%d %H:%M", time.localtime(float(ts)))
         return str(ts)
     except Exception:

@@ -4,8 +4,9 @@
 """
 
 import time
-import orjson
 from typing import TYPE_CHECKING
+
+import orjson
 
 from src.chat.interest_system import bot_interest_manager
 from src.common.logger import get_logger
@@ -233,7 +234,7 @@ class AffinityInterestCalculator(BaseInterestCalculator):
                 return 0.8  # 提及机器人名字，高分
         else:
             # 检查是否被提及（文本匹配）
-            bot_aliases = [bot_nickname] + global_config.bot.alias_names
+            bot_aliases = [bot_nickname, *global_config.bot.alias_names]
             is_text_mentioned = any(alias in processed_plain_text for alias in bot_aliases if alias)
 
             # 如果被提及或是私聊，都视为提及了bot

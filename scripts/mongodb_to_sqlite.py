@@ -370,7 +370,7 @@ class MongoToSQLiteMigrator:
                 return datetime.now()
 
             if field_type in ["CharField", "TextField"]:
-                if isinstance(value, (list, dict)):
+                if isinstance(value, list | dict):
                     return orjson.dumps(value, ensure_ascii=False)
                 return str(value) if value is not None else ""
 
@@ -392,7 +392,7 @@ class MongoToSQLiteMigrator:
                 return bool(value)
 
             elif field_type == "DateTimeField":
-                if isinstance(value, (int, float)):
+                if isinstance(value, int | float):
                     return datetime.fromtimestamp(value)
                 elif isinstance(value, str):
                     try:

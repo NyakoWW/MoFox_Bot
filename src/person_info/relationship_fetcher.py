@@ -39,7 +39,7 @@ def init_real_time_info_prompts():
     Prompt(relationship_prompt, "real_time_info_identify_prompt")
 
     fetch_info_prompt = """
-    
+
 {name_block}
 以下是你在之前与{person_name}的交流中，产生的对{person_name}的了解：
 {person_impression_block}

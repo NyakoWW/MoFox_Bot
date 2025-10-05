@@ -800,7 +800,7 @@ class StatisticOutputTask(AsyncTask):
                 <p class=\"info-item\"><strong>总消息数: </strong>{stat_data[TOTAL_MSG_CNT]}</p>
                 <p class=\"info-item\"><strong>总请求数: </strong>{stat_data[TOTAL_REQ_CNT]}</p>
                 <p class=\"info-item\"><strong>总花费: </strong>{stat_data[TOTAL_COST]:.4f} ¥</p>
-                
+
                 <h2>按模型分类统计</h2>
                 <table>
                     <tr><th>模块名称</th><th>调用次数</th><th>输入Token</th><th>输出Token</th><th>Token总量</th><th>累计花费</th><th>平均耗时(秒)</th><th>标准差(秒)</th></tr>
@@ -808,7 +808,7 @@ class StatisticOutputTask(AsyncTask):
                         {model_rows}
                     </tbody>
                 </table>
-                
+
                 <h2>按模块分类统计</h2>
                 <table>
                     <thead>
@@ -818,7 +818,7 @@ class StatisticOutputTask(AsyncTask):
                     {module_rows}
                     </tbody>
                 </table>
-    
+
                 <h2>按请求类型分类统计</h2>
                 <table>
                     <thead>
@@ -828,7 +828,7 @@ class StatisticOutputTask(AsyncTask):
                     {type_rows}
                     </tbody>
                 </table>
-    
+
                 <h2>聊天消息统计</h2>
                 <table>
                     <thead>
@@ -838,7 +838,7 @@ class StatisticOutputTask(AsyncTask):
                     {chat_rows}
                     </tbody>
                 </table>
-                
+
 
             </div>
             """
@@ -985,7 +985,7 @@ class StatisticOutputTask(AsyncTask):
     let i, tab_content, tab_links;
     tab_content = document.getElementsByClassName("tab-content");
     tab_links = document.getElementsByClassName("tab-link");
-    
+
     tab_content[0].classList.add("active");
     tab_links[0].classList.add("active");
 
@@ -1173,7 +1173,7 @@ class StatisticOutputTask(AsyncTask):
         return f"""
         <div id="charts" class="tab-content">
             <h2>数据图表</h2>
-            
+
             <!-- 时间范围选择按钮 -->
             <div style="margin: 20px 0; text-align: center;">
                 <label style="margin-right: 10px; font-weight: bold;">时间范围:</label>
@@ -1182,7 +1182,7 @@ class StatisticOutputTask(AsyncTask):
                 <button class="time-range-btn active" onclick="switchTimeRange('24h')">24小时</button>
                 <button class="time-range-btn" onclick="switchTimeRange('48h')">48小时</button>
             </div>
-            
+
             <div style="margin-top: 20px;">
                 <div style="margin-bottom: 40px;">
                     <canvas id="totalCostChart" width="800" height="400"></canvas>
@@ -1197,7 +1197,7 @@ class StatisticOutputTask(AsyncTask):
                     <canvas id="messageByChatChart" width="800" height="400"></canvas>
                 </div>
             </div>
-            
+
             <style>
                 .time-range-btn {{
                     background-color: #ecf0f1;
@@ -1210,22 +1210,22 @@ class StatisticOutputTask(AsyncTask):
                     font-size: 14px;
                     transition: all 0.3s ease;
                 }}
-                
+
                 .time-range-btn:hover {{
                     background-color: #d5dbdb;
                 }}
-                
+
                 .time-range-btn.active {{
                     background-color: #3498db;
                     color: white;
                     border-color: #2980b9;
                 }}
             </style>
-            
+
             <script>
                 const allChartData = {chart_data};
                 let currentCharts = {{}};
-                
+
                 // 图表配置模板
                 const chartConfigs = {{
                     totalCost: {{
@@ -1236,7 +1236,7 @@ class StatisticOutputTask(AsyncTask):
                         fill: true
                     }},
                     costByModule: {{
-                        id: 'costByModuleChart', 
+                        id: 'costByModuleChart',
                         title: '各模块花费',
                         yAxisLabel: '花费 (¥)',
                         dataKey: 'cost_by_module',
@@ -1244,7 +1244,7 @@ class StatisticOutputTask(AsyncTask):
                     }},
                     costByModel: {{
                         id: 'costByModelChart',
-                        title: '各模型花费', 
+                        title: '各模型花费',
                         yAxisLabel: '花费 (¥)',
                         dataKey: 'cost_by_model',
                         fill: false
@@ -1271,40 +1271,40 @@ class StatisticOutputTask(AsyncTask):
                         fill: false
                     }}
                 }};
-                
+
                 function switchTimeRange(timeRange) {{
                     // 更新按钮状态
                     document.querySelectorAll('.time-range-btn').forEach(btn => {{
                         btn.classList.remove('active');
                     }});
                     event.target.classList.add('active');
-                    
+
                     // 更新图表数据
                     const data = allChartData[timeRange];
                     updateAllCharts(data, timeRange);
                 }}
-                
+
                 function updateAllCharts(data, timeRange) {{
                     // 销毁现有图表
                     Object.values(currentCharts).forEach(chart => {{
                         if (chart) chart.destroy();
                     }});
-                    
+
                     currentCharts = {{}};
-                    
+
                     // 重新创建图表
                     createChart('totalCost', data, timeRange);
                     createChart('costByModule', data, timeRange);
                     createChart('costByModel', data, timeRange);
                     createChart('messageByChat', data, timeRange);
                 }}
-                
+
                 function createChart(chartType, data, timeRange) {{
                     const config = chartConfigs[chartType];
                     const colors = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#34495e', '#e67e22', '#95a5a6', '#f1c40f'];
-                    
+
                     let datasets = [];
-                    
+
                     if (chartType === 'totalCost') {{
                         datasets = [{{
                             label: config.title,
@@ -1328,7 +1328,7 @@ class StatisticOutputTask(AsyncTask):
                             i++;
                         }});
                     }}
-                    
+
                     currentCharts[chartType] = new Chart(document.getElementById(config.id), {{
                         type: 'line',
                         data: {{
@@ -1373,7 +1373,7 @@ class StatisticOutputTask(AsyncTask):
                         }}
                     }});
                 }}
-                
+
                 // 初始化图表（默认24小时）
                 document.addEventListener('DOMContentLoaded', function() {{
                     updateAllCharts(allChartData['24h'], '24h');

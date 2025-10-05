@@ -61,7 +61,7 @@ class DatabaseBatchScheduler:
 
         # 调度控制
         self._scheduler_task: asyncio.Task | None = None
-        self._is_running = bool = False
+        self._is_running = False
         self._lock = asyncio.Lock()
 
         # 统计信息
@@ -189,7 +189,7 @@ class DatabaseBatchScheduler:
                 queue.clear()
 
         # 批量执行各队列的操作
-        for queue_key, operations in queues_copy.items():
+        for operations in queues_copy.values():
             if operations:
                 await self._execute_operations(list(operations))
 
@@ -270,7 +270,7 @@ class DatabaseBatchScheduler:
                     query = select(ops[0].model_class)
                     for field_name, value in conditions.items():
                         model_attr = getattr(ops[0].model_class, field_name)
-                        if isinstance(value, (list, tuple, set)):
+                        if isinstance(value, list | tuple | set):
                             query = query.where(model_attr.in_(value))
                         else:
                             query = query.where(model_attr == value)
@@ -336,7 +336,7 @@ class DatabaseBatchScheduler:
                     stmt = update(op.model_class)
                     for field_name, value in op.conditions.items():
                         model_attr = getattr(op.model_class, field_name)
-                        if isinstance(value, (list, tuple, set)):
+                        if isinstance(value, list | tuple | set):
                             stmt = stmt.where(model_attr.in_(value))
                         else:
                             stmt = stmt.where(model_attr == value)
@@ -366,7 +366,7 @@ class DatabaseBatchScheduler:
                     stmt = delete(op.model_class)
                     for field_name, value in op.conditions.items():
                         model_attr = getattr(op.model_class, field_name)
-                        if isinstance(value, (list, tuple, set)):
+                        if isinstance(value, list | tuple | set):
                             stmt = stmt.where(model_attr.in_(value))
                         else:
                             stmt = stmt.where(model_attr == value)
@@ -398,7 +398,7 @@ class DatabaseBatchScheduler:
                 if field_name not in merged[condition_key]:
                     merged[condition_key][field_name] = []
 
-                if isinstance(value, (list, tuple, set)):
+                if isinstance(value, list | tuple | set):
                     merged[condition_key][field_name].extend(value)
                 else:
                     merged[condition_key][field_name].append(value)

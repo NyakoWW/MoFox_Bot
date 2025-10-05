@@ -157,7 +157,7 @@ class LLMUsageRecorder:
     ):
         input_cost = (model_usage.prompt_tokens / 1000000) * model_info.price_in
         output_cost = (model_usage.completion_tokens / 1000000) * model_info.price_out
-        total_cost = round(input_cost + output_cost, 6)
+        round(input_cost + output_cost, 6)
 
         session = None
         try:

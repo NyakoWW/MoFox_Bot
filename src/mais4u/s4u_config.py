@@ -17,7 +17,7 @@ logger = get_logger("s4u_config")
 
 # 新增：兼容dict和tomlkit Table
 def is_dict_like(obj):
-    return isinstance(obj, (dict, Table))
+    return isinstance(obj, dict | Table)
 
 
 # 新增：递归将Table转为dict
@@ -315,7 +315,7 @@ def update_s4u_config():
                 continue
             if key in target:
                 target_value = target[key]
-                if isinstance(value, dict) and isinstance(target_value, (dict, Table)):
+                if isinstance(value, dict) and isinstance(target_value, dict | Table):
                     update_dict(target_value, value)
                 else:
                     try:

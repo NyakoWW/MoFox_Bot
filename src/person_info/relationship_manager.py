@@ -258,7 +258,7 @@ class RelationshipManager:
 
                 if similar_points:
                     # 合并相似的点
-                    all_points = [new_point] + similar_points
+                    all_points = [new_point, *similar_points]
                     # 使用最新的时间
                     latest_time = max(p[2] for p in all_points)
                     # 合并权重

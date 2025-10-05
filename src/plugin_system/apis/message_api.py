@@ -53,7 +53,7 @@ async def get_messages_by_time(
     Raises:
         ValueError: 如果参数不合法
     """
-    if not isinstance(start_time, (int, float)) or not isinstance(end_time, (int, float)):
+    if not isinstance(start_time, int | float) or not isinstance(end_time, int | float):
         raise ValueError("start_time 和 end_time 必须是数字类型")
     if limit < 0:
         raise ValueError("limit 不能为负数")
@@ -88,7 +88,7 @@ async def get_messages_by_time_in_chat(
     Raises:
         ValueError: 如果参数不合法
     """
-    if not isinstance(start_time, (int, float)) or not isinstance(end_time, (int, float)):
+    if not isinstance(start_time, int | float) or not isinstance(end_time, int | float):
         raise ValueError("start_time 和 end_time 必须是数字类型")
     if limit < 0:
         raise ValueError("limit 不能为负数")
@@ -129,7 +129,7 @@ async def get_messages_by_time_in_chat_inclusive(
     Raises:
         ValueError: 如果参数不合法
     """
-    if not isinstance(start_time, (int, float)) or not isinstance(end_time, (int, float)):
+    if not isinstance(start_time, int | float) or not isinstance(end_time, int | float):
         raise ValueError("start_time 和 end_time 必须是数字类型")
     if limit < 0:
         raise ValueError("limit 不能为负数")
@@ -173,7 +173,7 @@ async def get_messages_by_time_in_chat_for_users(
     Raises:
         ValueError: 如果参数不合法
     """
-    if not isinstance(start_time, (int, float)) or not isinstance(end_time, (int, float)):
+    if not isinstance(start_time, int | float) or not isinstance(end_time, int | float):
         raise ValueError("start_time 和 end_time 必须是数字类型")
     if limit < 0:
         raise ValueError("limit 不能为负数")
@@ -203,7 +203,7 @@ async def get_random_chat_messages(
     Raises:
         ValueError: 如果参数不合法
     """
-    if not isinstance(start_time, (int, float)) or not isinstance(end_time, (int, float)):
+    if not isinstance(start_time, int | float) or not isinstance(end_time, int | float):
         raise ValueError("start_time 和 end_time 必须是数字类型")
     if limit < 0:
         raise ValueError("limit 不能为负数")
@@ -231,7 +231,7 @@ async def get_messages_by_time_for_users(
     Raises:
         ValueError: 如果参数不合法
     """
-    if not isinstance(start_time, (int, float)) or not isinstance(end_time, (int, float)):
+    if not isinstance(start_time, int | float) or not isinstance(end_time, int | float):
         raise ValueError("start_time 和 end_time 必须是数字类型")
     if limit < 0:
         raise ValueError("limit 不能为负数")
@@ -253,7 +253,7 @@ async def get_messages_before_time(timestamp: float, limit: int = 0, filter_mai:
     Raises:
         ValueError: 如果参数不合法
     """
-    if not isinstance(timestamp, (int, float)):
+    if not isinstance(timestamp, int | float):
         raise ValueError("timestamp 必须是数字类型")
     if limit < 0:
         raise ValueError("limit 不能为负数")
@@ -280,7 +280,7 @@ async def get_messages_before_time_in_chat(
     Raises:
         ValueError: 如果参数不合法
     """
-    if not isinstance(timestamp, (int, float)):
+    if not isinstance(timestamp, int | float):
         raise ValueError("timestamp 必须是数字类型")
     if limit < 0:
         raise ValueError("limit 不能为负数")
@@ -310,7 +310,7 @@ async def get_messages_before_time_for_users(
     Raises:
         ValueError: 如果参数不合法
     """
-    if not isinstance(timestamp, (int, float)):
+    if not isinstance(timestamp, int | float):
         raise ValueError("timestamp 必须是数字类型")
     if limit < 0:
         raise ValueError("limit 不能为负数")
@@ -336,7 +336,7 @@ async def get_recent_messages(
     Raises:
         ValueError: 如果参数不合法s
     """
-    if not isinstance(hours, (int, float)) or hours < 0:
+    if not isinstance(hours, int | float) or hours < 0:
         raise ValueError("hours 不能是负数")
     if not isinstance(limit, int) or limit < 0:
         raise ValueError("limit 必须是非负整数")
@@ -373,7 +373,7 @@ async def count_new_messages(chat_id: str, start_time: float = 0.0, end_time: fl
     Raises:
         ValueError: 如果参数不合法
     """
-    if not isinstance(start_time, (int, float)):
+    if not isinstance(start_time, int | float):
         raise ValueError("start_time 必须是数字类型")
     if not chat_id:
         raise ValueError("chat_id 不能为空")
@@ -398,7 +398,7 @@ async def count_new_messages_for_users(chat_id: str, start_time: float, end_time
     Raises:
         ValueError: 如果参数不合法
     """
-    if not isinstance(start_time, (int, float)) or not isinstance(end_time, (int, float)):
+    if not isinstance(start_time, int | float) or not isinstance(end_time, int | float):
         raise ValueError("start_time 和 end_time 必须是数字类型")
     if not chat_id:
         raise ValueError("chat_id 不能为空")

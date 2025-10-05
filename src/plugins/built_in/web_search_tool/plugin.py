@@ -41,6 +41,7 @@ class WEBSEARCHPLUGIN(BasePlugin):
             from .engines.bing_engine import BingSearchEngine
             from .engines.ddg_engine import DDGSearchEngine
             from .engines.exa_engine import ExaSearchEngine
+            from .engines.searxng_engine import SearXNGSearchEngine
             from .engines.tavily_engine import TavilySearchEngine
 
             # 实例化所有搜索引擎，这会触发API密钥管理器的初始化
@@ -48,6 +49,7 @@ class WEBSEARCHPLUGIN(BasePlugin):
             tavily_engine = TavilySearchEngine()
             ddg_engine = DDGSearchEngine()
             bing_engine = BingSearchEngine()
+            searxng_engine = SearXNGSearchEngine()
 
             # 报告每个引擎的状态
             engines_status = {
@@ -55,6 +57,7 @@ class WEBSEARCHPLUGIN(BasePlugin):
                 "Tavily": tavily_engine.is_available(),
                 "DuckDuckGo": ddg_engine.is_available(),
                 "Bing": bing_engine.is_available(),
+                "SearXNG": searxng_engine.is_available(),
             }
 
             available_engines = [name for name, available in engines_status.items() if available]
@@ -69,7 +72,7 @@ class WEBSEARCHPLUGIN(BasePlugin):
             logger.error(f"❌ 搜索引擎初始化失败: {e}", exc_info=True)
 
     # Python包依赖列表
-    python_dependencies: list[PythonDependency] = [
+    python_dependencies: list[PythonDependency] = [  # noqa: RUF012
         PythonDependency(package_name="asyncddgs", description="异步DuckDuckGo搜索库", optional=False),
         PythonDependency(
             package_name="exa_py",

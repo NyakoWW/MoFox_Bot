@@ -44,11 +44,11 @@ class ChatManager:
         Raises:
             TypeError: 如果 platform 不是字符串或 SpecialTypes 枚举类型
         """
-        if not isinstance(platform, (str, SpecialTypes)):
+        if not isinstance(platform, str | SpecialTypes):
             raise TypeError("platform 必须是字符串或是 SpecialTypes 枚举")
         streams = []
         try:
-            for _, stream in get_chat_manager().streams.items():
+            for stream in get_chat_manager().streams.values():
                 if platform == SpecialTypes.ALL_PLATFORMS or stream.platform == platform:
                     streams.append(stream)
             logger.debug(f"[ChatAPI] 获取到 {len(streams)} 个 {platform} 平台的聊天流")
@@ -67,11 +67,11 @@ class ChatManager:
         Returns:
             List[ChatStream]: 群聊聊天流列表
         """
-        if not isinstance(platform, (str, SpecialTypes)):
+        if not isinstance(platform, str | SpecialTypes):
             raise TypeError("platform 必须是字符串或是 SpecialTypes 枚举")
         streams = []
         try:
-            for _, stream in get_chat_manager().streams.items():
+            for stream in get_chat_manager().streams.values():
                 if (platform == SpecialTypes.ALL_PLATFORMS or stream.platform == platform) and stream.group_info:
                     streams.append(stream)
             logger.debug(f"[ChatAPI] 获取到 {len(streams)} 个 {platform} 平台的群聊流")
@@ -93,11 +93,11 @@ class ChatManager:
         Raises:
             TypeError: 如果 platform 不是字符串或 SpecialTypes 枚举类型
         """
-        if not isinstance(platform, (str, SpecialTypes)):
+        if not isinstance(platform, str | SpecialTypes):
             raise TypeError("platform 必须是字符串或是 SpecialTypes 枚举")
         streams = []
         try:
-            for _, stream in get_chat_manager().streams.items():
+            for stream in get_chat_manager().streams.values():
                 if (platform == SpecialTypes.ALL_PLATFORMS or stream.platform == platform) and not stream.group_info:
                     streams.append(stream)
             logger.debug(f"[ChatAPI] 获取到 {len(streams)} 个 {platform} 平台的私聊流")
@@ -124,12 +124,12 @@ class ChatManager:
         """
         if not isinstance(group_id, str):
             raise TypeError("group_id 必须是字符串类型")
-        if not isinstance(platform, (str, SpecialTypes)):
+        if not isinstance(platform, str | SpecialTypes):
             raise TypeError("platform 必须是字符串或是 SpecialTypes 枚举")
         if not group_id:
             raise ValueError("group_id 不能为空")
         try:
-            for _, stream in get_chat_manager().streams.items():
+            for stream in get_chat_manager().streams.values():
                 if (
                     stream.group_info
                     and str(stream.group_info.group_id) == str(group_id)
@@ -161,12 +161,12 @@ class ChatManager:
         """
         if not isinstance(user_id, str):
             raise TypeError("user_id 必须是字符串类型")
-        if not isinstance(platform, (str, SpecialTypes)):
+        if not isinstance(platform, str | SpecialTypes):
             raise TypeError("platform 必须是字符串或是 SpecialTypes 枚举")
         if not user_id:
             raise ValueError("user_id 不能为空")
         try:
-            for _, stream in get_chat_manager().streams.items():
+            for stream in get_chat_manager().streams.values():
                 if (
                     not stream.group_info
                     and str(stream.user_info.user_id) == str(user_id)

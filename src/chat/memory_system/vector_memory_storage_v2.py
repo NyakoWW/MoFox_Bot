@@ -315,7 +315,7 @@ class VectorMemoryStorage:
                 metadata["predicate"] = memory.content.predicate
 
             if memory.content.object:
-                if isinstance(memory.content.object, (dict, list)):
+                if isinstance(memory.content.object, dict | list):
                     metadata["object"] = orjson.dumps(memory.content.object).decode()
                 else:
                     metadata["object"] = str(memory.content.object)

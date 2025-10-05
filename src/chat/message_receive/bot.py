@@ -481,7 +481,7 @@ class ChatBot:
                 is_mentioned = None
                 if isinstance(message.is_mentioned, bool):
                     is_mentioned = message.is_mentioned
-                elif isinstance(message.is_mentioned, (int, float)):
+                elif isinstance(message.is_mentioned, int | float):
                     is_mentioned = message.is_mentioned != 0
 
                 user_id = ""

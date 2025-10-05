@@ -209,7 +209,7 @@ class PersonInfoManager:
         # Serialize JSON fields
         for key in JSON_SERIALIZED_FIELDS:
             if key in final_data:
-                if isinstance(final_data[key], (list, dict)):
+                if isinstance(final_data[key], list | dict):
                     final_data[key] = orjson.dumps(final_data[key]).decode("utf-8")
                 elif final_data[key] is None:  # Default for lists is [], store as "[]"
                     final_data[key] = orjson.dumps([]).decode("utf-8")
@@ -267,7 +267,7 @@ class PersonInfoManager:
         # Serialize JSON fields
         for key in JSON_SERIALIZED_FIELDS:
             if key in final_data:
-                if isinstance(final_data[key], (list, dict)):
+                if isinstance(final_data[key], list | dict):
                     final_data[key] = orjson.dumps(final_data[key]).decode("utf-8")
                 elif final_data[key] is None:  # Default for lists is [], store as "[]"
                     final_data[key] = orjson.dumps([]).decode("utf-8")
@@ -307,7 +307,7 @@ class PersonInfoManager:
 
         processed_value = value
         if field_name in JSON_SERIALIZED_FIELDS:
-            if isinstance(value, (list, dict)):
+            if isinstance(value, list | dict):
                 processed_value = orjson.dumps(value).decode("utf-8")
             elif value is None:  # Store None as "[]" for JSON list fields
                 processed_value = orjson.dumps([]).decode("utf-8")
@@ -715,7 +715,7 @@ class PersonInfoManager:
 
         for key in JSON_SERIALIZED_FIELDS:
             if key in initial_data:
-                if isinstance(initial_data[key], (list, dict)):
+                if isinstance(initial_data[key], list | dict):
                     initial_data[key] = orjson.dumps(initial_data[key]).decode("utf-8")
                 elif initial_data[key] is None:
                     initial_data[key] = orjson.dumps([]).decode("utf-8")

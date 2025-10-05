@@ -46,8 +46,8 @@ class EventManager:
     def register_event(
         self,
         event_name: EventType | str,
-        allowed_subscribers: list[str] = None,
-        allowed_triggers: list[str] = None,
+        allowed_subscribers: list[str] | None = None,
+        allowed_triggers: list[str] | None = None,
     ) -> bool:
         """注册一个新的事件
 

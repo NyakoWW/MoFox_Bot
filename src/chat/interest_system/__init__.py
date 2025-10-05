@@ -13,10 +13,9 @@ __all__ = [
     "BotInterestManager",
     "BotInterestTag",
     "BotPersonalityInterests",
-    "InterestMatchResult",
-    "bot_interest_manager",
-
     # 消息兴趣值计算管理
     "InterestManager",
+    "InterestMatchResult",
+    "bot_interest_manager",
     "get_interest_manager",
 ]

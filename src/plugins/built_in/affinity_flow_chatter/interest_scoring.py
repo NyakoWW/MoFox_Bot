@@ -97,7 +97,7 @@ class ChatterInterestScoringSystem:
             details=details,
         )
 
-    async def _calculate_interest_match_score(self, content: str, keywords: list[str] = None) -> float:
+    async def _calculate_interest_match_score(self, content: str, keywords: list[str] | None = None) -> float:
         """计算兴趣匹配度 - 使用智能embedding匹配"""
         if not content:
             return 0.0
@@ -109,7 +109,7 @@ class ChatterInterestScoringSystem:
             # 智能匹配未初始化，返回默认分数
             return 0.3
 
-    async def _calculate_smart_interest_match(self, content: str, keywords: list[str] = None) -> float:
+    async def _calculate_smart_interest_match(self, content: str, keywords: list[str] | None = None) -> float:
         """使用embedding计算智能兴趣匹配"""
         try:
             # 如果没有传入关键词，则提取
@@ -228,7 +228,7 @@ class ChatterInterestScoringSystem:
             return 0.0
 
         # 检查是否被提及
-        bot_aliases = [bot_nickname] + global_config.bot.alias_names
+        bot_aliases = [bot_nickname, *global_config.bot.alias_names]
         is_mentioned = msg.is_mentioned or any(alias in msg.processed_plain_text for alias in bot_aliases if alias)
 
         # 如果被提及或是私聊，都视为提及了bot

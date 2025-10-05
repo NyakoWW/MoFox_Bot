@@ -59,10 +59,15 @@ class ChatterPlanFilter:
         try:
             prompt, used_message_id_list = await self._build_prompt(plan)
             plan.llm_prompt = prompt
+            if global_config.debug.show_prompt:
+                logger.info(f"规划器原始提示词:{prompt}")
 
             llm_content, _ = await self.planner_llm.generate_response_async(prompt=prompt)
 
+
             if llm_content:
+                if global_config.debug.show_prompt:
+                    logger.info(f"LLM规划器原始响应:{llm_content}")
                 try:
                     parsed_json = orjson.loads(repair_json(llm_content))
                 except orjson.JSONDecodeError:
@@ -364,7 +369,7 @@ class ChatterPlanFilter:
                 flattened_unread = [msg.flatten() for msg in unread_messages]
 
                 # 尝试获取兴趣度评分（返回以真实 message_id 为键的字典）
-                interest_scores = await self._get_interest_scores_for_messages(flattened_unread)
+                await self._get_interest_scores_for_messages(flattened_unread)
 
                 # 为未读消息分配短 id（保持与 build_readable_messages_with_id 的一致结构）
                 message_id_list = assign_message_ids(flattened_unread)
@@ -373,7 +378,7 @@ class ChatterPlanFilter:
                 for idx, msg in enumerate(flattened_unread):
                     mapped = message_id_list[idx]
                     synthetic_id = mapped.get("id")
-                    original_msg_id = msg.get("message_id") or msg.get("id")
+                    msg.get("message_id") or msg.get("id")
                     msg_time = time.strftime("%H:%M:%S", time.localtime(msg.get("time", time.time())))
                     user_nickname = msg.get("user_nickname", "未知用户")
                     msg_content = msg.get("processed_plain_text", "")

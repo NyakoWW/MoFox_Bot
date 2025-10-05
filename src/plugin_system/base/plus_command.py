@@ -316,7 +316,7 @@ class PlusCommand(ABC):
             str: 正则表达式字符串
         """
         # 获取所有可能的命令名（主命令名 + 别名）
-        all_commands = [cls.command_name] + getattr(cls, "command_aliases", [])
+        all_commands = [cls.command_name, *getattr(cls, "command_aliases", [])]
 
         # 转义特殊字符并创建选择组
         escaped_commands = [re.escape(cmd) for cmd in all_commands]
