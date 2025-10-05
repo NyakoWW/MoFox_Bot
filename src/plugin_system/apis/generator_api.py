@@ -4,7 +4,7 @@
 提供回复器相关功能，采用标准Python包设计模式
 使用方式：
     from src.plugin_system.apis import generator_api
-    replyer = generator_api.get_replyer(chat_stream)
+    replyer = await generator_api.get_replyer(chat_stream)
     success, reply_set, _ = await generator_api.generate_reply(chat_stream, action_data, reasoning)
 """
 
@@ -32,6 +32,7 @@ logger = get_logger("generator_api")
 # =============================================================================
 
 
+async def get_replyer(
 async def get_replyer(
     chat_stream: ChatStream | None = None,
     chat_id: str | None = None,

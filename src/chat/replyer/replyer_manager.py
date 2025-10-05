@@ -10,6 +10,7 @@ class ReplyerManager:
         self._repliers: dict[str, DefaultReplyer] = {}
 
     async def get_replyer(
+    async def get_replyer(
         self,
         chat_stream: ChatStream | None = None,
         chat_id: str | None = None,
