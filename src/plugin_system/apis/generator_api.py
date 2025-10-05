@@ -33,7 +33,6 @@ logger = get_logger("generator_api")
 
 
 async def get_replyer(
-async def get_replyer(
     chat_stream: ChatStream | None = None,
     chat_id: str | None = None,
     request_type: str = "replyer",
