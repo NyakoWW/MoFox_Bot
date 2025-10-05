@@ -339,6 +339,16 @@ MoFox_Bot(第三方修改版)
 
         # 处理所有缓存的事件订阅（插件加载完成后）
         event_manager.process_all_pending_subscriptions()
+        
+        # 初始化MCP工具提供器
+        try:
+            mcp_config = global_config.get("mcp_servers", [])
+            if mcp_config:
+                from src.plugin_system.utils.mcp_tool_provider import mcp_tool_provider
+                await mcp_tool_provider.initialize(mcp_config)
+                logger.info("MCP工具提供器初始化成功")
+        except Exception as e:
+            logger.info(f"MCP工具提供器未配置或初始化失败: {e}")
 
         # 初始化表情管理器
         get_emoji_manager().initialize()
