@@ -29,33 +29,45 @@ uv sync
 
 ### 2. 配置API Provider
 
-在配置文件中添加MCP SSE provider：
+在 `model_config.toml` 配置文件中添加MCP SSE provider：
 
-```python
-# 在配置中添加
-api_providers = [
-    {
-        "name": "mcp_provider",
-        "client_type": "mcp_sse",  # 使用MCP SSE客户端
-        "base_url": "https://your-mcp-server.com",
-        "api_key": "your-api-key",
-        "timeout": 60
-    }
-]
+```toml
+[[api_providers]]
+name = "MCPProvider"
+base_url = "https://your-mcp-server.com"  # MCP服务器地址
+api_key = "your-mcp-api-key-here"
+client_type = "mcp_sse"  # 使用MCP SSE客户端
+max_retry = 2
+timeout = 60  # MCP流式请求可能需要更长超时时间
+retry_interval = 10
 ```
 
 ### 3. 配置模型
 
-```python
-models = [
-    {
-        "name": "mcp_model",
-        "api_provider": "mcp_provider",
-        "model_identifier": "your-model-name",
-        "force_stream_mode": True  # MCP SSE始终使用流式
-    }
-]
+在同一个配置文件中添加使用MCP provider的模型：
+
+```toml
+[[models]]
+model_identifier = "claude-3-5-sonnet-20241022"  # 或其他支持MCP的模型
+name = "mcp-claude-sonnet"
+api_provider = "MCPProvider"  # 对应上面配置的MCP provider
+price_in = 3.0
+price_out = 15.0
+force_stream_mode = true  # MCP SSE默认使用流式模式
 ```
+
+### 4. 在任务配置中使用MCP模型
+
+可以在任何任务配置中使用MCP模型：
+
+```toml
+[model_task_config.replyer]
+model_list = ["mcp-claude-sonnet"]  # 使用MCP模型
+temperature = 0.7
+max_tokens = 800
+```
+
+**注意**：配置模板已包含MCP SSE的示例配置，可参考 `template/model_config_template.toml`
 
 ## 使用示例
 

@@ -279,6 +279,23 @@ class ToolExecutor:
             logger.info(
                 f"{self.log_prefix} 正在执行工具: [bold green]{function_name}[/bold green] | 参数: {function_args}"
             )
+            
+            # 检查是否是MCP工具
+            try:
+                from src.plugin_system.utils.mcp_tool_provider import mcp_tool_provider
+                if function_name in mcp_tool_provider.mcp_tools:
+                    logger.info(f"{self.log_prefix}执行MCP工具: {function_name}")
+                    result = await mcp_tool_provider.call_mcp_tool(function_name, function_args)
+                    return {
+                        "tool_call_id": tool_call.call_id,
+                        "role": "tool",
+                        "name": function_name,
+                        "type": "function",
+                        "content": result.get("content", ""),
+                    }
+            except Exception as e:
+                logger.debug(f"检查MCP工具时出错: {e}")
+            
             function_args["llm_called"] = True  # 标记为LLM调用
 
             # 检查是否是二步工具的第二步调用
