@@ -4,7 +4,7 @@
 提供回复器相关功能，采用标准Python包设计模式
 使用方式：
     from src.plugin_system.apis import generator_api
-    replyer = generator_api.get_replyer(chat_stream)
+    replyer = await generator_api.get_replyer(chat_stream)
     success, reply_set, _ = await generator_api.generate_reply(chat_stream, action_data, reasoning)
 """
 
@@ -31,7 +31,7 @@ logger = get_logger("generator_api")
 # =============================================================================
 
 
-def get_replyer(
+async def get_replyer(
     chat_stream: ChatStream | None = None,
     chat_id: str | None = None,
     request_type: str = "replyer",
@@ -56,7 +56,7 @@ def get_replyer(
         raise ValueError("chat_stream 和 chat_id 不可均为空")
     try:
         logger.debug(f"[GeneratorAPI] 正在获取回复器，chat_id: {chat_id}, chat_stream: {'有' if chat_stream else '无'}")
-        return replyer_manager.get_replyer(
+        return await replyer_manager.get_replyer(
             chat_stream=chat_stream,
             chat_id=chat_id,
             request_type=request_type,
@@ -110,7 +110,7 @@ async def generate_reply(
     """
     try:
         # 获取回复器
-        replyer = get_replyer(chat_stream, chat_id, request_type=request_type)
+        replyer = await get_replyer(chat_stream, chat_id, request_type=request_type)
         if not replyer:
             logger.error("[GeneratorAPI] 无法获取回复器")
             return False, [], None
@@ -199,7 +199,7 @@ async def rewrite_reply(
     """
     try:
         # 获取回复器
-        replyer = get_replyer(chat_stream, chat_id, request_type=request_type)
+        replyer = await get_replyer(chat_stream, chat_id, request_type=request_type)
         if not replyer:
             logger.error("[GeneratorAPI] 无法获取回复器")
             return False, [], None
@@ -285,7 +285,7 @@ async def generate_response_custom(
     Returns:
         Optional[str]: 生成的回复内容
     """
-    replyer = get_replyer(chat_stream, chat_id, request_type=request_type)
+    replyer = await get_replyer(chat_stream, chat_id, request_type=request_type)
     if not replyer:
         logger.error("[GeneratorAPI] 无法获取回复器")
         return None
