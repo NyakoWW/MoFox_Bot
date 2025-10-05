@@ -19,6 +19,8 @@ from src.chat.memory_system.memory_builder import MemoryBuilder, MemoryExtractio
 from src.chat.memory_system.memory_chunk import MemoryChunk
 from src.chat.memory_system.memory_fusion import MemoryFusionEngine
 from src.chat.memory_system.memory_query_planner import MemoryQueryPlanner
+
+
 # 记忆采样模式枚举
 class MemorySamplingMode(Enum):
     """记忆采样模式"""
@@ -31,9 +33,10 @@ from src.llm_models.utils_model import LLMRequest
 
 if TYPE_CHECKING:
     from src.chat.memory_system.memory_forgetting_engine import MemoryForgettingEngine
+    from src.chat.memory_system.vector_memory_storage_v2 import VectorMemoryStorage
     from src.common.data_models.database_data_model import DatabaseMessages
 
-logger = get_logger(__name__)
+logger = get_logger("memory_system")
 
 # 全局记忆作用域（共享记忆库）
 GLOBAL_MEMORY_SCOPE = "global"
@@ -133,15 +136,15 @@ class MemorySystem:
         self.status = MemorySystemStatus.INITIALIZING
 
         # 核心组件（简化版）
-        self.memory_builder: MemoryBuilder = None
-        self.fusion_engine: MemoryFusionEngine = None
-        self.unified_storage = None  # 统一存储系统
-        self.query_planner: MemoryQueryPlanner = None
+        self.memory_builder: MemoryBuilder | None = None
+        self.fusion_engine: MemoryFusionEngine | None = None
+        self.unified_storage: VectorMemoryStorage | None = None  # 统一存储系统
+        self.query_planner: MemoryQueryPlanner | None = None
         self.forgetting_engine: MemoryForgettingEngine | None = None
 
         # LLM模型
-        self.value_assessment_model: LLMRequest = None
-        self.memory_extraction_model: LLMRequest = None
+        self.value_assessment_model: LLMRequest | None = None
+        self.memory_extraction_model: LLMRequest | None = None
 
         # 统计信息
         self.total_memories = 0
@@ -162,7 +165,6 @@ class MemorySystem:
     async def initialize(self):
         """异步初始化记忆系统"""
         try:
-            logger.info("正在初始化记忆系统...")
 
             # 初始化LLM模型
             fallback_task = getattr(self.llm_model, "model_for_task", None) if self.llm_model else None
@@ -249,7 +251,7 @@ class MemorySystem:
 
             self.forgetting_engine = MemoryForgettingEngine(forgetting_config)
 
-            planner_task_config = getattr(model_config.model_task_config, "utils_small", None)
+            planner_task_config = model_config.model_task_config.utils_small
             planner_model: LLMRequest | None = None
             try:
                 planner_model = LLMRequest(model_set=planner_task_config, request_type="memory.query_planner")
@@ -269,10 +271,8 @@ class MemorySystem:
                     self.hippocampus_sampler = None
 
             # 统一存储已经自动加载数据，无需额外加载
-            logger.info("✅ 简化版记忆系统初始化完成")
 
             self.status = MemorySystemStatus.READY
-            logger.info("✅ 记忆系统初始化完成")
 
         except Exception as e:
             self.status = MemorySystemStatus.ERROR
@@ -479,7 +479,7 @@ class MemorySystem:
                 existing_id = self._memory_fingerprints.get(fingerprint_key)
                 if existing_id and existing_id not in new_memory_ids:
                     candidate_ids.add(existing_id)
-            except Exception as exc:
+            except Exception as exc:  # noqa: PERF203
                 logger.debug("构建记忆指纹失败，跳过候选收集: %s", exc)
 
         # 基于主体索引的候选（使用统一存储）
@@ -557,11 +557,11 @@ class MemorySystem:
             context = dict(context or {})
 
             # 获取配置的采样模式
-            sampling_mode = getattr(global_config.memory, 'memory_sampling_mode', 'precision')
+            sampling_mode = getattr(global_config.memory, "memory_sampling_mode", "precision")
             current_mode = MemorySamplingMode(sampling_mode)
 
 
-            context['__sampling_mode'] = current_mode.value
+            context["__sampling_mode"] = current_mode.value
             logger.debug(f"使用记忆采样模式: {current_mode.value}")
 
             # 根据采样模式处理记忆
@@ -637,7 +637,7 @@ class MemorySystem:
 
             # 检查信息价值阈值
             value_score = await self._assess_information_value(conversation_text, normalized_context)
-            threshold = getattr(global_config.memory, 'precision_memory_reply_threshold', 0.5)
+            threshold = getattr(global_config.memory, "precision_memory_reply_threshold", 0.5)
 
             if value_score < threshold:
                 logger.debug(f"信息价值评分 {value_score:.2f} 低于阈值 {threshold}，跳过记忆构建")
@@ -843,7 +843,7 @@ class MemorySystem:
                 for i, (mem, score, details) in enumerate(scored_memories[:3], 1):
                     try:
                         summary = mem.content[:60] if hasattr(mem, "content") and mem.content else ""
-                    except:
+                    except Exception:
                         summary = ""
                     logger.info(
                         f"  #{i} | final={details['final']:.3f} "
@@ -1440,8 +1440,8 @@ class MemorySystem:
         context_keywords = context.get("keywords") or []
         keyword_overlap = 0.0
         if context_keywords:
-            memory_keywords = set(k.lower() for k in memory.keywords)
-            keyword_overlap = len(memory_keywords & set(k.lower() for k in context_keywords)) / max(
+            memory_keywords = {k.lower() for k in memory.keywords}
+            keyword_overlap = len(memory_keywords & {k.lower() for k in context_keywords}) / max(
                 len(context_keywords), 1
             )
 
@@ -1489,7 +1489,7 @@ class MemorySystem:
         """启动海马体采样"""
         if self.hippocampus_sampler:
             asyncio.create_task(self.hippocampus_sampler.start_background_sampling())
-            logger.info("🚀 海马体后台采样已启动")
+            logger.info("海马体后台采样已启动")
         else:
             logger.warning("海马体采样器未初始化，无法启动采样")
 
@@ -1497,7 +1497,7 @@ class MemorySystem:
         """停止海马体采样"""
         if self.hippocampus_sampler:
             self.hippocampus_sampler.stop_background_sampling()
-            logger.info("🛑 海马体后台采样已停止")
+            logger.info("海马体后台采样已停止")
 
     def get_system_stats(self) -> dict[str, Any]:
         """获取系统统计信息"""
@@ -1536,10 +1536,10 @@ class MemorySystem:
             if self.unified_storage:
                 self.unified_storage.cleanup()
 
-            logger.info("✅ 简化记忆系统已关闭")
+            logger.info("简化记忆系统已关闭")
 
         except Exception as e:
-            logger.error(f"❌ 记忆系统关闭失败: {e}", exc_info=True)
+            logger.error(f"记忆系统关闭失败: {e}", exc_info=True)
 
     async def _rebuild_vector_storage_if_needed(self):
         """重建向量存储（如果需要）"""
@@ -1553,12 +1553,13 @@ class MemorySystem:
 
             # 收集需要重建向量的记忆
             memories_to_rebuild = []
-            for memory_id, memory in self.unified_storage.memory_cache.items():
-                # 检查记忆是否有有效的 display 文本
-                if memory.display and memory.display.strip():
-                    memories_to_rebuild.append(memory)
-                elif memory.text_content and memory.text_content.strip():
-                    memories_to_rebuild.append(memory)
+            if self.unified_storage:
+                for memory in self.unified_storage.memory_cache.values():
+                    # 检查记忆是否有有效的 display 文本
+                    if memory.display and memory.display.strip():
+                        memories_to_rebuild.append(memory)
+                    elif memory.text_content and memory.text_content.strip():
+                        memories_to_rebuild.append(memory)
 
             if not memories_to_rebuild:
                 logger.warning("没有找到可重建向量的记忆")
@@ -1583,14 +1584,16 @@ class MemorySystem:
                     logger.error(f"批量重建向量失败: {e}")
                     continue
 
-            # 保存重建的向量存储
-            await self.unified_storage.save_storage()
-
-            final_count = self.unified_storage.storage_stats.get("total_vectors", 0)
-            logger.info(f"✅ 向量存储重建完成，最终向量数量: {final_count}")
+            # 向量数据在 store_memories 中已保存，此处无需额外操作
+            if self.unified_storage:
+                storage_stats = self.unified_storage.get_storage_stats()
+                final_count = storage_stats.get("total_vectors", 0)
+                logger.info(f"✅ 向量存储重建完成，最终向量数量: {final_count}")
+            else:
+                logger.warning("向量存储重建完成，但无法获取最终向量数量，因为存储系统未初始化")
 
         except Exception as e:
-            logger.error(f"❌ 向量存储重建失败: {e}", exc_info=True)
+            logger.error(f"向量存储重建失败: {e}", exc_info=True)
 
 
 # 全局记忆系统实例
@@ -1613,8 +1616,8 @@ async def initialize_memory_system(llm_model: LLMRequest | None = None):
     await memory_system.initialize()
 
     # 根据配置启动海马体采样
-    sampling_mode = getattr(global_config.memory, 'memory_sampling_mode', 'immediate')
-    if sampling_mode in ['hippocampus', 'all']:
+    sampling_mode = getattr(global_config.memory, "memory_sampling_mode", "immediate")
+    if sampling_mode in ["hippocampus", "all"]:
         memory_system.start_hippocampus_sampling()
 
     return memory_system

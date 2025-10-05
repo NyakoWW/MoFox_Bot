@@ -120,10 +120,10 @@ class MainSystem:
                 logger.warning("未发现任何兴趣计算器组件")
                 return
 
-            logger.info(f"发现的兴趣计算器组件:")
+            logger.info("发现的兴趣计算器组件:")
             for calc_name, calc_info in interest_calculators.items():
-                enabled = getattr(calc_info, 'enabled', True)
-                default_enabled = getattr(calc_info, 'enabled_by_default', True)
+                enabled = getattr(calc_info, "enabled", True)
+                default_enabled = getattr(calc_info, "enabled_by_default", True)
                 logger.info(f"  - {calc_name}: 启用: {enabled}, 默认启用: {default_enabled}")
 
             # 初始化兴趣度管理器
@@ -136,8 +136,8 @@ class MainSystem:
 
             # 使用组件注册表获取组件类并注册
             for calc_name, calc_info in interest_calculators.items():
-                enabled = getattr(calc_info, 'enabled', True)
-                default_enabled = getattr(calc_info, 'enabled_by_default', True)
+                enabled = getattr(calc_info, "enabled", True)
+                default_enabled = getattr(calc_info, "enabled_by_default", True)
 
                 if not enabled or not default_enabled:
                     logger.info(f"兴趣计算器 {calc_name} 未启用，跳过")
@@ -183,7 +183,7 @@ class MainSystem:
     async def _async_cleanup(self):
         """异步清理资源"""
         try:
-  
+
             # 停止数据库服务
             try:
                 from src.common.database.database import stop_database
@@ -343,8 +343,8 @@ MoFox_Bot(第三方修改版)
         # 初始化表情管理器
         get_emoji_manager().initialize()
         logger.info("表情包管理器初始化成功")
-        
-        '''
+
+        """
         # 初始化回复后关系追踪系统
         try:
             from src.plugins.built_in.affinity_flow_chatter.interest_scoring import chatter_interest_scoring_system
@@ -356,8 +356,8 @@ MoFox_Bot(第三方修改版)
         except Exception as e:
             logger.error(f"回复后关系追踪系统初始化失败: {e}")
             relationship_tracker = None
-        '''
-  
+        """
+
         # 启动情绪管理器
         await mood_manager.start()
         logger.info("情绪管理器初始化成功")
@@ -487,10 +487,10 @@ MoFox_Bot(第三方修改版)
         # 关闭应用 (MessageServer可能没有shutdown方法)
         try:
             if self.app:
-                if hasattr(self.app, 'shutdown'):
+                if hasattr(self.app, "shutdown"):
                     await self.app.shutdown()
                     logger.info("应用已关闭")
-                elif hasattr(self.app, 'stop'):
+                elif hasattr(self.app, "stop"):
                     await self.app.stop()
                     logger.info("应用已停止")
                 else:

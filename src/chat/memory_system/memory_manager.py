@@ -69,14 +69,11 @@ class MemoryManager:
             # 初始化记忆系统
             self.memory_system = await initialize_memory_system(llm_model)
 
-            # 设置全局实例
-            global_memory_manager = self.memory_system
-
             self.is_initialized = True
-            logger.info("✅ 记忆系统初始化完成")
+            logger.info(" 记忆系统初始化完成")
 
         except Exception as e:
-            logger.error(f"❌ 记忆系统初始化失败: {e}")
+            logger.error(f"记忆系统初始化失败: {e}")
             # 如果系统初始化失败，创建一个空的管理器避免系统崩溃
             self.memory_system = None
             self.is_initialized = True  # 标记为已初始化但系统不可用
@@ -439,7 +436,7 @@ class MemoryManager:
             formatted_items = [self._format_object(item) for item in obj]
             filtered = [item for item in formatted_items if item]
             return self._clean_text("、".join(filtered)) if filtered else ""
-        if isinstance(obj, (int, float)):
+        if isinstance(obj, int | float):
             return str(obj)
         text = self._truncate(str(obj).strip())
         return self._clean_text(text)
@@ -449,12 +446,12 @@ class MemoryManager:
             for key in keys:
                 if obj.get(key):
                     value = obj[key]
-                    if isinstance(value, (dict, list)):
+                    if isinstance(value, dict | list):
                         return self._clean_text(self._format_object(value))
                     return self._clean_text(value)
         if isinstance(obj, list) and obj:
             return self._clean_text(self._format_object(obj[0]))
-        if isinstance(obj, (str, int, float)):
+        if isinstance(obj, str | int | float):
             return self._clean_text(obj)
         return None
 
@@ -471,7 +468,7 @@ class MemoryManager:
         try:
             if self.memory_system:
                 await self.memory_system.shutdown()
-            logger.info("✅ 记忆系统已关闭")
+            logger.info(" 记忆系统已关闭")
         except Exception as e:
             logger.error(f"关闭记忆系统失败: {e}")
 
