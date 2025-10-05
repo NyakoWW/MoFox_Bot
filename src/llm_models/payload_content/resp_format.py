@@ -68,14 +68,14 @@ def _remove_title(schema: dict[str, Any] | list[Any]) -> dict[str, Any] | list[A
     if isinstance(schema, list):
         # 如果当前Schema是列表，则对所有dict/list子元素递归调用
         for idx, item in enumerate(schema):
-            if isinstance(item, (dict, list)):
+            if isinstance(item, dict | list):
                 schema[idx] = _remove_title(item)
     elif isinstance(schema, dict):
         # 是字典，移除title字段，并对所有dict/list子元素递归调用
         if "title" in schema:
             del schema["title"]
         for key, value in schema.items():
-            if isinstance(value, (dict, list)):
+            if isinstance(value, dict | list):
                 schema[key] = _remove_title(value)
 
     return schema
@@ -120,7 +120,7 @@ def _link_definitions(schema: dict[str, Any]) -> dict[str, Any]:
                     raise ValueError(f"Schema中引用的定义'{def_key}'不存在")
             # 遍历键值对
             for key, value in sub_schema.items():
-                if isinstance(value, (dict, list)):
+                if isinstance(value, dict | list):
                     # 如果当前值是字典或列表，则递归调用
                     sub_schema[key] = link_definitions_recursive(f"{path}/{key}", value, defs)
 
@@ -136,13 +136,13 @@ def _remove_defs(schema: dict[str, Any]) -> dict[str, Any]:
     if isinstance(schema, list):
         # 如果当前Schema是列表，则对所有dict/list子元素递归调用
         for idx, item in enumerate(schema):
-            if isinstance(item, (dict, list)):
+            if isinstance(item, dict | list):
                 schema[idx] = _remove_title(item)
     elif isinstance(schema, dict):
         # 是字典，移除title字段，并对所有dict/list子元素递归调用
         schema.pop("$defs", None)
         for key, value in schema.items():
-            if isinstance(value, (dict, list)):
+            if isinstance(value, dict | list):
                 schema[key] = _remove_title(value)
 
     return schema

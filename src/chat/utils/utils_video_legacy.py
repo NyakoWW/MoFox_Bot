@@ -389,7 +389,7 @@ class LegacyVideoAnalyzer:
         logger.info(f"✅ 成功提取{len(frames)}帧")
         return frames
 
-    async def analyze_frames_batch(self, frames: list[tuple[str, float]], user_question: str = None) -> str:
+    async def analyze_frames_batch(self, frames: list[tuple[str, float]], user_question: str | None = None) -> str:
         """批量分析所有帧"""
         logger.info(f"开始批量分析{len(frames)}帧")
 
@@ -478,7 +478,7 @@ class LegacyVideoAnalyzer:
         logger.info(f"视频识别完成，响应长度: {len(api_response.content or '')} ")
         return api_response.content or "❌ 未获得响应内容"
 
-    async def analyze_frames_sequential(self, frames: list[tuple[str, float]], user_question: str = None) -> str:
+    async def analyze_frames_sequential(self, frames: list[tuple[str, float]], user_question: str | None = None) -> str:
         """逐帧分析并汇总"""
         logger.info(f"开始逐帧分析{len(frames)}帧")
 
@@ -536,7 +536,7 @@ class LegacyVideoAnalyzer:
             # 如果汇总失败，返回各帧分析结果
             return f"视频逐帧分析结果：\n\n{chr(10).join(frame_analyses)}"
 
-    async def analyze_video(self, video_path: str, user_question: str = None) -> str:
+    async def analyze_video(self, video_path: str, user_question: str | None = None) -> str:
         """分析视频的主要方法"""
         try:
             logger.info(f"开始分析视频: {os.path.basename(video_path)}")

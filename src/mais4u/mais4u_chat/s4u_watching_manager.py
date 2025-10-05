@@ -11,19 +11,19 @@ from src.plugin_system.apis import send_api
 
 2. 状态切换逻辑：
    - 收到消息时 → 切换为看弹幕，立即发送更新
-   - 开始生成回复时 → 切换为看镜头或随意，立即发送更新  
+   - 开始生成回复时 → 切换为看镜头或随意，立即发送更新
    - 生成完毕后 → 看弹幕1秒，然后回到看镜头直到有新消息，状态变化时立即发送更新
 
 3. 使用方法：
    # 获取视线管理器
    watching = watching_manager.get_watching_by_chat_id(chat_id)
-   
+
    # 收到消息时调用
    await watching.on_message_received()
-   
+
    # 开始生成回复时调用
    await watching.on_reply_start()
-   
+
    # 生成回复完毕时调用
    await watching.on_reply_finished()
 

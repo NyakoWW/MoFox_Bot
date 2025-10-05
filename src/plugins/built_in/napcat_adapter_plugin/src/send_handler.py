@@ -171,7 +171,6 @@ class SendHandler:
         处理适配器命令类 - 用于直接向Napcat发送命令并返回结果
         """
         logger.info("处理适配器命令中")
-        message_info: BaseMessageInfo = raw_message_base.message_info
         message_segment: Seg = raw_message_base.message_segment
         seg_data: Dict[str, Any] = message_segment.data if isinstance(message_segment.data, dict) else {}
 

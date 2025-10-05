@@ -30,7 +30,7 @@ class CacheManager:
 
     def __new__(cls, *args, **kwargs):
         if not cls._instance:
-            cls._instance = super(CacheManager, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self, default_ttl: int = 3600):
@@ -70,7 +70,7 @@ class CacheManager:
                 return None
 
             # 确保embedding_result是一维数组或列表
-            if isinstance(embedding_result, (list, tuple, np.ndarray)):
+            if isinstance(embedding_result, list | tuple | np.ndarray):
                 # 转换为numpy数组进行处理
                 embedding_array = np.array(embedding_result)
 

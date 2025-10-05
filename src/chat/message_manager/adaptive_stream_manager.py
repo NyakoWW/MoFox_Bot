@@ -312,7 +312,7 @@ class AdaptiveStreamManager:
             # 事件循环延迟
             event_loop_lag = 0.0
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
                 start_time = time.time()
                 await asyncio.sleep(0)
                 event_loop_lag = time.time() - start_time

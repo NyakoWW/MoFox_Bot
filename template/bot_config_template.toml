@@ -1,5 +1,5 @@
 [inner]
-version = "7.2.1"
+version = "7.2.3"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -470,6 +470,8 @@ enable_web_search_tool = true # 是否启用联网搜索tool
 enable_url_tool = true # 是否启用URL解析tool
 tavily_api_keys = ["None"]# Tavily API密钥列表，支持轮询机制
 exa_api_keys = ["None"]# EXA API密钥列表，支持轮询机制
+searxng_instances = [] # SearXNG 实例 URL 列表
+searxng_api_keys = []# SearXNG 实例 API 密钥列表
 
 # 搜索引擎配置
 enabled_engines = ["ddg"] # 启用的搜索引擎列表，可选: "exa", "tavily", "ddg","bing"
@@ -520,10 +522,6 @@ insomnia_duration_minutes = [30, 60] # 单次失眠状态的持续时间范围�
 # --- 睡后失眠 ---
 # 入睡后，经过一段延迟后触发失眠判定的延迟时间（分钟），设置为范围以增加随机性
 insomnia_trigger_delay_minutes = [15, 45]
-
-[server]
-host = "127.0.0.1"
-port = 8000
 
 [cross_context] # 跨群聊/私聊上下文共享配置
 # 这是总开关，用于一键启用或禁用此功能
@@ -604,3 +602,27 @@ enabled_group_chats = []
 enable_cold_start = true
 # 冷启动后，该私聊的下一次主动思考需要等待的最小时间（秒）
 cold_start_cooldown = 86400 # 默认24小时
+
+# ===== MCP (Model Context Protocol) 工具服务器配置 =====
+# MCP允许连接外部工具服务器，AI可以调用这些工具来执行各种任务
+# 例如：文件操作、Git操作、数据库查询等
+
+# 示例MCP服务器配置（需要取消注释才能启用）
+#[[mcp_servers]]
+#name = "filesystem"  # 服务器名称，工具将以此为前缀（如 filesystem_read_file）
+#url = "http://localhost:3000"  # MCP服务器地址
+#api_key = ""  # API密钥（如果服务器需要认证）
+#timeout = 30  # 超时时间（秒）
+#enabled = true  # 是否启用此服务器
+
+# 可以配置多个MCP服务器
+#[[mcp_servers]]
+#name = "git_tools"
+#url = "http://localhost:3001"
+#enabled = true
+
+# 详细说明:
+# 1. MCP服务器需要单独启动，Bot启动后会自动连接
+# 2. 每个服务器提供的工具会自动注册到Bot的工具系统
+# 3. AI会自动发现并在需要时调用这些工具
+# 4. 详细文档请参考: docs/MCP_TOOLS_INTEGRATION.md

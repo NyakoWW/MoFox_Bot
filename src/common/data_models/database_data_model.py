@@ -220,7 +220,7 @@ class DatabaseMessages(BaseDataModel):
             "chat_info_user_cardname": self.chat_info.user_info.user_cardname,
         }
 
-    def update_message_info(self, interest_value: float = None, actions: list = None, should_reply: bool = None):
+    def update_message_info(self, interest_value: float | None = None, actions: list | None = None, should_reply: bool | None = None):
         """
         更新消息信息
 

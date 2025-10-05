@@ -91,7 +91,7 @@ class KGManager:
 
         # 加载实体计数
         ent_cnt_df = pd.read_parquet(self.ent_cnt_data_path, engine="pyarrow")
-        self.ent_appear_cnt = dict({row["hash_key"]: row["appear_cnt"] for _, row in ent_cnt_df.iterrows()})
+        self.ent_appear_cnt = {row["hash_key"]: row["appear_cnt"] for _, row in ent_cnt_df.iterrows()}
 
         # 加载KG
         self.graph = di_graph.load_from_file(self.graph_data_path)
@@ -290,7 +290,7 @@ class KGManager:
             embedding_manager: EmbeddingManager对象
         """
         # 实体之间的联系
-        node_to_node = dict()
+        node_to_node = {}
 
         # 构建实体节点之间的关系，同时统计实体出现次数
         logger.info("正在构建KG实体节点之间的关系，同时统计实体出现次数")
@@ -379,8 +379,8 @@ class KGManager:
         top_k = global_config.lpmm_knowledge.qa_ent_filter_top_k
         if len(ent_mean_scores) > top_k:
             # 从大到小排序，取后len - k个
-            ent_mean_scores = {k: v for k, v in sorted(ent_mean_scores.items(), key=lambda item: item[1], reverse=True)}
-            for ent_hash, _ in ent_mean_scores.items():
+            ent_mean_scores = dict(sorted(ent_mean_scores.items(), key=lambda item: item[1], reverse=True))
+            for ent_hash in ent_mean_scores.keys():
                 # 删除被淘汰的实体节点权重设置
                 del ent_weights[ent_hash]
         del top_k, ent_mean_scores

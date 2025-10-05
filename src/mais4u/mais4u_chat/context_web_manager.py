@@ -284,13 +284,13 @@ class ContextWebManager:
         let ws;
         let reconnectInterval;
         let currentMessages = []; // 存储当前显示的消息
-        
+
                  function connectWebSocket() {
              console.log('正在连接WebSocket...');
              ws = new WebSocket('ws://localhost:"""
             + str(self.port)
             + """/ws');
-             
+
              ws.onopen = function() {
                  console.log('WebSocket连接已建立');
                  if (reconnectInterval) {
@@ -298,7 +298,7 @@ class ContextWebManager:
                      reconnectInterval = null;
                  }
              };
-             
+
              ws.onmessage = function(event) {
                  console.log('收到WebSocket消息:', event.data);
                  try {
@@ -308,65 +308,65 @@ class ContextWebManager:
                      console.error('解析消息失败:', e, event.data);
                  }
              };
-             
+
              ws.onclose = function(event) {
                  console.log('WebSocket连接关闭:', event.code, event.reason);
-                 
+
                  if (!reconnectInterval) {
                      reconnectInterval = setInterval(connectWebSocket, 3000);
                  }
              };
-             
+
              ws.onerror = function(error) {
                  console.error('WebSocket错误:', error);
              };
          }
-        
+
                  function updateMessages(contexts) {
              const messagesDiv = document.getElementById('messages');
-             
+
              if (!contexts || contexts.length === 0) {
                  messagesDiv.innerHTML = '<div class="no-messages">暂无消息</div>';
                  currentMessages = [];
                  return;
              }
-             
+
              // 如果是第一次加载或者消息完全不同，进行完全重新渲染
              if (currentMessages.length === 0) {
                  console.log('首次加载消息，数量:', contexts.length);
                  messagesDiv.innerHTML = '';
-                 
+
                  contexts.forEach(function(msg) {
                      const messageDiv = createMessageElement(msg);
                      messagesDiv.appendChild(messageDiv);
                  });
-                 
+
                  currentMessages = [...contexts];
                  window.scrollTo(0, document.body.scrollHeight);
                  return;
              }
-             
+
              // 检测新消息 - 使用更可靠的方法
              const newMessages = findNewMessages(contexts, currentMessages);
-             
+
              if (newMessages.length > 0) {
                  console.log('添加新消息，数量:', newMessages.length);
-                 
+
                  // 先检查是否需要移除老消息（保持DOM清洁）
                  const maxDisplayMessages = 15; // 比服务器端稍多一些，确保流畅性
                  const currentMessageElements = messagesDiv.querySelectorAll('.message');
                  const willExceedLimit = currentMessageElements.length + newMessages.length > maxDisplayMessages;
-                 
+
                  if (willExceedLimit) {
                      const removeCount = (currentMessageElements.length + newMessages.length) - maxDisplayMessages;
                      console.log('需要移除老消息数量:', removeCount);
-                     
+
                      for (let i = 0; i < removeCount && i < currentMessageElements.length; i++) {
                          const oldMessage = currentMessageElements[i];
                          oldMessage.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
                          oldMessage.style.opacity = '0';
                          oldMessage.style.transform = 'translateY(-20px)';
-                         
+
                          setTimeout(() => {
                              if (oldMessage.parentNode) {
                                  oldMessage.parentNode.removeChild(oldMessage);
@@ -374,21 +374,21 @@ class ContextWebManager:
                          }, 300);
                      }
                  }
-                 
+
                  // 添加新消息
                  newMessages.forEach(function(msg) {
                      const messageDiv = createMessageElement(msg, true); // true表示是新消息
                      messagesDiv.appendChild(messageDiv);
-                     
+
                      // 移除动画类，避免重复动画
                      setTimeout(() => {
                          messageDiv.classList.remove('new-message');
                      }, 600);
                  });
-                 
+
                  // 更新当前消息列表
                  currentMessages = [...contexts];
-                 
+
                  // 平滑滚动到底部
                  setTimeout(() => {
                      window.scrollTo({
@@ -398,28 +398,28 @@ class ContextWebManager:
                  }, 100);
              }
          }
-         
+
          function findNewMessages(contexts, currentMessages) {
              // 如果当前消息为空，所有消息都是新的
              if (currentMessages.length === 0) {
                  return contexts;
              }
-             
+
              // 找到最后一条当前消息在新消息列表中的位置
              const lastCurrentMsg = currentMessages[currentMessages.length - 1];
              let lastIndex = -1;
-             
+
              // 从后往前找，因为新消息通常在末尾
              for (let i = contexts.length - 1; i >= 0; i--) {
                  const msg = contexts[i];
-                 if (msg.user_id === lastCurrentMsg.user_id && 
-                     msg.content === lastCurrentMsg.content && 
+                 if (msg.user_id === lastCurrentMsg.user_id &&
+                     msg.content === lastCurrentMsg.content &&
                      msg.timestamp === lastCurrentMsg.timestamp) {
                      lastIndex = i;
                      break;
                  }
              }
-             
+
              // 如果找到了，返回之后的消息；否则返回所有消息（可能是完全刷新）
              if (lastIndex >= 0) {
                  return contexts.slice(lastIndex + 1);
@@ -428,22 +428,22 @@ class ContextWebManager:
                  return contexts.slice(Math.max(0, contexts.length - (currentMessages.length + 1)));
              }
          }
-         
+
          function createMessageElement(msg, isNew = false) {
              const messageDiv = document.createElement('div');
              let className = 'message';
-             
+
              // 根据消息类型添加对应的CSS类
              if (msg.is_gift) {
                  className += ' gift';
              } else if (msg.is_superchat) {
                  className += ' superchat';
              }
-             
+
              if (isNew) {
                  className += ' new-message';
              }
-             
+
              messageDiv.className = className;
              messageDiv.innerHTML = `
                  <div class="message-line">
@@ -452,13 +452,13 @@ class ContextWebManager:
              `;
              return messageDiv;
          }
-         
+
          function escapeHtml(text) {
              const div = document.createElement('div');
              div.textContent = text;
              return div.innerHTML;
          }
-        
+
         // 初始加载数据
         fetch('/api/contexts')
             .then(response => response.json())
@@ -467,7 +467,7 @@ class ContextWebManager:
                 updateMessages(data.contexts);
             })
             .catch(err => console.error('加载初始数据失败:', err));
-        
+
         // 连接WebSocket
         connectWebSocket();
     </script>
@@ -503,7 +503,7 @@ class ContextWebManager:
     async def get_contexts_handler(self, request):
         """获取上下文API"""
         all_context_msgs = []
-        for _chat_id, contexts in self.contexts.items():
+        for contexts in self.contexts.values():
             all_context_msgs.extend(list(contexts))
 
         # 按时间排序，最新的在最后
@@ -555,7 +555,7 @@ class ContextWebManager:
 </head>
 <body>
     <h1>上下文网页管理器调试信息</h1>
-    
+
     <div class="section">
         <h2>服务器状态</h2>
         <p>状态: {debug_info["server_status"]}</p>
@@ -563,19 +563,19 @@ class ContextWebManager:
         <p>聊天总数: {debug_info["total_chats"]}</p>
         <p>消息总数: {debug_info["total_messages"]}</p>
     </div>
-    
+
     <div class="section">
         <h2>聊天详情</h2>
         {chats_html}
     </div>
-    
+
     <div class="section">
         <h2>操作</h2>
         <button onclick="location.reload()">刷新页面</button>
         <button onclick="window.location.href='/'">返回主页</button>
         <button onclick="window.location.href='/api/contexts'">查看API数据</button>
     </div>
-    
+
     <script>
         console.log('调试信息:', {orjson.dumps(debug_info, option=orjson.OPT_INDENT_2).decode("utf-8")});
         setTimeout(() => location.reload(), 5000); // 5秒自动刷新
@@ -617,7 +617,7 @@ class ContextWebManager:
     async def send_contexts_to_websocket(self, ws: web.WebSocketResponse):
         """向单个WebSocket发送上下文数据"""
         all_context_msgs = []
-        for _chat_id, contexts in self.contexts.items():
+        for contexts in self.contexts.values():
             all_context_msgs.extend(list(contexts))
 
         # 按时间排序，最新的在最后
@@ -636,7 +636,7 @@ class ContextWebManager:
             return
 
         all_context_msgs = []
-        for _chat_id, contexts in self.contexts.items():
+        for contexts in self.contexts.values():
             all_context_msgs.extend(list(contexts))
 
         # 按时间排序，最新的在最后

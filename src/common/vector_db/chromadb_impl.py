@@ -24,7 +24,7 @@ class ChromaDBImpl(VectorDBBase):
         if not cls._instance:
             with cls._lock:
                 if not cls._instance:
-                    cls._instance = super(ChromaDBImpl, cls).__new__(cls)
+                    cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self, path: str = "data/chroma_db", **kwargs: Any):

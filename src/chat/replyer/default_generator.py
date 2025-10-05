@@ -553,7 +553,7 @@ class DefaultReplyer:
                         or user_info_dict.get("alias_names")
                         or user_info_dict.get("alias")
                     )
-                    if isinstance(alias_values, (list, tuple, set)):
+                    if isinstance(alias_values, list | tuple | set):
                         for alias in alias_values:
                             if isinstance(alias, str) and alias.strip():
                                 stripped = alias.strip()
@@ -1504,22 +1504,21 @@ class DefaultReplyer:
             reply_target_block = ""
 
         if is_group_chat:
-            chat_target_1 = await global_prompt_manager.get_prompt_async("chat_target_group1")
-            chat_target_2 = await global_prompt_manager.get_prompt_async("chat_target_group2")
+            await global_prompt_manager.get_prompt_async("chat_target_group1")
+            await global_prompt_manager.get_prompt_async("chat_target_group2")
         else:
             chat_target_name = "对方"
             if self.chat_target_info:
                 chat_target_name = (
                     self.chat_target_info.get("person_name") or self.chat_target_info.get("user_nickname") or "对方"
                 )
-            chat_target_1 = await global_prompt_manager.format_prompt(
+            await global_prompt_manager.format_prompt(
                 "chat_target_private1", sender_name=chat_target_name
             )
-            chat_target_2 = await global_prompt_manager.format_prompt(
+            await global_prompt_manager.format_prompt(
                 "chat_target_private2", sender_name=chat_target_name
             )
 
-        template_name = "default_expressor_prompt"
 
         # 使用新的统一Prompt系统 - Expressor模式，创建PromptParameters
         prompt_parameters = PromptParameters(
@@ -1781,7 +1780,7 @@ class DefaultReplyer:
                 alias_values = (
                     user_info_dict.get("aliases") or user_info_dict.get("alias_names") or user_info_dict.get("alias")
                 )
-                if isinstance(alias_values, (list, tuple, set)):
+                if isinstance(alias_values, list | tuple | set):
                     for alias in alias_values:
                         if isinstance(alias, str) and alias.strip():
                             stripped = alias.strip()

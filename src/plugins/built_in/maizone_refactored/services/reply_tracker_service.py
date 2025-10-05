@@ -51,10 +51,10 @@ class ReplyTrackerService:
                 return False
             for comment_id, timestamp in comments.items():
                 # 确保comment_id是字符串格式，如果是数字则转换为字符串
-                if not isinstance(comment_id, (str, int)):
+                if not isinstance(comment_id, str | int):
                     logger.error(f"无效的评论ID格式: {comment_id}")
                     return False
-                if not isinstance(timestamp, (int, float)):
+                if not isinstance(timestamp, int | float):
                     logger.error(f"无效的时间戳格式: {timestamp}")
                     return False
         return True

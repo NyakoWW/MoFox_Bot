@@ -38,7 +38,7 @@ class BilibiliTool(BaseTool):
         ),
     ]
 
-    def __init__(self, plugin_config: dict = None):
+    def __init__(self, plugin_config: dict | None = None):
         super().__init__(plugin_config)
         self.analyzer = get_bilibili_analyzer()
 
@@ -88,7 +88,7 @@ class BilibiliTool(BaseTool):
             logger.error(error_msg)
             return {"name": self.name, "content": error_msg}
 
-    def _build_watch_prompt(self, interest_focus: str = None) -> str:
+    def _build_watch_prompt(self, interest_focus: str | None = None) -> str:
         """构建个性化的观看提示词"""
         base_prompt = """请以一个真实哔哩哔哩用户的视角来观看用户分享给我的这个视频。用户特意分享了这个视频给我，我需要认真观看并给出真实的反馈。
 
@@ -105,7 +105,7 @@ class BilibiliTool(BaseTool):
 
         return base_prompt
 
-    def _format_watch_experience(self, video_info: dict, ai_analysis: str, interest_focus: str = None) -> str:
+    def _format_watch_experience(self, video_info: dict, ai_analysis: str, interest_focus: str | None = None) -> str:
         """格式化观看体验报告"""
 
         # 根据播放量生成热度评价

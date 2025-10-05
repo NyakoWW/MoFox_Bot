@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING, Any
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.mood.mood_manager import mood_manager
+from src.plugin_system.base.component_types import ChatMode
 from src.plugins.built_in.affinity_flow_chatter.plan_executor import ChatterPlanExecutor
 from src.plugins.built_in.affinity_flow_chatter.plan_filter import ChatterPlanFilter
 from src.plugins.built_in.affinity_flow_chatter.plan_generator import ChatterPlanGenerator
-from src.plugin_system.base.component_types import ChatMode
 
 if TYPE_CHECKING:
     from src.chat.planner_actions.action_manager import ChatterActionManager
@@ -105,7 +105,6 @@ class ChatterActionPlanner:
             reply_not_available = True
             interest_updates: list[dict[str, Any]] = []
             aggregate_should_act = False
-            aggregate_should_reply = False
 
             if unread_messages:
                 # 直接使用消息中已计算的标志，无需重复计算兴趣值
@@ -126,7 +125,6 @@ class ChatterActionPlanner:
                         )
 
                         if message_should_reply:
-                            aggregate_should_reply = True
                             aggregate_should_act = True
                             reply_not_available = False
                             break

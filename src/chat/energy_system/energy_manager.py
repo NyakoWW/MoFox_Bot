@@ -94,7 +94,7 @@ class InterestEnergyCalculator(EnergyCalculator):
 
         for msg in messages:
             interest_value = getattr(msg, "interest_value", None)
-            if isinstance(interest_value, (int, float)):
+            if isinstance(interest_value, int | float):
                 if 0.0 <= interest_value <= 1.0:
                     total_interest += interest_value
                     valid_messages += 1
@@ -312,7 +312,7 @@ class EnergyManager:
                 weight = calculator.get_weight()
 
                 # 确保 score 是 float 类型
-                if not isinstance(score, (int, float)):
+                if not isinstance(score, int | float):
                     logger.warning(f"计算器 {calculator.__class__.__name__} 返回了非数值类型: {type(score)}，跳过此组件")
                     continue
 

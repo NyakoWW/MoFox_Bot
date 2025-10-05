@@ -717,7 +717,6 @@ def assign_message_ids(messages: list[Any]) -> list[dict[str, Any]]:
         包含 {'id': str, 'message': any} 格式的字典列表
     """
     result = []
-    used_ids = set()
     for i, message in enumerate(messages):
         # 使用简单的索引作为ID
         message_id = f"m{i + 1}"

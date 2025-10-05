@@ -416,7 +416,7 @@ class ChatterActionManager:
                 if "reply" in available_actions:
                     fallback_action = "reply"
                 elif available_actions:
-                    fallback_action = list(available_actions.keys())[0]
+                    fallback_action = next(iter(available_actions.keys()))
 
                 if fallback_action and fallback_action != action:
                     logger.info(f"{self.log_prefix} 使用回退动作: {fallback_action}")
@@ -547,7 +547,7 @@ class ChatterActionManager:
         """
         current_time = time.time()
         # 计算新消息数量
-        new_message_count = await message_api.count_new_messages(
+        await message_api.count_new_messages(
             chat_id=chat_stream.stream_id, start_time=thinking_start_time, end_time=current_time
         )
 
@@ -594,7 +594,7 @@ class ChatterActionManager:
                 first_replied = True
             else:
                 # 发送后续回复
-                sent_message = await send_api.text_to_stream(
+                await send_api.text_to_stream(
                     text=data,
                     stream_id=chat_stream.stream_id,
                     reply_to_message=None,

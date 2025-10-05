@@ -68,7 +68,7 @@ class LogIndex:
                         text_indices.add(i)
             candidate_indices &= text_indices
 
-        self.filtered_indices = sorted(list(candidate_indices))
+        self.filtered_indices = sorted(candidate_indices)
         return self.filtered_indices
 
     def get_filtered_count(self):
@@ -211,7 +211,7 @@ class LogFormatter:
         extras = []
         for key, value in log_entry.items():
             if key not in ("timestamp", "level", "logger_name", "event"):
-                if isinstance(value, (dict, list)):
+                if isinstance(value, dict | list):
                     try:
                         value_str = orjson.dumps(value).decode("utf-8")
                     except (TypeError, ValueError):

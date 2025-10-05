@@ -144,9 +144,9 @@ class MessageManager:
         self,
         stream_id: str,
         message_id: str,
-        interest_value: float = None,
-        actions: list = None,
-        should_reply: bool = None,
+        interest_value: float | None = None,
+        actions: list | None = None,
+        should_reply: bool | None = None,
     ):
         """更新消息信息"""
         try:
