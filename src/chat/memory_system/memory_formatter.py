@@ -26,7 +26,7 @@ def _format_timestamp(ts: Any) -> str:
     try:
         if ts in (None, ""):
             return ""
-        if isinstance(ts, (int, float)) and ts > 0:
+        if isinstance(ts, int | float) and ts > 0:
             return time.strftime("%Y-%m-%d %H:%M", time.localtime(float(ts)))
         return str(ts)
     except Exception:

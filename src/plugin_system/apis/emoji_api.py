@@ -240,7 +240,7 @@ def get_emotions() -> list[str]:
             if not emoji_obj.is_deleted and emoji_obj.emotion:
                 emotions.update(emoji_obj.emotion)
 
-        return sorted(list(emotions))
+        return sorted(emotions)
     except Exception as e:
         logger.error(f"[EmojiAPI] 获取情感标签失败: {e}")
         return []

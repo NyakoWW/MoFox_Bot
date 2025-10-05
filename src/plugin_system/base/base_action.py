@@ -525,7 +525,7 @@ class BaseAction(ABC):
         selected_action = self.action_data.get("selected_action")
         if not selected_action:
             # 第一步：展示可用的子Action
-            available_actions = [sub_action[0] for sub_action in self.sub_actions]
+            [sub_action[0] for sub_action in self.sub_actions]
             description = self.step_one_description or f"{self.action_name}支持以下操作"
 
             actions_list = "\n".join([f"- {action}: {desc}" for action, desc, _ in self.sub_actions])

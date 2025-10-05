@@ -226,7 +226,7 @@ class ChatterManager:
         active_tasks = self.get_active_processing_tasks()
         cancelled_count = 0
 
-        for stream_id, task in active_tasks.items():
+        for stream_id in active_tasks.keys():
             if self.cancel_processing_task(stream_id):
                 cancelled_count += 1
 

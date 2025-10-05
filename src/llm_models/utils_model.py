@@ -228,7 +228,7 @@ class _ModelSelector:
         penalty_increment = self.DEFAULT_PENALTY_INCREMENT
 
         # 对严重错误施加更高的惩罚，以便快速将问题模型移出候选池
-        if isinstance(e, (NetworkConnectionError, ReqAbortException)):
+        if isinstance(e, NetworkConnectionError | ReqAbortException):
             # 网络连接错误或请求被中断，通常是基础设施问题，应重罚
             penalty_increment = self.CRITICAL_PENALTY_MULTIPLIER
             logger.warning(
@@ -525,7 +525,7 @@ class _RequestExecutor:
         model_name = model_info.name
         retry_interval = api_provider.retry_interval
 
-        if isinstance(e, (NetworkConnectionError, ReqAbortException)):
+        if isinstance(e, NetworkConnectionError | ReqAbortException):
             return self._check_retry(remain_try, retry_interval, "连接异常", model_name)
         elif isinstance(e, RespNotOkException):
             return self._handle_resp_not_ok(e, model_info, api_provider, remain_try, messages_info)

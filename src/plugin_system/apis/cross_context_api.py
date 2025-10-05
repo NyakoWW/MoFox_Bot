@@ -13,7 +13,6 @@ from src.chat.utils.chat_message_builder import (
 )
 from src.common.logger import get_logger
 from src.config.config import global_config
-from src.plugin_system.apis import config_api
 
 logger = get_logger("cross_context_api")
 

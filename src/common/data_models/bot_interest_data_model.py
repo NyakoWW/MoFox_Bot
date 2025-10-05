@@ -96,7 +96,7 @@ class InterestMatchResult(BaseDataModel):
     confidence: float = 0.0  # 匹配置信度 (0.0-1.0)
     matched_keywords: list[str] = field(default_factory=list)
 
-    def add_match(self, tag_name: str, score: float, keywords: list[str] = None):
+    def add_match(self, tag_name: str, score: float, keywords: list[str] | None = None):
         """添加匹配结果"""
         self.matched_tags.append(tag_name)
         self.match_scores[tag_name] = score

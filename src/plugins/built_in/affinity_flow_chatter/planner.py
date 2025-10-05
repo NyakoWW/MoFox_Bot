@@ -105,7 +105,6 @@ class ChatterActionPlanner:
             reply_not_available = True
             interest_updates: list[dict[str, Any]] = []
             aggregate_should_act = False
-            aggregate_should_reply = False
 
             if unread_messages:
                 # 直接使用消息中已计算的标志，无需重复计算兴趣值
@@ -126,7 +125,6 @@ class ChatterActionPlanner:
                         )
 
                         if message_should_reply:
-                            aggregate_should_reply = True
                             aggregate_should_act = True
                             reply_not_available = False
                             break

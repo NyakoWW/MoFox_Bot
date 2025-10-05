@@ -550,7 +550,7 @@ def _build_display_text(subjects: Iterable[str], predicate: str, obj: str | dict
     if isinstance(obj, dict):
         object_candidates = []
         for key, value in obj.items():
-            if isinstance(value, (str, int, float)):
+            if isinstance(value, str | int | float):
                 object_candidates.append(f"{key}:{value}")
             elif isinstance(value, list):
                 compact = "、".join(str(item) for item in value[:3])

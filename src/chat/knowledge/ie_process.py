@@ -33,7 +33,7 @@ def _extract_json_from_text(text: str):
         if isinstance(parsed_json, dict):
             # 如果字典只有一个键，并且值是列表，返回那个列表
             if len(parsed_json) == 1:
-                value = list(parsed_json.values())[0]
+                value = next(iter(parsed_json.values()))
                 if isinstance(value, list):
                     return value
             return parsed_json

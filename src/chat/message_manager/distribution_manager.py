@@ -516,7 +516,7 @@ class StreamLoopManager:
 
     async def _wait_for_task_cancel(self, stream_id: str, task: asyncio.Task) -> None:
         """等待任务取消完成，带有超时控制
-        
+
         Args:
             stream_id: 流ID
             task: 要等待取消的任务
@@ -533,12 +533,12 @@ class StreamLoopManager:
 
     async def _force_dispatch_stream(self, stream_id: str) -> None:
         """强制分发流处理
-        
+
         当流的未读消息超过阈值时，强制触发分发处理
         这个方法主要用于突破并发限制时的紧急处理
-        
+
         注意：此方法目前未被使用，相关功能已集成到 start_stream_loop 方法中
-        
+
         Args:
             stream_id: 流ID
         """

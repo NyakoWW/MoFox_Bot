@@ -154,7 +154,7 @@ def interactive_menu() -> None:
     total = len(expressions)
 
     # Get unique chat_ids and their names
-    chat_ids = list(set(expr.chat_id for expr in expressions))
+    chat_ids = list({expr.chat_id for expr in expressions})
     chat_info = [(chat_id, get_chat_name(chat_id)) for chat_id in chat_ids]
     chat_info.sort(key=lambda x: x[1])  # Sort by chat name
 

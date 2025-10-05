@@ -138,7 +138,7 @@ class ToolExecutor:
         pending_step_two = getattr(self, "_pending_step_two_tools", {})
         if pending_step_two:
             # 添加第二步工具定义
-            for tool_name, step_two_def in pending_step_two.items():
+            for step_two_def in pending_step_two.values():
                 tool_definitions.append(step_two_def)
 
         return tool_definitions
@@ -192,7 +192,7 @@ class ToolExecutor:
                         "timestamp": time.time(),
                     }
                     content = tool_info["content"]
-                    if not isinstance(content, (str, list, tuple)):
+                    if not isinstance(content, str | list | tuple):
                         tool_info["content"] = str(content)
 
                     tool_results.append(tool_info)

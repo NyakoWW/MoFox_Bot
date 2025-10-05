@@ -144,8 +144,8 @@ class ChatConfig(ValidatedConfigBase):
 class MessageReceiveConfig(ValidatedConfigBase):
     """消息接收配置类"""
 
-    ban_words: list[str] = Field(default_factory=lambda: list(), description="禁用词列表")
-    ban_msgs_regex: list[str] = Field(default_factory=lambda: list(), description="禁用消息正则列表")
+    ban_words: list[str] = Field(default_factory=lambda: [], description="禁用词列表")
+    ban_msgs_regex: list[str] = Field(default_factory=lambda: [], description="禁用消息正则列表")
 
 
 class NormalChatConfig(ValidatedConfigBase):

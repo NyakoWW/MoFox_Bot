@@ -96,16 +96,16 @@ def compare_dicts(new, old, path=None, logs=None):
             continue
         if key not in old:
             comment = get_key_comment(new, key)
-            logs.append(f"新增: {'.'.join(path + [str(key)])}  注释: {comment or '无'}")
-        elif isinstance(new[key], (dict, Table)) and isinstance(old.get(key), (dict, Table)):
-            compare_dicts(new[key], old[key], path + [str(key)], logs)
+            logs.append(f"新增: {'.'.join([*path, str(key)])}  注释: {comment or '无'}")
+        elif isinstance(new[key], dict | Table) and isinstance(old.get(key), dict | Table):
+            compare_dicts(new[key], old[key], [*path, str(key)], logs)
     # 删减项
     for key in old:
         if key == "version":
             continue
         if key not in new:
             comment = get_key_comment(old, key)
-            logs.append(f"删减: {'.'.join(path + [str(key)])}  注释: {comment or '无'}")
+            logs.append(f"删减: {'.'.join([*path, str(key)])}  注释: {comment or '无'}")
     return logs
 
 
@@ -138,11 +138,11 @@ def compare_default_values(new, old, path=None, logs=None, changes=None):
         if key == "version":
             continue
         if key in old:
-            if isinstance(new[key], (dict, Table)) and isinstance(old[key], (dict, Table)):
-                compare_default_values(new[key], old[key], path + [str(key)], logs, changes)
+            if isinstance(new[key], dict | Table) and isinstance(old[key], dict | Table):
+                compare_default_values(new[key], old[key], [*path, str(key)], logs, changes)
             elif new[key] != old[key]:
-                logs.append(f"默认值变化: {'.'.join(path + [str(key)])}  旧默认值: {old[key]}  新默认值: {new[key]}")
-                changes.append((path + [str(key)], old[key], new[key]))
+                logs.append(f"默认值变化: {'.'.join([*path, str(key)])}  旧默认值: {old[key]}  新默认值: {new[key]}")
+                changes.append(([*path, str(key)], old[key], new[key]))
     return logs, changes
 
 
@@ -172,7 +172,7 @@ def _remove_obsolete_keys(target: TOMLDocument | dict | Table, reference: TOMLDo
     for key in list(target.keys()):
         if key not in reference:
             del target[key]
-        elif isinstance(target.get(key), (dict, Table)) and isinstance(reference.get(key), (dict, Table)):
+        elif isinstance(target.get(key), dict | Table) and isinstance(reference.get(key), dict | Table):
             _remove_obsolete_keys(target[key], reference[key])
 
 
@@ -190,7 +190,7 @@ def _update_dict(target: TOMLDocument | dict | Table, source: TOMLDocument | dic
         if key in target:
             # 键已存在，更新值
             target_value = target[key]
-            if isinstance(value, dict) and isinstance(target_value, (dict, Table)):
+            if isinstance(value, dict) and isinstance(target_value, dict | Table):
                 _update_dict(target_value, value)
             else:
                 try:

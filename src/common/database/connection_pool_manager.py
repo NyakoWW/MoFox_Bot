@@ -187,7 +187,7 @@ class ConnectionPoolManager:
 
     async def _cleanup_expired_connections_locked(self):
         """清理过期连接（需要在锁内调用）"""
-        current_time = time.time()
+        time.time()
         expired_connections = []
 
         for connection_info in list(self._connections):

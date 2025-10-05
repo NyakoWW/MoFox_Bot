@@ -168,7 +168,7 @@ class ManagementCommand(PlusCommand):
 
 ⚙️ 插件控制：
 • `/pm plugin load <插件名>` - 加载指定插件
-• `/pm plugin unload <插件名>` - 卸载指定插件  
+• `/pm plugin unload <插件名>` - 卸载指定插件
 • `/pm plugin reload <插件名>` - 重新加载指定插件
 • `/pm plugin force_reload <插件名>` - 强制重载指定插件（深度清理）
 • `/pm plugin add_dir <目录路径>` - 添加插件目录

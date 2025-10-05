@@ -733,7 +733,7 @@ class ChatManager:
         try:
             from src.common.database.db_batch_scheduler import batch_update, get_batch_session
 
-            async with get_batch_session() as scheduler:
+            async with get_batch_session():
                 # 使用批量更新
                 result = await batch_update(
                     model_class=ChatStreams,

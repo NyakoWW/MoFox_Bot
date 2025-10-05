@@ -385,7 +385,7 @@ class MemoryBuilder:
                 bot_display = primary_bot_name.strip()
             if bot_display is None:
                 aliases = context.get("bot_aliases")
-                if isinstance(aliases, (list, tuple, set)):
+                if isinstance(aliases, list | tuple | set):
                     for alias in aliases:
                         if isinstance(alias, str) and alias.strip():
                             bot_display = alias.strip()
@@ -512,7 +512,7 @@ class MemoryBuilder:
             return default
 
         # 直接尝试整数转换
-        if isinstance(raw_value, (int, float)):
+        if isinstance(raw_value, int | float):
             int_value = int(raw_value)
             try:
                 return enum_cls(int_value)
@@ -574,7 +574,7 @@ class MemoryBuilder:
                 identifiers.add(value.strip().lower())
 
         aliases = context.get("bot_aliases")
-        if isinstance(aliases, (list, tuple, set)):
+        if isinstance(aliases, list | tuple | set):
             for alias in aliases:
                 if isinstance(alias, str) and alias.strip():
                     identifiers.add(alias.strip().lower())
@@ -627,7 +627,7 @@ class MemoryBuilder:
 
             for key in candidate_keys:
                 value = context.get(key)
-                if isinstance(value, (list, tuple, set)):
+                if isinstance(value, list | tuple | set):
                     for item in value:
                         if isinstance(item, str):
                             cleaned = self._clean_subject_text(item)
@@ -700,7 +700,7 @@ class MemoryBuilder:
         if value is None:
             return ""
 
-        if isinstance(value, (list, dict)):
+        if isinstance(value, list | dict):
             try:
                 value = orjson.dumps(value, ensure_ascii=False).decode("utf-8")
             except Exception:

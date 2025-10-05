@@ -29,7 +29,7 @@ message_queue = asyncio.Queue()
 
 def get_classes_in_module(module):
     classes = []
-    for name, member in inspect.getmembers(module):
+    for _name, member in inspect.getmembers(module):
         if inspect.isclass(member):
             classes.append(member)
     return classes

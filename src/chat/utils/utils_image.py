@@ -209,7 +209,7 @@ class ImageManager:
             emotion_prompt = f"""
             请你基于这个表情包的详细描述，提取出最核心的情感含义，用1-2个词概括。
             详细描述：'{detailed_description}'
-            
+
             要求：
             1. 只输出1-2个最核心的情感词汇
             2. 从互联网梗、meme的角度理解

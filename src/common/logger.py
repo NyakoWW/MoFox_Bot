@@ -915,7 +915,7 @@ class ModuleColoredConsoleRenderer:
         for key, value in event_dict.items():
             if key not in ("timestamp", "level", "logger_name", "event") and key not in ("color", "alias"):
                 # 确保值也转换为字符串
-                if isinstance(value, (dict, list)):
+                if isinstance(value, dict | list):
                     try:
                         value_str = orjson.dumps(value).decode("utf-8")
                     except (TypeError, ValueError):
@@ -1213,7 +1213,7 @@ def shutdown_logging():
 
     # 关闭所有其他logger的handler
     logger_dict = logging.getLogger().manager.loggerDict
-    for _name, logger_obj in logger_dict.items():
+    for logger_obj in logger_dict.values():
         if isinstance(logger_obj, logging.Logger):
             for handler in logger_obj.handlers[:]:
                 if hasattr(handler, "close"):

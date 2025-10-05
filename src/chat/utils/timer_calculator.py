@@ -51,7 +51,7 @@ print(a)         # 直接输出当前 perf_counter 值
 - storage：计时器结果存储字典，默认为 None
 - auto_unit：自动选择单位（毫秒或秒），默认为 True（自动根据时间切换毫秒或秒）
 - do_type_check：是否进行类型检查，默认为 False（不进行类型检查）
-    
+
 属性：human_readable
 
 自定义错误：TimerTypeError

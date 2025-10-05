@@ -437,7 +437,7 @@ async def main_async():
     exit_code = 0
     main_task = None
 
-    async with create_event_loop_context() as loop:
+    async with create_event_loop_context():
         try:
             # 确保环境文件存在
             ConfigManager.ensure_env_file()

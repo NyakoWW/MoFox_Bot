@@ -495,7 +495,7 @@ class EmbeddingStore:
         """重新构建Faiss索引，以余弦相似度为度量"""
         # 获取所有的embedding
         array = []
-        self.idx2hash = dict()
+        self.idx2hash = {}
         for key in self.store:
             array.append(self.store[key].embedding)
             self.idx2hash[str(len(array) - 1)] = key

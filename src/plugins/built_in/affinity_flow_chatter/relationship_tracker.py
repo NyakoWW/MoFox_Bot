@@ -242,7 +242,7 @@ class ChatterRelationshipTracker:
             "last_update_time": self.last_update_time,
         }
 
-    def update_config(self, max_tracking_users: int = None, update_interval_minutes: int = None):
+    def update_config(self, max_tracking_users: int | None = None, update_interval_minutes: int | None = None):
         """更新配置"""
         if max_tracking_users is not None:
             self.max_tracking_users = max_tracking_users

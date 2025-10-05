@@ -33,38 +33,38 @@ from .memory_system import MemorySystem, MemorySystemConfig, get_memory_system, 
 from .vector_memory_storage_v2 import VectorMemoryStorage, VectorStorageConfig, get_vector_memory_storage
 
 __all__ = [
+    "ConfidenceLevel",
+    "ContentStructure",
+    "ForgettingConfig",
+    "ImportanceLevel",
+    "Memory",  # 兼容性别名
+    # 激活器
+    "MemoryActivator",
     # 核心数据结构
     "MemoryChunk",
-    "Memory",  # 兼容性别名
-    "MemoryMetadata",
-    "ContentStructure",
-    "MemoryType",
-    "ImportanceLevel",
-    "ConfidenceLevel",
-    "create_memory_chunk",
     # 遗忘引擎
     "MemoryForgettingEngine",
-    "ForgettingConfig",
-    "get_memory_forgetting_engine",
-    # Vector DB存储
-    "VectorMemoryStorage",
-    "VectorStorageConfig",
-    "get_vector_memory_storage",
+    # 记忆管理器
+    "MemoryManager",
+    "MemoryMetadata",
+    "MemoryResult",
     # 记忆系统
     "MemorySystem",
     "MemorySystemConfig",
-    "get_memory_system",
-    "initialize_memory_system",
-    # 记忆管理器
-    "MemoryManager",
-    "MemoryResult",
-    "memory_manager",
-    # 激活器
-    "MemoryActivator",
-    "memory_activator",
+    "MemoryType",
+    # Vector DB存储
+    "VectorMemoryStorage",
+    "VectorStorageConfig",
+    "create_memory_chunk",
     "enhanced_memory_activator",  # 兼容性别名
     # 格式化工具
     "format_memories_bracket_style",
+    "get_memory_forgetting_engine",
+    "get_memory_system",
+    "get_vector_memory_storage",
+    "initialize_memory_system",
+    "memory_activator",
+    "memory_manager",
 ]
 
 # 版本信息
