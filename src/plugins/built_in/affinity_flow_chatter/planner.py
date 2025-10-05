@@ -13,6 +13,7 @@ from src.mood.mood_manager import mood_manager
 from src.plugins.built_in.affinity_flow_chatter.plan_executor import ChatterPlanExecutor
 from src.plugins.built_in.affinity_flow_chatter.plan_filter import ChatterPlanFilter
 from src.plugins.built_in.affinity_flow_chatter.plan_generator import ChatterPlanGenerator
+from src.plugin_system.base.component_types import ChatMode
 
 if TYPE_CHECKING:
     from src.chat.planner_actions.action_manager import ChatterActionManager
@@ -60,7 +61,7 @@ class ChatterActionPlanner:
             "other_actions_executed": 0,
         }
 
-    async def plan(self, context: "StreamContext" = None) -> tuple[list[dict], dict | None]:
+    async def plan(self, context: "StreamContext | None" = None) -> tuple[list[dict[str, Any]], Any | None]:
         """
         执行完整的增强版规划流程。
 
@@ -82,7 +83,7 @@ class ChatterActionPlanner:
             self.planner_stats["failed_plans"] += 1
             return [], None
 
-    async def _enhanced_plan_flow(self, context: "StreamContext") -> tuple[list[dict], dict | None]:
+    async def _enhanced_plan_flow(self, context: "StreamContext | None") -> tuple[list[dict[str, Any]], Any | None]:
         """执行增强版规划流程"""
         try:
             # 在规划前，先进行动作修改
@@ -92,38 +93,47 @@ class ChatterActionPlanner:
             await action_modifier.modify_actions()
 
             # 1. 生成初始 Plan
-            initial_plan = await self.generator.generate(context.chat_mode)
+            chat_mode = context.chat_mode if context else ChatMode.NORMAL
+            initial_plan = await self.generator.generate(chat_mode)
 
             # 确保Plan中包含所有当前可用的动作
             initial_plan.available_actions = self.action_manager.get_using_actions()
 
             unread_messages = context.get_unread_messages() if context else []
             # 2. 使用新的兴趣度管理系统进行评分
-            message_interest = 0.0
-            reply_not_available = False
+            max_message_interest = 0.0
+            reply_not_available = True
             interest_updates: list[dict[str, Any]] = []
-            message_should_act = False 
-            message_should_reply = False
+            aggregate_should_act = False
+            aggregate_should_reply = False
 
             if unread_messages:
                 # 直接使用消息中已计算的标志，无需重复计算兴趣值
                 for message in unread_messages:
                     try:
-                        message_interest = getattr(message, "interest_value", 0.3)
+                        raw_interest = getattr(message, "interest_value", 0.3)
+                        if raw_interest is None:
+                            raw_interest = 0.0
+
+                        message_interest = float(raw_interest)
+                        max_message_interest = max(max_message_interest, message_interest)
                         message_should_reply = getattr(message, "should_reply", False)
                         message_should_act = getattr(message, "should_act", False)
-
-                        if not message_should_reply:
-                            reply_not_available = True
-
-                        # 如果should_act为false，强制设为no_action
-                        if not message_should_act:
-                            reply_not_available = True
 
                         logger.debug(
                             f"消息 {message.message_id} 预计算标志: interest={message_interest:.3f}, "
                             f"should_reply={message_should_reply}, should_act={message_should_act}"
                         )
+
+                        if message_should_reply:
+                            aggregate_should_reply = True
+                            aggregate_should_act = True
+                            reply_not_available = False
+                            break
+
+                        if message_should_act:
+                            aggregate_should_act = True
+
 
                     except Exception as e:
                         logger.warning(f"处理消息 {message.message_id} 失败: {e}")
@@ -144,14 +154,18 @@ class ChatterActionPlanner:
 
             # 检查兴趣度是否达到非回复动作阈值
             non_reply_action_interest_threshold = global_config.affinity_flow.non_reply_action_interest_threshold
-            if not message_should_act:
-                logger.info(f"兴趣度 {message_interest:.3f} 低于阈值 {non_reply_action_interest_threshold:.3f}，不执行动作")
+            if not aggregate_should_act:
+                logger.info("所有未读消息低于兴趣度阈值，不执行动作")
                 # 直接返回 no_action
                 from src.common.data_models.info_data_model import ActionPlannerInfo
 
                 no_action = ActionPlannerInfo(
                     action_type="no_action",
-                    reasoning=f"兴趣度评分 {message_interest:.3f} 未达阈值 {non_reply_action_interest_threshold:.3f}",
+                    reasoning=(
+                        "所有未读消息兴趣度未达阈值 "
+                        f"{non_reply_action_interest_threshold:.3f}"
+                        f"（最高兴趣度 {max_message_interest:.3f}）"
+                    ),
                     action_data={},
                     action_message=None,
                 )
@@ -204,7 +218,7 @@ class ChatterActionPlanner:
         except Exception as e:
             logger.warning(f"批量更新数据库兴趣度失败: {e}")
 
-    def _update_stats_from_execution_result(self, execution_result: dict[str, any]):
+    def _update_stats_from_execution_result(self, execution_result: dict[str, Any]):
         """根据执行结果更新规划器统计"""
         if not execution_result:
             return
@@ -228,7 +242,7 @@ class ChatterActionPlanner:
         self.planner_stats["replies_generated"] += reply_count
         self.planner_stats["other_actions_executed"] += other_count
 
-    def _build_return_result(self, plan: "Plan") -> tuple[list[dict], dict | None]:
+    def _build_return_result(self, plan: "Plan") -> tuple[list[dict[str, Any]], Any | None]:
         """构建返回结果"""
         final_actions = plan.decided_actions or []
         final_target_message = next((act.action_message for act in final_actions if act.action_message), None)
@@ -245,7 +259,7 @@ class ChatterActionPlanner:
 
         return final_actions_dict, final_target_message_dict
 
-    def get_planner_stats(self) -> dict[str, any]:
+    def get_planner_stats(self) -> dict[str, Any]:
         """获取规划器统计"""
         return self.planner_stats.copy()
 
@@ -254,7 +268,7 @@ class ChatterActionPlanner:
         chat_mood = mood_manager.get_mood_by_chat_id(self.chat_id)
         return chat_mood.mood_state
 
-    def get_mood_stats(self) -> dict[str, any]:
+    def get_mood_stats(self) -> dict[str, Any]:
         """获取情绪状态统计"""
         chat_mood = mood_manager.get_mood_by_chat_id(self.chat_id)
         return {

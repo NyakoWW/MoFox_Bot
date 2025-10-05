@@ -33,6 +33,10 @@ class ChatterActionManager:
         self._using_actions = component_registry.get_default_actions()
 
         self.log_prefix: str = "ChatterActionManager"
+        # 批量存储支持
+        self._batch_storage_enabled = False
+        self._pending_actions = []
+        self._current_chat_id = None
 
     # === 执行Action方法 ===
 
@@ -184,16 +188,26 @@ class ChatterActionManager:
                 reason = reasoning or "选择不回复"
                 logger.info(f"{log_prefix} 选择不回复，原因: {reason}")
 
-                # 存储no_reply信息到数据库
-                asyncio.create_task(database_api.store_action_info(
-                    chat_stream=chat_stream,
-                    action_build_into_prompt=False,
-                    action_prompt_display=reason,
-                    action_done=True,
-                    thinking_id=thinking_id,
-                    action_data={"reason": reason},
-                    action_name="no_reply",
-                ))
+                # 存储no_reply信息到数据库（支持批量存储）
+                if self._batch_storage_enabled:
+                    self.add_action_to_batch(
+                        action_name="no_reply",
+                        action_data={"reason": reason},
+                        thinking_id=thinking_id or "",
+                        action_done=True,
+                        action_build_into_prompt=False,
+                        action_prompt_display=reason
+                    )
+                else:
+                    asyncio.create_task(database_api.store_action_info(
+                        chat_stream=chat_stream,
+                        action_build_into_prompt=False,
+                        action_prompt_display=reason,
+                        action_done=True,
+                        thinking_id=thinking_id,
+                        action_data={"reason": reason},
+                        action_name="no_reply",
+                    ))
 
                 # 自动清空所有未读消息
                 asyncio.create_task(self._clear_all_unread_messages(chat_stream.stream_id, "no_reply"))
@@ -474,16 +488,26 @@ class ChatterActionManager:
         person_name = await person_info_manager.get_value(person_id, "person_name")
         action_prompt_display = f"你对{person_name}进行了回复：{reply_text}"
 
-        # 存储动作信息到数据库
-        await database_api.store_action_info(
-            chat_stream=chat_stream,
-            action_build_into_prompt=False,
-            action_prompt_display=action_prompt_display,
-            action_done=True,
-            thinking_id=thinking_id,
-            action_data={"reply_text": reply_text},
-            action_name="reply",
-        )
+        # 存储动作信息到数据库（支持批量存储）
+        if self._batch_storage_enabled:
+            self.add_action_to_batch(
+                action_name="reply",
+                action_data={"reply_text": reply_text},
+                thinking_id=thinking_id or "",
+                action_done=True,
+                action_build_into_prompt=False,
+                action_prompt_display=action_prompt_display
+            )
+        else:
+            await database_api.store_action_info(
+                chat_stream=chat_stream,
+                action_build_into_prompt=False,
+                action_prompt_display=action_prompt_display,
+                action_done=True,
+                thinking_id=thinking_id,
+                action_data={"reply_text": reply_text},
+                action_name="reply",
+            )
 
         # 构建循环信息
         loop_info: dict[str, Any] = {
@@ -579,3 +603,71 @@ class ChatterActionManager:
                 )
 
         return reply_text
+
+    def enable_batch_storage(self, chat_id: str):
+        """启用批量存储模式"""
+        self._batch_storage_enabled = True
+        self._current_chat_id = chat_id
+        self._pending_actions.clear()
+        logger.debug(f"已启用批量存储模式，chat_id: {chat_id}")
+
+    def disable_batch_storage(self):
+        """禁用批量存储模式"""
+        self._batch_storage_enabled = False
+        self._current_chat_id = None
+        logger.debug("已禁用批量存储模式")
+
+    def add_action_to_batch(self, action_name: str, action_data: dict, thinking_id: str = "",
+                           action_done: bool = True, action_build_into_prompt: bool = False,
+                           action_prompt_display: str = ""):
+        """添加动作到批量存储列表"""
+        if not self._batch_storage_enabled:
+            return False
+
+        action_record = {
+            "action_name": action_name,
+            "action_data": action_data,
+            "thinking_id": thinking_id,
+            "action_done": action_done,
+            "action_build_into_prompt": action_build_into_prompt,
+            "action_prompt_display": action_prompt_display,
+            "timestamp": time.time()
+        }
+        self._pending_actions.append(action_record)
+        logger.debug(f"已添加动作到批量存储列表: {action_name} (当前待处理: {len(self._pending_actions)} 个)")
+        return True
+
+    async def flush_batch_storage(self, chat_stream):
+        """批量存储所有待处理的动作记录"""
+        if not self._pending_actions:
+            logger.debug("没有待处理的动作需要批量存储")
+            return
+
+        try:
+            logger.info(f"开始批量存储 {len(self._pending_actions)} 个动作记录")
+
+            # 批量存储所有动作
+            stored_count = 0
+            for action_data in self._pending_actions:
+                try:
+                    result = await database_api.store_action_info(
+                        chat_stream=chat_stream,
+                        action_name=action_data.get("action_name", ""),
+                        action_data=action_data.get("action_data", {}),
+                        action_done=action_data.get("action_done", True),
+                        action_build_into_prompt=action_data.get("action_build_into_prompt", False),
+                        action_prompt_display=action_data.get("action_prompt_display", ""),
+                        thinking_id=action_data.get("thinking_id", "")
+                    )
+                    if result:
+                        stored_count += 1
+                except Exception as e:
+                    logger.error(f"存储单个动作记录失败: {e}")
+
+            logger.info(f"批量存储完成: 成功存储 {stored_count}/{len(self._pending_actions)} 个动作记录")
+
+            # 清空待处理列表
+            self._pending_actions.clear()
+
+        except Exception as e:
+            logger.error(f"批量存储动作记录时发生错误: {e}")

@@ -36,6 +36,9 @@ class DatabaseConfig(ValidatedConfigBase):
     connection_pool_size: int = Field(default=10, ge=1, description="连接池大小")
     connection_timeout: int = Field(default=10, ge=1, description="连接超时时间")
 
+    # 批量动作记录存储配置
+    batch_action_storage_enabled: bool = Field(default=True, description="是否启用批量保存动作记录（开启后将多个动作一次性写入数据库，提升性能）")
+
 
 class BotConfig(ValidatedConfigBase):
     """QQ机器人配置类"""
@@ -683,6 +686,7 @@ class AffinityFlowConfig(ValidatedConfigBase):
     mention_bot_adjustment_threshold: float = Field(default=0.3, description="提及bot后的调整阈值")
     mention_bot_interest_score: float = Field(default=0.6, description="提及bot的兴趣分")
     base_relationship_score: float = Field(default=0.5, description="基础人物关系分")
+
 
 
 class ProactiveThinkingConfig(ValidatedConfigBase):

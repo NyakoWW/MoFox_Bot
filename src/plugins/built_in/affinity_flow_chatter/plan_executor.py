@@ -69,6 +69,13 @@ class ChatterPlanExecutor:
         action_types = [action.action_type for action in plan.decided_actions]
         logger.info(f"选择动作: {', '.join(action_types) if action_types else '无'}")
 
+        # 根据配置决定是否启用批量存储模式
+        if global_config.database.batch_action_storage_enabled:
+            self.action_manager.enable_batch_storage(plan.chat_id)
+            logger.debug("已启用批量存储模式")
+        else:
+            logger.debug("批量存储功能已禁用，使用立即存储模式")
+
         execution_results = []
         reply_actions = []
         other_actions = []
@@ -101,6 +108,9 @@ class ChatterPlanExecutor:
         logger.info(
             f"规划执行完成: 总数={len(plan.decided_actions)}, 成功={successful_count}, 失败={len(execution_results) - successful_count}"
         )
+
+        # 批量存储所有待处理的动作
+        await self._flush_action_manager_batch_storage(plan)
 
         return {
             "executed_count": len(plan.decided_actions),
@@ -395,6 +405,7 @@ class ChatterPlanExecutor:
         # 移除执行时间列表以避免返回过大数据
         stats.pop("execution_times", None)
 
+
         return stats
 
     def reset_stats(self):
@@ -422,3 +433,26 @@ class ChatterPlanExecutor:
             }
             for i, time_val in enumerate(recent_times)
         ]
+
+
+    async def _flush_action_manager_batch_storage(self, plan: Plan):
+        """使用 action_manager 的批量存储功能存储所有待处理的动作"""
+        try:
+            # 通过 chat_id 获取真实的 chat_stream 对象
+            from src.plugin_system.apis.chat_api import get_chat_manager
+            chat_manager = get_chat_manager()
+            chat_stream = chat_manager.get_stream(plan.chat_id)
+
+            if chat_stream:
+                # 调用 action_manager 的批量存储
+                await self.action_manager.flush_batch_storage(chat_stream)
+                logger.info("批量存储完成：通过 action_manager 存储所有动作记录")
+
+            # 禁用批量存储模式
+            self.action_manager.disable_batch_storage()
+
+        except Exception as e:
+            logger.error(f"批量存储动作记录时发生错误: {e}")
+            # 确保在出错时也禁用批量存储模式
+            self.action_manager.disable_batch_storage()
+
