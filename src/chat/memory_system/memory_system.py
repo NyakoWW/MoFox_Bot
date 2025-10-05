@@ -248,7 +248,7 @@ class MemorySystem:
 
             self.forgetting_engine = MemoryForgettingEngine(forgetting_config)
 
-            planner_task_config = getattr(model_config.model_task_config, "utils_small", None)
+            planner_task_config = model_config.model_task_config.utils_small
             planner_model: LLMRequest | None = None
             try:
                 planner_model = LLMRequest(model_set=planner_task_config, request_type="memory.query_planner")
