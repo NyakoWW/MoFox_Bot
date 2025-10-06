@@ -137,7 +137,7 @@ class ReplyTrackerService:
             try:
                 if temp_file.exists():
                     temp_file.unlink()
-            except:
+            except Exception:
                 pass
 
     def _cleanup_old_records(self):
