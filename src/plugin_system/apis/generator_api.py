@@ -59,6 +59,7 @@ async def get_replyer(
         logger.debug(f"[GeneratorAPI] 正在获取回复器，chat_id: {chat_id}, chat_stream: {'有' if chat_stream else '无'}")
         # 动态导入避免循环依赖
         from src.chat.replyer.replyer_manager import replyer_manager
+
         return await replyer_manager.get_replyer(
             chat_stream=chat_stream,
             chat_id=chat_id,
