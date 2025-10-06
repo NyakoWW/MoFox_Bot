@@ -12,7 +12,11 @@ from src.plugin_system.apis.permission_api import permission_api
 from src.plugin_system.apis.plugin_register_api import register_plugin
 from src.plugin_system.base.base_plugin import BasePlugin
 from src.plugin_system.base.command_args import CommandArgs
-from src.plugin_system.base.component_types import ChatType, PlusCommandInfo
+from src.plugin_system.base.component_types import (
+    ChatType,
+    PermissionNodeField,
+    PlusCommandInfo,
+)
 from src.plugin_system.base.config_types import ConfigField
 from src.plugin_system.base.plus_command import PlusCommand
 from src.plugin_system.utils.permission_decorators import require_permission
@@ -33,14 +37,16 @@ class PermissionCommand(PlusCommand):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    async def on_plugin_loaded(self):
-        # 注册权限节点（使用显式前缀，避免再次自动补全）
-        await permission_api.register_permission_node(
-            "plugin.permission.manage", "权限管理：可以授权和撤销其他用户的权限", "permission_manager", False
-        )
-        await permission_api.register_permission_node(
-            "plugin.permission.view", "权限查看：可以查看权限节点和用户权限信息", "permission_manager", True
-        )
+    permission_nodes: list[PermissionNodeField] = [
+        PermissionNodeField(
+            node_name="manage",
+            description="权限管理：可以授权和撤销其他用户的权限",
+        ),
+        PermissionNodeField(
+            node_name="view",
+            description="权限查看：可以查看权限节点和用户权限信息",
+        ),
+    ]
 
     async def execute(self, args: CommandArgs) -> tuple[bool, str | None, bool]:
         """执行权限管理命令"""
@@ -225,7 +231,7 @@ class PermissionCommand(PlusCommand):
             target_user_id = chat_stream.user_info.user_id
 
         # 检查是否为Master用户
-        is_master = await permission_api.is_master(chat_stream.platform, target_user_id)
+        is_master = permission_api.is_master(chat_stream.platform, target_user_id)
 
         # 获取用户权限
         permissions = await permission_api.get_user_permissions(chat_stream.platform, target_user_id)
@@ -258,7 +264,7 @@ class PermissionCommand(PlusCommand):
 
         # 检查权限
         has_permission = await permission_api.check_permission(chat_stream.platform, user_id, permission_node)
-        is_master = await permission_api.is_master(chat_stream.platform, user_id)
+        is_master = permission_api.is_master(chat_stream.platform, user_id)
 
         if has_permission:
             if is_master:

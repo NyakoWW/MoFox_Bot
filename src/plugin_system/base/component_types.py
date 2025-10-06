@@ -107,6 +107,13 @@ class PythonDependency:
 
 
 @dataclass
+class PermissionNodeField:
+    """权限节点声明字段"""
+
+    node_name: str  # 节点名称 (例如 "manage" 或 "view")
+    description: str  # 权限描述
+
+@dataclass
 class ComponentInfo:
     """组件信息"""
 

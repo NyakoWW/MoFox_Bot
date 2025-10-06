@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from src.common.logger import get_logger
+from src.plugin_system.apis.permission_api import permission_api
 from src.plugin_system.base.component_types import ComponentType
 from src.plugin_system.base.plugin_base import PluginBase
 from src.plugin_system.base.plugin_metadata import PluginMetadata
@@ -124,6 +125,18 @@ class PluginManager:
             if plugin_instance.register_plugin():
                 self.loaded_plugins[plugin_name] = plugin_instance
                 self._show_plugin_components(plugin_name)
+
+                # 注册权限节点
+                if hasattr(plugin_instance, "permission_nodes") and plugin_instance.permission_nodes:
+                    for node in plugin_instance.permission_nodes:
+                        asyncio.create_task(  # noqa: RUF006
+                            permission_api.register_permission_node(
+                                node_name=node.node_name,
+                                description=node.description,
+                                plugin_name=plugin_name,
+                            )
+                        )
+                    logger.info(f"为插件 '{plugin_name}' 注册了 {len(plugin_instance.permission_nodes)} 个权限节点")
 
                 # 检查并调用 on_plugin_loaded 钩子（如果存在）
                 if hasattr(plugin_instance, "on_plugin_loaded") and callable(plugin_instance.on_plugin_loaded):
@@ -404,6 +417,14 @@ class PluginManager:
                         if event_handler_components:
                             event_handler_names = [c.name for c in event_handler_components]
                             logger.info(f"    📢 EventHandler组件: {', '.join(event_handler_names)}")
+
+                    # 权限节点信息
+                    if plugin_instance := self.loaded_plugins.get(plugin_name):
+                        if hasattr(plugin_instance, "permission_nodes") and plugin_instance.permission_nodes:
+                            node_names = [node.node_name for node in plugin_instance.permission_nodes]
+                            logger.info(
+                                f"    🔑 权限节点 ({len(node_names)}个): {', '.join(node_names)}"
+                            )
 
                     # 依赖信息
                     if plugin_info.dependencies:
