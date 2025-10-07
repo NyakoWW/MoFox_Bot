@@ -51,7 +51,7 @@ class UserBanManager:
                             remaining_time = ban_duration - (datetime.datetime.now() - ban_record.created_at)
                             return False, None, f"用户被封禁中，剩余时间: {remaining_time}"
                         else:
-                            # 封禁已过期，重置违规次数
+                            # 封禁已过期，重置违规次数与时间（模型已使用 Mapped 类型，可直接赋值）
                             ban_record.violation_num = 0
                             ban_record.created_at = datetime.datetime.now()
                             await session.commit()
@@ -92,7 +92,6 @@ class UserBanManager:
 
                 await session.commit()
 
-                # 检查是否需要自动封禁
                 if ban_record.violation_num >= self.config.auto_ban_violation_threshold:
                     logger.warning(f"用户 {platform}:{user_id} 违规次数达到 {ban_record.violation_num}，触发自动封禁")
                     # 只有在首次达到阈值时才更新封禁开始时间

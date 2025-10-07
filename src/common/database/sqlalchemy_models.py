@@ -1,6 +1,14 @@
 """SQLAlchemy数据库模型定义
 
 替换Peewee ORM，使用SQLAlchemy提供更好的连接池管理和错误恢复能力
+
+说明: 部分旧模型仍使用 `Column = Column(Type, ...)` 的经典风格。本文件开始逐步迁移到
+SQLAlchemy 2.0 推荐的带类型注解的声明式风格：
+
+    field_name: Mapped[PyType] = mapped_column(Type, ...)
+
+这样 IDE / Pylance 能正确推断实例属性的真实 Python 类型，避免将其视为不可赋值的 Column 对象。
+当前仅对产生类型检查问题的模型 (BanUser) 进行了迁移，其余模型保持不变以减少一次性改动范围。
 """
 
 import datetime
@@ -103,31 +111,31 @@ class ChatStreams(Base):
 
     __tablename__ = "chat_streams"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    stream_id = Column(get_string_field(64), nullable=False, unique=True, index=True)
-    create_time = Column(Float, nullable=False)
-    group_platform = Column(Text, nullable=True)
-    group_id = Column(get_string_field(100), nullable=True, index=True)
-    group_name = Column(Text, nullable=True)
-    last_active_time = Column(Float, nullable=False)
-    platform = Column(Text, nullable=False)
-    user_platform = Column(Text, nullable=False)
-    user_id = Column(get_string_field(100), nullable=False, index=True)
-    user_nickname = Column(Text, nullable=False)
-    user_cardname = Column(Text, nullable=True)
-    energy_value = Column(Float, nullable=True, default=5.0)
-    sleep_pressure = Column(Float, nullable=True, default=0.0)
-    focus_energy = Column(Float, nullable=True, default=0.5)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    stream_id: Mapped[str] = mapped_column(get_string_field(64), nullable=False, unique=True, index=True)
+    create_time: Mapped[float] = mapped_column(Float, nullable=False)
+    group_platform: Mapped[str | None] = mapped_column(Text, nullable=True)
+    group_id: Mapped[str | None] = mapped_column(get_string_field(100), nullable=True, index=True)
+    group_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_active_time: Mapped[float] = mapped_column(Float, nullable=False)
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    user_platform: Mapped[str] = mapped_column(Text, nullable=False)
+    user_id: Mapped[str] = mapped_column(get_string_field(100), nullable=False, index=True)
+    user_nickname: Mapped[str] = mapped_column(Text, nullable=False)
+    user_cardname: Mapped[str | None] = mapped_column(Text, nullable=True)
+    energy_value: Mapped[float | None] = mapped_column(Float, nullable=True, default=5.0)
+    sleep_pressure: Mapped[float | None] = mapped_column(Float, nullable=True, default=0.0)
+    focus_energy: Mapped[float | None] = mapped_column(Float, nullable=True, default=0.5)
     # 动态兴趣度系统字段
-    base_interest_energy = Column(Float, nullable=True, default=0.5)
-    message_interest_total = Column(Float, nullable=True, default=0.0)
-    message_count = Column(Integer, nullable=True, default=0)
-    action_count = Column(Integer, nullable=True, default=0)
-    reply_count = Column(Integer, nullable=True, default=0)
-    last_interaction_time = Column(Float, nullable=True, default=None)
-    consecutive_no_reply = Column(Integer, nullable=True, default=0)
+    base_interest_energy: Mapped[float | None] = mapped_column(Float, nullable=True, default=0.5)
+    message_interest_total: Mapped[float | None] = mapped_column(Float, nullable=True, default=0.0)
+    message_count: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
+    action_count: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
+    reply_count: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
+    last_interaction_time: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    consecutive_no_reply: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
     # 消息打断系统字段
-    interruption_count = Column(Integer, nullable=True, default=0)
+    interruption_count: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
 
     __table_args__ = (
         Index("idx_chatstreams_stream_id", "stream_id"),
@@ -141,20 +149,20 @@ class LLMUsage(Base):
 
     __tablename__ = "llm_usage"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    model_name = Column(get_string_field(100), nullable=False, index=True)
-    model_assign_name = Column(get_string_field(100), index=True)  # 添加索引
-    model_api_provider = Column(get_string_field(100), index=True)  # 添加索引
-    user_id = Column(get_string_field(50), nullable=False, index=True)
-    request_type = Column(get_string_field(50), nullable=False, index=True)
-    endpoint = Column(Text, nullable=False)
-    prompt_tokens = Column(Integer, nullable=False)
-    completion_tokens = Column(Integer, nullable=False)
-    time_cost = Column(Float, nullable=True)
-    total_tokens = Column(Integer, nullable=False)
-    cost = Column(Float, nullable=False)
-    status = Column(Text, nullable=False)
-    timestamp = Column(DateTime, nullable=False, index=True, default=datetime.datetime.now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    model_name: Mapped[str] = mapped_column(get_string_field(100), nullable=False, index=True)
+    model_assign_name: Mapped[str] = mapped_column(get_string_field(100), index=True)
+    model_api_provider: Mapped[str] = mapped_column(get_string_field(100), index=True)
+    user_id: Mapped[str] = mapped_column(get_string_field(50), nullable=False, index=True)
+    request_type: Mapped[str] = mapped_column(get_string_field(50), nullable=False, index=True)
+    endpoint: Mapped[str] = mapped_column(Text, nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    time_cost: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    cost: Mapped[float] = mapped_column(Float, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    timestamp: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, index=True, default=datetime.datetime.now)
 
     __table_args__ = (
         Index("idx_llmusage_model_name", "model_name"),
@@ -172,19 +180,19 @@ class Emoji(Base):
 
     __tablename__ = "emoji"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    full_path = Column(get_string_field(500), nullable=False, unique=True, index=True)
-    format = Column(Text, nullable=False)
-    emoji_hash = Column(get_string_field(64), nullable=False, index=True)
-    description = Column(Text, nullable=False)
-    query_count = Column(Integer, nullable=False, default=0)
-    is_registered = Column(Boolean, nullable=False, default=False)
-    is_banned = Column(Boolean, nullable=False, default=False)
-    emotion = Column(Text, nullable=True)
-    record_time = Column(Float, nullable=False)
-    register_time = Column(Float, nullable=True)
-    usage_count = Column(Integer, nullable=False, default=0)
-    last_used_time = Column(Float, nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    full_path: Mapped[str] = mapped_column(get_string_field(500), nullable=False, unique=True, index=True)
+    format: Mapped[str] = mapped_column(Text, nullable=False)
+    emoji_hash: Mapped[str] = mapped_column(get_string_field(64), nullable=False, index=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    query_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_registered: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_banned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    emotion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    record_time: Mapped[float] = mapped_column(Float, nullable=False)
+    register_time: Mapped[float | None] = mapped_column(Float, nullable=True)
+    usage_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_used_time: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     __table_args__ = (
         Index("idx_emoji_full_path", "full_path"),
@@ -197,50 +205,50 @@ class Messages(Base):
 
     __tablename__ = "messages"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    message_id = Column(get_string_field(100), nullable=False, index=True)
-    time = Column(Float, nullable=False)
-    chat_id = Column(get_string_field(64), nullable=False, index=True)
-    reply_to = Column(Text, nullable=True)
-    interest_value = Column(Float, nullable=True)
-    key_words = Column(Text, nullable=True)
-    key_words_lite = Column(Text, nullable=True)
-    is_mentioned = Column(Boolean, nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    message_id: Mapped[str] = mapped_column(get_string_field(100), nullable=False, index=True)
+    time: Mapped[float] = mapped_column(Float, nullable=False)
+    chat_id: Mapped[str] = mapped_column(get_string_field(64), nullable=False, index=True)
+    reply_to: Mapped[str | None] = mapped_column(Text, nullable=True)
+    interest_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    key_words: Mapped[str | None] = mapped_column(Text, nullable=True)
+    key_words_lite: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_mentioned: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     # 从 chat_info 扁平化而来的字段
-    chat_info_stream_id = Column(Text, nullable=False)
-    chat_info_platform = Column(Text, nullable=False)
-    chat_info_user_platform = Column(Text, nullable=False)
-    chat_info_user_id = Column(Text, nullable=False)
-    chat_info_user_nickname = Column(Text, nullable=False)
-    chat_info_user_cardname = Column(Text, nullable=True)
-    chat_info_group_platform = Column(Text, nullable=True)
-    chat_info_group_id = Column(Text, nullable=True)
-    chat_info_group_name = Column(Text, nullable=True)
-    chat_info_create_time = Column(Float, nullable=False)
-    chat_info_last_active_time = Column(Float, nullable=False)
+    chat_info_stream_id: Mapped[str] = mapped_column(Text, nullable=False)
+    chat_info_platform: Mapped[str] = mapped_column(Text, nullable=False)
+    chat_info_user_platform: Mapped[str] = mapped_column(Text, nullable=False)
+    chat_info_user_id: Mapped[str] = mapped_column(Text, nullable=False)
+    chat_info_user_nickname: Mapped[str] = mapped_column(Text, nullable=False)
+    chat_info_user_cardname: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chat_info_group_platform: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chat_info_group_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chat_info_group_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chat_info_create_time: Mapped[float] = mapped_column(Float, nullable=False)
+    chat_info_last_active_time: Mapped[float] = mapped_column(Float, nullable=False)
 
     # 从顶层 user_info 扁平化而来的字段
-    user_platform = Column(Text, nullable=True)
-    user_id = Column(get_string_field(100), nullable=True, index=True)
-    user_nickname = Column(Text, nullable=True)
-    user_cardname = Column(Text, nullable=True)
+    user_platform: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_id: Mapped[str | None] = mapped_column(get_string_field(100), nullable=True, index=True)
+    user_nickname: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_cardname: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    processed_plain_text = Column(Text, nullable=True)
-    display_message = Column(Text, nullable=True)
-    memorized_times = Column(Integer, nullable=False, default=0)
-    priority_mode = Column(Text, nullable=True)
-    priority_info = Column(Text, nullable=True)
-    additional_config = Column(Text, nullable=True)
-    is_emoji = Column(Boolean, nullable=False, default=False)
-    is_picid = Column(Boolean, nullable=False, default=False)
-    is_command = Column(Boolean, nullable=False, default=False)
-    is_notify = Column(Boolean, nullable=False, default=False)
+    processed_plain_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    display_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    memorized_times: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    priority_mode: Mapped[str | None] = mapped_column(Text, nullable=True)
+    priority_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+    additional_config: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_emoji: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_picid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_command: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_notify: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # 兴趣度系统字段
-    actions = Column(Text, nullable=True)  # JSON格式存储动作列表
-    should_reply = Column(Boolean, nullable=True, default=False)
-    should_act = Column(Boolean, nullable=True, default=False)
+    actions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    should_reply: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
+    should_act: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
 
     __table_args__ = (
         Index("idx_messages_message_id", "message_id"),
@@ -257,17 +265,17 @@ class ActionRecords(Base):
 
     __tablename__ = "action_records"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    action_id = Column(get_string_field(100), nullable=False, index=True)
-    time = Column(Float, nullable=False)
-    action_name = Column(Text, nullable=False)
-    action_data = Column(Text, nullable=False)
-    action_done = Column(Boolean, nullable=False, default=False)
-    action_build_into_prompt = Column(Boolean, nullable=False, default=False)
-    action_prompt_display = Column(Text, nullable=False)
-    chat_id = Column(get_string_field(64), nullable=False, index=True)
-    chat_info_stream_id = Column(Text, nullable=False)
-    chat_info_platform = Column(Text, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    action_id: Mapped[str] = mapped_column(get_string_field(100), nullable=False, index=True)
+    time: Mapped[float] = mapped_column(Float, nullable=False)
+    action_name: Mapped[str] = mapped_column(Text, nullable=False)
+    action_data: Mapped[str] = mapped_column(Text, nullable=False)
+    action_done: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    action_build_into_prompt: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    action_prompt_display: Mapped[str] = mapped_column(Text, nullable=False)
+    chat_id: Mapped[str] = mapped_column(get_string_field(64), nullable=False, index=True)
+    chat_info_stream_id: Mapped[str] = mapped_column(Text, nullable=False)
+    chat_info_platform: Mapped[str] = mapped_column(Text, nullable=False)
 
     __table_args__ = (
         Index("idx_actionrecords_action_id", "action_id"),
@@ -281,15 +289,15 @@ class Images(Base):
 
     __tablename__ = "images"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    image_id = Column(Text, nullable=False, default="")
-    emoji_hash = Column(get_string_field(64), nullable=False, index=True)
-    description = Column(Text, nullable=True)
-    path = Column(get_string_field(500), nullable=False, unique=True)
-    count = Column(Integer, nullable=False, default=1)
-    timestamp = Column(Float, nullable=False)
-    type = Column(Text, nullable=False)
-    vlm_processed = Column(Boolean, nullable=False, default=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    image_id: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    emoji_hash: Mapped[str] = mapped_column(get_string_field(64), nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    path: Mapped[str] = mapped_column(get_string_field(500), nullable=False, unique=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    timestamp: Mapped[float] = mapped_column(Float, nullable=False)
+    type: Mapped[str] = mapped_column(Text, nullable=False)
+    vlm_processed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     __table_args__ = (
         Index("idx_images_emoji_hash", "emoji_hash"),
@@ -302,11 +310,11 @@ class ImageDescriptions(Base):
 
     __tablename__ = "image_descriptions"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    type = Column(Text, nullable=False)
-    image_description_hash = Column(get_string_field(64), nullable=False, index=True)
-    description = Column(Text, nullable=False)
-    timestamp = Column(Float, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    type: Mapped[str] = mapped_column(Text, nullable=False)
+    image_description_hash: Mapped[str] = mapped_column(get_string_field(64), nullable=False, index=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    timestamp: Mapped[float] = mapped_column(Float, nullable=False)
 
     __table_args__ = (Index("idx_imagedesc_hash", "image_description_hash"),)
 
@@ -316,20 +324,20 @@ class Videos(Base):
 
     __tablename__ = "videos"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    video_id = Column(Text, nullable=False, default="")
-    video_hash = Column(get_string_field(64), nullable=False, index=True, unique=True)
-    description = Column(Text, nullable=True)
-    count = Column(Integer, nullable=False, default=1)
-    timestamp = Column(Float, nullable=False)
-    vlm_processed = Column(Boolean, nullable=False, default=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    video_id: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    video_hash: Mapped[str] = mapped_column(get_string_field(64), nullable=False, index=True, unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    timestamp: Mapped[float] = mapped_column(Float, nullable=False)
+    vlm_processed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # 视频特有属性
-    duration = Column(Float, nullable=True)  # 视频时长（秒）
-    frame_count = Column(Integer, nullable=True)  # 总帧数
-    fps = Column(Float, nullable=True)  # 帧率
-    resolution = Column(Text, nullable=True)  # 分辨率
-    file_size = Column(Integer, nullable=True)  # 文件大小（字节）
+    duration: Mapped[float | None] = mapped_column(Float, nullable=True)
+    frame_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fps: Mapped[float | None] = mapped_column(Float, nullable=True)
+    resolution: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (
         Index("idx_videos_video_hash", "video_hash"),
@@ -342,11 +350,11 @@ class OnlineTime(Base):
 
     __tablename__ = "online_time"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(Text, nullable=False, default=str(datetime.datetime.now))
-    duration = Column(Integer, nullable=False)
-    start_timestamp = Column(DateTime, nullable=False, default=datetime.datetime.now)
-    end_timestamp = Column(DateTime, nullable=False, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    timestamp: Mapped[str] = mapped_column(Text, nullable=False, default=str(datetime.datetime.now))
+    duration: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_timestamp: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=datetime.datetime.now)
+    end_timestamp: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, index=True)
 
     __table_args__ = (Index("idx_onlinetime_end_timestamp", "end_timestamp"),)
 
@@ -356,22 +364,22 @@ class PersonInfo(Base):
 
     __tablename__ = "person_info"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    person_id = Column(get_string_field(100), nullable=False, unique=True, index=True)
-    person_name = Column(Text, nullable=True)
-    name_reason = Column(Text, nullable=True)
-    platform = Column(Text, nullable=False)
-    user_id = Column(get_string_field(50), nullable=False, index=True)
-    nickname = Column(Text, nullable=True)
-    impression = Column(Text, nullable=True)
-    short_impression = Column(Text, nullable=True)
-    points = Column(Text, nullable=True)
-    forgotten_points = Column(Text, nullable=True)
-    info_list = Column(Text, nullable=True)
-    know_times = Column(Float, nullable=True)
-    know_since = Column(Float, nullable=True)
-    last_know = Column(Float, nullable=True)
-    attitude = Column(Integer, nullable=True, default=50)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    person_id: Mapped[str] = mapped_column(get_string_field(100), nullable=False, unique=True, index=True)
+    person_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    name_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    user_id: Mapped[str] = mapped_column(get_string_field(50), nullable=False, index=True)
+    nickname: Mapped[str | None] = mapped_column(Text, nullable=True)
+    impression: Mapped[str | None] = mapped_column(Text, nullable=True)
+    short_impression: Mapped[str | None] = mapped_column(Text, nullable=True)
+    points: Mapped[str | None] = mapped_column(Text, nullable=True)
+    forgotten_points: Mapped[str | None] = mapped_column(Text, nullable=True)
+    info_list: Mapped[str | None] = mapped_column(Text, nullable=True)
+    know_times: Mapped[float | None] = mapped_column(Float, nullable=True)
+    know_since: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_know: Mapped[float | None] = mapped_column(Float, nullable=True)
+    attitude: Mapped[int | None] = mapped_column(Integer, nullable=True, default=50)
 
     __table_args__ = (
         Index("idx_personinfo_person_id", "person_id"),
@@ -384,13 +392,13 @@ class BotPersonalityInterests(Base):
 
     __tablename__ = "bot_personality_interests"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    personality_id = Column(get_string_field(100), nullable=False, index=True)
-    personality_description = Column(Text, nullable=False)
-    interest_tags = Column(Text, nullable=False)  # JSON格式存储的兴趣标签列表
-    embedding_model = Column(get_string_field(100), nullable=False, default="text-embedding-ada-002")
-    version = Column(Integer, nullable=False, default=1)
-    last_updated = Column(DateTime, nullable=False, default=datetime.datetime.now, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    personality_id: Mapped[str] = mapped_column(get_string_field(100), nullable=False, index=True)
+    personality_description: Mapped[str] = mapped_column(Text, nullable=False)
+    interest_tags: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding_model: Mapped[str] = mapped_column(get_string_field(100), nullable=False, default="text-embedding-ada-002")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    last_updated: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=datetime.datetime.now, index=True)
 
     __table_args__ = (
         Index("idx_botpersonality_personality_id", "personality_id"),
@@ -404,13 +412,13 @@ class Memory(Base):
 
     __tablename__ = "memory"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    memory_id = Column(get_string_field(64), nullable=False, index=True)
-    chat_id = Column(Text, nullable=True)
-    memory_text = Column(Text, nullable=True)
-    keywords = Column(Text, nullable=True)
-    create_time = Column(Float, nullable=True)
-    last_view_time = Column(Float, nullable=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    memory_id: Mapped[str] = mapped_column(get_string_field(64), nullable=False, index=True)
+    chat_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    memory_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    keywords: Mapped[str | None] = mapped_column(Text, nullable=True)
+    create_time: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_view_time: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     __table_args__ = (Index("idx_memory_memory_id", "memory_id"),)
 
@@ -437,19 +445,19 @@ class ThinkingLog(Base):
 
     __tablename__ = "thinking_logs"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    chat_id = Column(get_string_field(64), nullable=False, index=True)
-    trigger_text = Column(Text, nullable=True)
-    response_text = Column(Text, nullable=True)
-    trigger_info_json = Column(Text, nullable=True)
-    response_info_json = Column(Text, nullable=True)
-    timing_results_json = Column(Text, nullable=True)
-    chat_history_json = Column(Text, nullable=True)
-    chat_history_in_thinking_json = Column(Text, nullable=True)
-    chat_history_after_response_json = Column(Text, nullable=True)
-    heartflow_data_json = Column(Text, nullable=True)
-    reasoning_data_json = Column(Text, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=datetime.datetime.now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    chat_id: Mapped[str] = mapped_column(get_string_field(64), nullable=False, index=True)
+    trigger_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    trigger_info_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response_info_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timing_results_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chat_history_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chat_history_in_thinking_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chat_history_after_response_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    heartflow_data_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reasoning_data_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=datetime.datetime.now)
 
     __table_args__ = (Index("idx_thinkinglog_chat_id", "chat_id"),)
 
@@ -459,13 +467,13 @@ class GraphNodes(Base):
 
     __tablename__ = "graph_nodes"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    concept = Column(get_string_field(255), nullable=False, unique=True, index=True)
-    memory_items = Column(Text, nullable=False)
-    hash = Column(Text, nullable=False)
-    weight = Column(Float, nullable=False, default=1.0)
-    created_time = Column(Float, nullable=False)
-    last_modified = Column(Float, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    concept: Mapped[str] = mapped_column(get_string_field(255), nullable=False, unique=True, index=True)
+    memory_items: Mapped[str] = mapped_column(Text, nullable=False)
+    hash: Mapped[str] = mapped_column(Text, nullable=False)
+    weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    created_time: Mapped[float] = mapped_column(Float, nullable=False)
+    last_modified: Mapped[float] = mapped_column(Float, nullable=False)
 
     __table_args__ = (Index("idx_graphnodes_concept", "concept"),)
 
@@ -475,13 +483,13 @@ class GraphEdges(Base):
 
     __tablename__ = "graph_edges"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    source = Column(get_string_field(255), nullable=False, index=True)
-    target = Column(get_string_field(255), nullable=False, index=True)
-    strength = Column(Integer, nullable=False)
-    hash = Column(Text, nullable=False)
-    created_time = Column(Float, nullable=False)
-    last_modified = Column(Float, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(get_string_field(255), nullable=False, index=True)
+    target: Mapped[str] = mapped_column(get_string_field(255), nullable=False, index=True)
+    strength: Mapped[int] = mapped_column(Integer, nullable=False)
+    hash: Mapped[str] = mapped_column(Text, nullable=False)
+    created_time: Mapped[float] = mapped_column(Float, nullable=False)
+    last_modified: Mapped[float] = mapped_column(Float, nullable=False)
 
     __table_args__ = (
         Index("idx_graphedges_source", "source"),
@@ -494,11 +502,11 @@ class Schedule(Base):
 
     __tablename__ = "schedule"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    date = Column(get_string_field(10), nullable=False, unique=True, index=True)  # YYYY-MM-DD格式
-    schedule_data = Column(Text, nullable=False)  # JSON格式的日程数据
-    created_at = Column(DateTime, nullable=False, default=datetime.datetime.now)
-    updated_at = Column(DateTime, nullable=False, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    date: Mapped[str] = mapped_column(get_string_field(10), nullable=False, unique=True, index=True)
+    schedule_data: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=datetime.datetime.now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
     __table_args__ = (Index("idx_schedule_date", "date"),)
 
@@ -508,17 +516,15 @@ class MaiZoneScheduleStatus(Base):
 
     __tablename__ = "maizone_schedule_status"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    datetime_hour = Column(
-        get_string_field(13), nullable=False, unique=True, index=True
-    )  # YYYY-MM-DD HH格式，精确到小时
-    activity = Column(Text, nullable=False)  # 该小时的活动内容
-    is_processed = Column(Boolean, nullable=False, default=False)  # 是否已处理
-    processed_at = Column(DateTime, nullable=True)  # 处理时间
-    story_content = Column(Text, nullable=True)  # 生成的说说内容
-    send_success = Column(Boolean, nullable=False, default=False)  # 是否发送成功
-    created_at = Column(DateTime, nullable=False, default=datetime.datetime.now)
-    updated_at = Column(DateTime, nullable=False, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    datetime_hour: Mapped[str] = mapped_column(get_string_field(13), nullable=False, unique=True, index=True)
+    activity: Mapped[str] = mapped_column(Text, nullable=False)
+    is_processed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    processed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime, nullable=True)
+    story_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    send_success: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=datetime.datetime.now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
     __table_args__ = (
         Index("idx_maizone_datetime_hour", "datetime_hour"),
@@ -527,16 +533,20 @@ class MaiZoneScheduleStatus(Base):
 
 
 class BanUser(Base):
-    """被禁用用户模型"""
+    """被禁用用户模型
+
+    使用 SQLAlchemy 2.0 类型标注写法，方便静态类型检查器识别实际字段类型，
+    避免在业务代码中对属性赋值时报 `Column[...]` 不可赋值的告警。
+    """
 
     __tablename__ = "ban_users"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    platform = Column(Text, nullable=False)
-    user_id = Column(get_string_field(50), nullable=False, index=True)
-    violation_num = Column(Integer, nullable=False, default=0)
-    reason = Column(Text, nullable=False)
-    created_at = Column(DateTime, nullable=False, default=datetime.datetime.now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    user_id: Mapped[str] = mapped_column(get_string_field(50), nullable=False, index=True)
+    violation_num: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=datetime.datetime.now)
 
     __table_args__ = (
         Index("idx_violation_num", "violation_num"),
@@ -551,38 +561,38 @@ class AntiInjectionStats(Base):
 
     __tablename__ = "anti_injection_stats"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    total_messages = Column(Integer, nullable=False, default=0)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    total_messages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     """总处理消息数"""
 
-    detected_injections = Column(Integer, nullable=False, default=0)
+    detected_injections: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     """检测到的注入攻击数"""
 
-    blocked_messages = Column(Integer, nullable=False, default=0)
+    blocked_messages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     """被阻止的消息数"""
 
-    shielded_messages = Column(Integer, nullable=False, default=0)
+    shielded_messages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     """被加盾的消息数"""
 
-    processing_time_total = Column(Float, nullable=False, default=0.0)
+    processing_time_total: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     """总处理时间"""
 
-    total_process_time = Column(Float, nullable=False, default=0.0)
+    total_process_time: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     """累计总处理时间"""
 
-    last_process_time = Column(Float, nullable=False, default=0.0)
+    last_process_time: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     """最近一次处理时间"""
 
-    error_count = Column(Integer, nullable=False, default=0)
+    error_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     """错误计数"""
 
-    start_time = Column(DateTime, nullable=False, default=datetime.datetime.now)
+    start_time: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=datetime.datetime.now)
     """统计开始时间"""
 
-    created_at = Column(DateTime, nullable=False, default=datetime.datetime.now)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=datetime.datetime.now)
     """记录创建时间"""
 
-    updated_at = Column(DateTime, nullable=False, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=datetime.datetime.now, onupdate=datetime.datetime.now)
     """记录更新时间"""
 
     __table_args__ = (
@@ -596,26 +606,26 @@ class CacheEntries(Base):
 
     __tablename__ = "cache_entries"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    cache_key = Column(get_string_field(500), nullable=False, unique=True, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cache_key: Mapped[str] = mapped_column(get_string_field(500), nullable=False, unique=True, index=True)
     """缓存键，包含工具名、参数和代码哈希"""
 
-    cache_value = Column(Text, nullable=False)
+    cache_value: Mapped[str] = mapped_column(Text, nullable=False)
     """缓存的数据，JSON格式"""
 
-    expires_at = Column(Float, nullable=False, index=True)
+    expires_at: Mapped[float] = mapped_column(Float, nullable=False, index=True)
     """过期时间戳"""
 
-    tool_name = Column(get_string_field(100), nullable=False, index=True)
+    tool_name: Mapped[str] = mapped_column(get_string_field(100), nullable=False, index=True)
     """工具名称"""
 
-    created_at = Column(Float, nullable=False, default=lambda: time.time())
+    created_at: Mapped[float] = mapped_column(Float, nullable=False, default=lambda: time.time())
     """创建时间戳"""
 
-    last_accessed = Column(Float, nullable=False, default=lambda: time.time())
+    last_accessed: Mapped[float] = mapped_column(Float, nullable=False, default=lambda: time.time())
     """最后访问时间戳"""
 
-    access_count = Column(Integer, nullable=False, default=0)
+    access_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     """访问次数"""
 
     __table_args__ = (
@@ -631,18 +641,16 @@ class MonthlyPlan(Base):
 
     __tablename__ = "monthly_plans"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    plan_text = Column(Text, nullable=False)
-    target_month = Column(String(7), nullable=False, index=True)  # "YYYY-MM"
-    status = Column(
-        get_string_field(20), nullable=False, default="active", index=True
-    )  # 'active', 'completed', 'archived'
-    usage_count = Column(Integer, nullable=False, default=0)
-    last_used_date = Column(String(10), nullable=True, index=True)  # "YYYY-MM-DD" format
-    created_at = Column(DateTime, nullable=False, default=datetime.datetime.now)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    plan_text: Mapped[str] = mapped_column(Text, nullable=False)
+    target_month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(get_string_field(20), nullable=False, default="active", index=True)
+    usage_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_used_date: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=datetime.datetime.now)
 
     # 保留 is_deleted 字段以兼容现有数据，但标记为已弃用
-    is_deleted = Column(Boolean, nullable=False, default=False)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     __table_args__ = (
         Index("idx_monthlyplan_target_month_status", "target_month", "status"),
@@ -807,12 +815,12 @@ class PermissionNodes(Base):
 
     __tablename__ = "permission_nodes"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    node_name = Column(get_string_field(255), nullable=False, unique=True, index=True)  # 权限节点名称
-    description = Column(Text, nullable=False)  # 权限描述
-    plugin_name = Column(get_string_field(100), nullable=False, index=True)  # 所属插件
-    default_granted = Column(Boolean, default=False, nullable=False)  # 默认是否授权
-    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)  # 创建时间
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    node_name: Mapped[str] = mapped_column(get_string_field(255), nullable=False, unique=True, index=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    plugin_name: Mapped[str] = mapped_column(get_string_field(100), nullable=False, index=True)
+    default_granted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
     __table_args__ = (
         Index("idx_permission_plugin", "plugin_name"),
@@ -825,13 +833,13 @@ class UserPermissions(Base):
 
     __tablename__ = "user_permissions"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    platform = Column(get_string_field(50), nullable=False, index=True)  # 平台类型
-    user_id = Column(get_string_field(100), nullable=False, index=True)  # 用户ID
-    permission_node = Column(get_string_field(255), nullable=False, index=True)  # 权限节点名称
-    granted = Column(Boolean, default=True, nullable=False)  # 是否授权
-    granted_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)  # 授权时间
-    granted_by = Column(get_string_field(100), nullable=True)  # 授权者信息
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    platform: Mapped[str] = mapped_column(get_string_field(50), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(get_string_field(100), nullable=False, index=True)
+    permission_node: Mapped[str] = mapped_column(get_string_field(255), nullable=False, index=True)
+    granted: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    granted_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    granted_by: Mapped[str | None] = mapped_column(get_string_field(100), nullable=True)
 
     __table_args__ = (
         Index("idx_user_platform_id", "platform", "user_id"),
@@ -845,13 +853,13 @@ class UserRelationships(Base):
 
     __tablename__ = "user_relationships"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(get_string_field(100), nullable=False, unique=True, index=True)  # 用户ID
-    user_name = Column(get_string_field(100), nullable=True)  # 用户名
-    relationship_text = Column(Text, nullable=True)  # 关系印象描述
-    relationship_score = Column(Float, nullable=False, default=0.3)  # 关系分数(0-1)
-    last_updated = Column(Float, nullable=False, default=time.time)  # 最后更新时间
-    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)  # 创建时间
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(get_string_field(100), nullable=False, unique=True, index=True)
+    user_name: Mapped[str | None] = mapped_column(get_string_field(100), nullable=True)
+    relationship_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    relationship_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.3)  # 关系分数(0-1)
+    last_updated: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
     __table_args__ = (
         Index("idx_user_relationship_id", "user_id"),

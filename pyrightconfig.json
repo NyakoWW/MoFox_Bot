@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/pyright/main/packages/vscode-pyright/schemas/pyrightconfig.schema.json",
+  "include": [
+    "src",
+    "bot.py",
+    "__main__.py"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "data",
+    "logs",
+    "tests",
+    "target",
+    "*.egg-info"
+  ],
+  "typeCheckingMode": "standard",
+  "reportMissingImports": false,
+  "reportMissingTypeStubs": false,
+  "reportMissingModuleSource": false,
+  "diagnosticSeverityOverrides": {
+    "reportMissingImports": "none",
+    "reportMissingTypeStubs": "none",
+    "reportMissingModuleSource": "none"
+  },
+  "pythonVersion": "3.12",
+  "venvPath": ".",
+  "venv": ".venv",
+  "executionEnvironments": [
+    {"root": "src"}
+  ]
+}

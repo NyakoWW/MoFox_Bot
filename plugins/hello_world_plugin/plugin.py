@@ -107,7 +107,7 @@ class HelloWorldPlugin(BasePlugin):
         components.append((GetSystemInfoTool.get_tool_info(), GetSystemInfoTool))
 
         if self.get_config("components.hello_command_enabled", True):
-            components.append((HelloCommand.get_command_info(), HelloCommand))
+            components.append((HelloCommand.get_plus_command_info(), HelloCommand))
 
         if self.get_config("components.random_emoji_action_enabled", True):
             components.append((RandomEmojiAction.get_action_info(), RandomEmojiAction))

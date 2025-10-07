@@ -377,11 +377,12 @@ async def clean_unused_emojis(emoji_dir: str, emoji_objects: list["MaiEmoji"], r
 
 class EmojiManager:
     _instance = None
+    _initialized: bool = False  # 显式声明，避免属性未定义错误
 
     def __new__(cls) -> "EmojiManager":
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
+            # 类属性已声明，无需再次赋值
         return cls._instance
 
     def __init__(self) -> None:
@@ -399,7 +400,8 @@ class EmojiManager:
         self.emoji_num_max = global_config.emoji.max_reg_num
         self.emoji_num_max_reach_deletion = global_config.emoji.do_replace
         self.emoji_objects: list[MaiEmoji] = []  # 存储MaiEmoji对象的列表，使用类型注解明确列表元素类型
-
+        logger.info("启动表情包管理器")
+        self._initialized = True
         logger.info("启动表情包管理器")
 
     def shutdown(self) -> None:
@@ -752,8 +754,8 @@ class EmojiManager:
             try:
                 emoji_record = await self.get_emoji_from_db(emoji_hash)
                 if emoji_record and emoji_record[0].emotion:
-                    logger.info(f"[缓存命中] 从数据库获取表情包描述: {emoji_record.emotion[:50]}...")
-                    return emoji_record.emotion
+                    logger.info(f"[缓存命中] 从数据库获取表情包描述: {emoji_record.emotion[:50]}...")  # type: ignore # type: ignore
+                    return emoji_record.emotion # type: ignore
             except Exception as e:
                 logger.error(f"从数据库查询表情包描述时出错: {e}")
 

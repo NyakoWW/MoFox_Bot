@@ -543,7 +543,7 @@ class MaiBotMain:
         """设置时区"""
         try:
             if platform.system().lower() != "windows":
-                time.tzset()
+                time.tzset() # type: ignore
                 logger.info("时区设置完成")
             else:
                 logger.info("Windows系统，跳过时区设置")
