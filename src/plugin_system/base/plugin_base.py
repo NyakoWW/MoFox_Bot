@@ -10,6 +10,7 @@ import toml
 from src.common.logger import get_logger
 from src.config.config import CONFIG_DIR
 from src.plugin_system.base.component_types import (
+    PermissionNodeField,
     PluginInfo,
     PythonDependency,
 )
@@ -33,6 +34,8 @@ class PluginBase(ABC):
     python_dependencies: list[str | PythonDependency] = []
 
     config_schema: dict[str, dict[str, ConfigField] | str] = {}
+
+    permission_nodes: list["PermissionNodeField"] = []
 
     config_section_descriptions: dict[str, str] = {}
 

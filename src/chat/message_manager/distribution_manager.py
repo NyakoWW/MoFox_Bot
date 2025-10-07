@@ -7,6 +7,7 @@ import asyncio
 import time
 from typing import Any
 
+from chat.message_manager.adaptive_stream_manager import StreamPriority
 from src.chat.chatter_manager import ChatterManager
 from src.chat.energy_system import energy_manager
 from src.common.data_models.message_manager_data_model import StreamContext

@@ -265,7 +265,8 @@ class AntiPromptInjector:
             async with get_db_session() as session:
                 # 删除对应的消息记录
                 stmt = delete(Messages).where(Messages.message_id == message_id)
-                result = session.execute(stmt)
+                # 注意: 异步会话需要 await 执行，否则 result 是 coroutine，无法获取 rowcount
+                result = await session.execute(stmt)
                 await session.commit()
 
                 if result.rowcount > 0:
@@ -296,7 +297,7 @@ class AntiPromptInjector:
                     .where(Messages.message_id == message_id)
                     .values(processed_plain_text=new_content, display_message=new_content)
                 )
-                result = session.execute(stmt)
+                result = await session.execute(stmt)
                 await session.commit()
 
                 if result.rowcount > 0:

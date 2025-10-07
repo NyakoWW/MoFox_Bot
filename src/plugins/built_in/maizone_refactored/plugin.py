@@ -7,7 +7,7 @@ from pathlib import Path
 
 from src.common.logger import get_logger
 from src.plugin_system import BasePlugin, ComponentInfo, register_plugin
-from src.plugin_system.apis.permission_api import permission_api
+from src.plugin_system.base.component_types import PermissionNodeField
 from src.plugin_system.base.config_types import ConfigField
 
 from .actions.read_feed_action import ReadFeedAction
@@ -83,19 +83,16 @@ class MaiZoneRefactoredPlugin(BasePlugin):
         },
     }
 
+    permission_nodes: list[PermissionNodeField] = [
+        PermissionNodeField(node_name="send_feed", description="是否可以使用机器人发送QQ空间说说"),
+        PermissionNodeField(node_name="read_feed", description="是否可以使用机器人读取QQ空间说说"),
+    ]
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     async def on_plugin_loaded(self):
         """插件加载完成后的回调，初始化服务并启动后台任务"""
-        # --- 注册权限节点 ---
-        await permission_api.register_permission_node(
-            "plugin.maizone.send_feed", "是否可以使用机器人发送QQ空间说说", "maiZone", False
-        )
-        await permission_api.register_permission_node(
-            "plugin.maizone.read_feed", "是否可以使用机器人读取QQ空间说说", "maiZone", True
-        )
-
         # --- 创建并注册所有服务实例 ---
         content_service = ContentService(self.get_config)
         image_service = ImageService(self.get_config)
