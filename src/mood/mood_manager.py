@@ -2,15 +2,14 @@ import math
 import random
 import time
 
+from src.chat.message_receive.message import MessageRecv
+from src.chat.utils.chat_message_builder import build_readable_messages, get_raw_msg_by_timestamp_with_chat_inclusive
+from src.chat.utils.prompt import Prompt, global_prompt_manager
+from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
-from src.chat.message_receive.message import MessageRecv
-from src.chat.message_receive.chat_stream import get_chat_manager
-from src.chat.utils.prompt import Prompt, global_prompt_manager
-from src.chat.utils.chat_message_builder import build_readable_messages, get_raw_msg_by_timestamp_with_chat_inclusive
 from src.llm_models.utils_model import LLMRequest
 from src.manager.async_task_manager import AsyncTask, async_task_manager
-
 
 logger = get_logger("mood")
 
@@ -48,24 +47,61 @@ class ChatMood:
     def __init__(self, chat_id: str):
         self.chat_id: str = chat_id
 
-        chat_manager = get_chat_manager()
-        self.chat_stream = chat_manager.get_stream(self.chat_id)
-
-        if not self.chat_stream:
-            raise ValueError(f"Chat stream for chat_id {chat_id} not found")
-
-        self.log_prefix = f"[{self.chat_stream.group_info.group_name if self.chat_stream.group_info else self.chat_stream.user_info.user_nickname}]"
+        # 这些将在异步初始化中设置
+        self.chat_stream = None  # type: ignore
+        self.log_prefix = f"[{chat_id}]"
+        self._initialized = False
 
         self.mood_state: str = "感觉很平静"
         self.is_angry_from_wakeup: bool = False  # 是否因被吵醒而愤怒
 
-        self.regression_count: int = 0
+    async def _initialize(self):
+        """异步初始化方法"""
+        if not self._initialized:
+            try:
+                from src.chat.message_receive.chat_stream import get_chat_manager
 
-        self.mood_model = LLMRequest(model_set=model_config.model_task_config.emotion, request_type="mood")
+                chat_manager = get_chat_manager()
+                self.chat_stream = await chat_manager.get_stream(self.chat_id)
 
-        self.last_change_time: float = 0
+                if not self.chat_stream:
+                    # 如果找不到聊天流，使用基础日志前缀但不抛出异常
+                    self.log_prefix = f"[{self.chat_id}]"
+                    logger.warning(f"Chat stream for chat_id {self.chat_id} not found during mood initialization")
+                else:
+                    self.log_prefix = f"[{self.chat_stream.group_info.group_name if self.chat_stream.group_info else self.chat_stream.user_info.user_nickname}]"
 
-    async def update_mood_by_message(self, message: MessageRecv, interested_rate: float):
+                # 初始化回归计数
+                if not hasattr(self, "regression_count"):
+                    self.regression_count = 0
+
+                # 初始化情绪模型
+                if not hasattr(self, "mood_model"):
+                    self.mood_model = LLMRequest(model_set=model_config.model_task_config.emotion, request_type="mood")
+
+                # 初始化最后变化时间
+                if not hasattr(self, "last_change_time"):
+                    self.last_change_time = 0
+
+                self._initialized = True
+                logger.debug(f"{self.log_prefix} 情绪系统初始化完成")
+
+            except Exception as e:
+                logger.error(f"情绪系统初始化失败: {e}")
+                # 设置基础初始化状态，避免重复尝试
+                self.log_prefix = f"[{self.chat_id}]"
+                self._initialized = True
+                if not hasattr(self, "regression_count"):
+                    self.regression_count = 0
+                if not hasattr(self, "mood_model"):
+                    self.mood_model = LLMRequest(model_set=model_config.model_task_config.emotion, request_type="mood")
+                if not hasattr(self, "last_change_time"):
+                    self.last_change_time = 0
+
+    async def update_mood_by_message(self, message: MessageRecv | DatabaseMessages, interested_rate: float):
+        # 确保异步初始化已完成
+        await self._initialize()
+
         # 如果当前聊天处于失眠状态，则锁定情绪，不允许更新
         if self.chat_id in mood_manager.insomnia_chats:
             logger.debug(f"{self.log_prefix} 处于失眠状态，情绪已锁定，跳过更新。")
@@ -73,7 +109,14 @@ class ChatMood:
 
         self.regression_count = 0
 
-        during_last_time = message.message_info.time - self.last_change_time  # type: ignore
+        # 处理不同类型的消息对象
+        if isinstance(message, MessageRecv):
+            message_time = message.message_info.time
+        else:  # DatabaseMessages
+            message_time = message.time
+
+        # 防止负时间差
+        during_last_time = max(0, message_time - self.last_change_time)
 
         base_probability = 0.05
         time_multiplier = 4 * (1 - math.exp(-0.01 * during_last_time))
@@ -91,13 +134,12 @@ class ChatMood:
         )
 
         if random.random() > update_probability:
+            logger.debug(f"{self.log_prefix} 情绪更新概率未达到阈值，跳过更新。概率: {update_probability:.3f}")
             return
 
         logger.debug(
             f"{self.log_prefix} 更新情绪状态，感兴趣度: {interested_rate:.2f}, 更新概率: {update_probability:.2f}"
         )
-
-        message_time: float = message.message_info.time  # type: ignore
         message_list_before_now = await get_raw_msg_by_timestamp_with_chat_inclusive(
             chat_id=self.chat_id,
             timestamp_start=self.last_change_time,
@@ -135,9 +177,9 @@ class ChatMood:
             prompt=prompt, temperature=0.7
         )
         if global_config.debug.show_prompt:
-            logger.info(f"{self.log_prefix} prompt: {prompt}")
-            logger.info(f"{self.log_prefix} response: {response}")
-            logger.info(f"{self.log_prefix} reasoning_content: {reasoning_content}")
+            logger.debug(f"{self.log_prefix} prompt: {prompt}")
+            logger.debug(f"{self.log_prefix} response: {response}")
+            logger.debug(f"{self.log_prefix} reasoning_content: {reasoning_content}")
 
         logger.info(f"{self.log_prefix} 情绪状态更新为: {response}")
 
@@ -185,9 +227,9 @@ class ChatMood:
         )
 
         if global_config.debug.show_prompt:
-            logger.info(f"{self.log_prefix} prompt: {prompt}")
-            logger.info(f"{self.log_prefix} response: {response}")
-            logger.info(f"{self.log_prefix} reasoning_content: {reasoning_content}")
+            logger.debug(f"{self.log_prefix} prompt: {prompt}")
+            logger.debug(f"{self.log_prefix} response: {response}")
+            logger.debug(f"{self.log_prefix} reasoning_content: {reasoning_content}")
 
         logger.info(f"{self.log_prefix} 情绪状态转变为: {response}")
 

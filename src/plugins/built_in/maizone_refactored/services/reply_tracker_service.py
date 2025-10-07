@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 评论回复跟踪服务
 负责记录和管理已回复过的评论ID，避免重复回复
@@ -7,7 +6,8 @@
 import json
 import time
 from pathlib import Path
-from typing import Set, Dict, Any, Union
+from typing import Any
+
 from src.common.logger import get_logger
 
 logger = get_logger("MaiZone.ReplyTrackerService")
@@ -27,7 +27,7 @@ class ReplyTrackerService:
 
         # 内存中的已回复评论记录
         # 格式: {feed_id: {comment_id: timestamp, ...}, ...}
-        self.replied_comments: Dict[str, Dict[str, float]] = {}
+        self.replied_comments: dict[str, dict[str, float]] = {}
 
         # 数据清理配置
         self.max_record_days = 30  # 保留30天的记录
@@ -51,10 +51,10 @@ class ReplyTrackerService:
                 return False
             for comment_id, timestamp in comments.items():
                 # 确保comment_id是字符串格式，如果是数字则转换为字符串
-                if not isinstance(comment_id, (str, int)):
+                if not isinstance(comment_id, str | int):
                     logger.error(f"无效的评论ID格式: {comment_id}")
                     return False
-                if not isinstance(timestamp, (int, float)):
+                if not isinstance(timestamp, int | float):
                     logger.error(f"无效的时间戳格式: {timestamp}")
                     return False
         return True
@@ -64,7 +64,7 @@ class ReplyTrackerService:
         try:
             if self.reply_record_file.exists():
                 try:
-                    with open(self.reply_record_file, "r", encoding="utf-8") as f:
+                    with open(self.reply_record_file, encoding="utf-8") as f:
                         file_content = f.read().strip()
                         if not file_content:  # 文件为空
                             logger.warning("回复记录文件为空，将创建新的记录")
@@ -137,7 +137,7 @@ class ReplyTrackerService:
             try:
                 if temp_file.exists():
                     temp_file.unlink()
-            except:
+            except Exception:
                 pass
 
     def _cleanup_old_records(self):
@@ -173,7 +173,7 @@ class ReplyTrackerService:
         if total_removed > 0:
             logger.info(f"清理了 {total_removed} 条超过{self.max_record_days}天的过期回复记录")
 
-    def has_replied(self, feed_id: str, comment_id: Union[str, int]) -> bool:
+    def has_replied(self, feed_id: str, comment_id: str | int) -> bool:
         """
         检查是否已经回复过指定的评论
 
@@ -190,7 +190,7 @@ class ReplyTrackerService:
         comment_id_str = str(comment_id)
         return feed_id in self.replied_comments and comment_id_str in self.replied_comments[feed_id]
 
-    def mark_as_replied(self, feed_id: str, comment_id: Union[str, int]):
+    def mark_as_replied(self, feed_id: str, comment_id: str | int):
         """
         标记指定评论为已回复
 
@@ -219,7 +219,7 @@ class ReplyTrackerService:
         else:
             logger.error(f"标记评论时数据验证失败: feed_id={feed_id}, comment_id={comment_id}")
 
-    def get_replied_comments(self, feed_id: str) -> Set[str]:
+    def get_replied_comments(self, feed_id: str) -> set[str]:
         """
         获取指定说说下所有已回复的评论ID
 
@@ -234,7 +234,7 @@ class ReplyTrackerService:
             return {str(comment_id) for comment_id in self.replied_comments[feed_id].keys()}
         return set()
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         获取回复记录统计信息
 

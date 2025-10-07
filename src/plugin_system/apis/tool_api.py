@@ -1,13 +1,11 @@
-from typing import Optional, Type
+from src.common.logger import get_logger
 from src.plugin_system.base.base_tool import BaseTool
 from src.plugin_system.base.component_types import ComponentType
-
-from src.common.logger import get_logger
 
 logger = get_logger("tool_api")
 
 
-def get_tool_instance(tool_name: str) -> Optional[BaseTool]:
+def get_tool_instance(tool_name: str) -> BaseTool | None:
     """获取公开工具实例"""
     from src.plugin_system.core import component_registry
 
@@ -18,8 +16,13 @@ def get_tool_instance(tool_name: str) -> Optional[BaseTool]:
     else:
         plugin_config = None
 
-    tool_class: Type[BaseTool] = component_registry.get_component_class(tool_name, ComponentType.TOOL)  # type: ignore
-    return tool_class(plugin_config) if tool_class else None
+    tool_class: type[BaseTool] = component_registry.get_component_class(tool_name, ComponentType.TOOL)  # type: ignore
+    if tool_class:
+        return tool_class(plugin_config)
+
+    # 如果不是常规工具，检查是否是MCP工具
+    # MCP工具不需要返回实例，会在execute_tool_call中特殊处理
+    return None
 
 
 def get_llm_available_tool_definitions():
@@ -31,4 +34,17 @@ def get_llm_available_tool_definitions():
     from src.plugin_system.core import component_registry
 
     llm_available_tools = component_registry.get_llm_available_tools()
-    return [(name, tool_class.get_tool_definition()) for name, tool_class in llm_available_tools.items()]
+    tool_definitions = [(name, tool_class.get_tool_definition()) for name, tool_class in llm_available_tools.items()]
+
+    # 添加MCP工具
+    try:
+        from src.plugin_system.utils.mcp_tool_provider import mcp_tool_provider
+
+        mcp_tools = mcp_tool_provider.get_mcp_tool_definitions()
+        tool_definitions.extend(mcp_tools)
+        if mcp_tools:
+            logger.debug(f"已添加 {len(mcp_tools)} 个MCP工具到可用工具列表")
+    except Exception as e:
+        logger.debug(f"获取MCP工具失败（可能未配置）: {e}")
+
+    return tool_definitions

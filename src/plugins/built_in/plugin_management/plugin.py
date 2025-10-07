@@ -1,21 +1,19 @@
 import asyncio
 
-from typing import List, Tuple, Type
 from src.plugin_system import (
     BasePlugin,
-    ConfigField,
-    register_plugin,
-    plugin_manage_api,
-    component_manage_api,
     ComponentInfo,
     ComponentType,
+    ConfigField,
+    component_manage_api,
+    plugin_manage_api,
+    register_plugin,
 )
-from src.plugin_system.base.plus_command import PlusCommand
-from src.plugin_system.base.command_args import CommandArgs
-from src.plugin_system.base.component_types import PlusCommandInfo, ChatType
 from src.plugin_system.apis.permission_api import permission_api
+from src.plugin_system.base.command_args import CommandArgs
+from src.plugin_system.base.component_types import ChatType, PlusCommandInfo
+from src.plugin_system.base.plus_command import PlusCommand
 from src.plugin_system.utils.permission_decorators import require_permission
-from src.plugin_system.core.plugin_hot_reload import hot_reload_manager
 
 
 class ManagementCommand(PlusCommand):
@@ -32,7 +30,7 @@ class ManagementCommand(PlusCommand):
         super().__init__(*args, **kwargs)
 
     @require_permission("plugin.management.admin", "❌ 你没有插件管理的权限")
-    async def execute(self, args: CommandArgs) -> Tuple[bool, str, bool]:
+    async def execute(self, args: CommandArgs) -> tuple[bool, str, bool]:
         """执行插件管理命令"""
         if args.is_empty:
             await self._show_help("all")
@@ -52,7 +50,7 @@ class ManagementCommand(PlusCommand):
             await self.send_text(f"❌ 未知的子命令: {subcommand}\n使用 /pm help 查看帮助")
             return True, "未知子命令", True
 
-    async def _handle_plugin_commands(self, args: List[str]) -> Tuple[bool, str, bool]:
+    async def _handle_plugin_commands(self, args: list[str]) -> tuple[bool, str, bool]:
         """处理插件相关命令"""
         if not args:
             await self._show_help("plugin")
@@ -78,17 +76,13 @@ class ManagementCommand(PlusCommand):
             await self._force_reload_plugin(args[1])
         elif action in ["add_dir", "添加目录"] and len(args) > 1:
             await self._add_dir(args[1])
-        elif action in ["hotreload_status", "热重载状态"]:
-            await self._show_hotreload_status()
-        elif action in ["clear_cache", "清理缓存"]:
-            await self._clear_all_caches()
         else:
             await self.send_text("❌ 插件管理命令不合法\n使用 /pm plugin help 查看帮助")
             return False, "命令不合法", True
 
         return True, "插件命令执行完成", True
 
-    async def _handle_component_commands(self, args: List[str]) -> Tuple[bool, str, bool]:
+    async def _handle_component_commands(self, args: list[str]) -> tuple[bool, str, bool]:
         """处理组件相关命令"""
         if not args:
             await self._show_help("component")
@@ -174,19 +168,14 @@ class ManagementCommand(PlusCommand):
 
 ⚙️ 插件控制：
 • `/pm plugin load <插件名>` - 加载指定插件
-• `/pm plugin unload <插件名>` - 卸载指定插件  
+• `/pm plugin unload <插件名>` - 卸载指定插件
 • `/pm plugin reload <插件名>` - 重新加载指定插件
 • `/pm plugin force_reload <插件名>` - 强制重载指定插件（深度清理）
 • `/pm plugin add_dir <目录路径>` - 添加插件目录
 
-� 热重载管理：
-• `/pm plugin hotreload_status` - 查看热重载状态
-• `/pm plugin clear_cache` - 清理所有模块缓存
-
 �📝 示例：
 • `/pm plugin load echo_example`
-• `/pm plugin force_reload permission_manager_plugin`
-• `/pm plugin clear_cache`"""
+• `/pm plugin force_reload permission_manager_plugin`"""
         elif target == "component":
             help_msg = """🧩 组件管理命令帮助
 
@@ -262,51 +251,13 @@ class ManagementCommand(PlusCommand):
         await self.send_text(f"🔄 开始强制重载插件: `{plugin_name}`...")
 
         try:
-            success = hot_reload_manager.force_reload_plugin(plugin_name)
+            success = plugin_manage_api.force_reload_plugin(plugin_name)
             if success:
                 await self.send_text(f"✅ 插件强制重载成功: `{plugin_name}`")
             else:
                 await self.send_text(f"❌ 插件强制重载失败: `{plugin_name}`")
         except Exception as e:
-            await self.send_text(f"❌ 强制重载过程中发生错误: {str(e)}")
-
-    async def _show_hotreload_status(self):
-        """显示热重载状态"""
-        try:
-            status = hot_reload_manager.get_status()
-
-            status_text = f"""🔄 **热重载系统状态**
-
-🟢 **运行状态:** {"运行中" if status["is_running"] else "已停止"}
-📂 **监听目录:** {len(status["watch_directories"])} 个
-👁️ **活跃观察者:** {status["active_observers"]} 个
-📦 **已加载插件:** {status["loaded_plugins"]} 个
-❌ **失败插件:** {status["failed_plugins"]} 个
-⏱️ **防抖延迟:** {status.get("debounce_delay", 0)} 秒
-
-📋 **监听的目录:**"""
-
-            for i, watch_dir in enumerate(status["watch_directories"], 1):
-                dir_type = "(内置插件)" if "src" in watch_dir else "(外部插件)"
-                status_text += f"\n{i}. `{watch_dir}` {dir_type}"
-
-            if status.get("pending_reloads"):
-                status_text += f"\n\n⏳ **待重载插件:** {', '.join([f'`{p}`' for p in status['pending_reloads']])}"
-
-            await self.send_text(status_text)
-
-        except Exception as e:
-            await self.send_text(f"❌ 获取热重载状态时发生错误: {str(e)}")
-
-    async def _clear_all_caches(self):
-        """清理所有模块缓存"""
-        await self.send_text("🧹 开始清理所有Python模块缓存...")
-
-        try:
-            hot_reload_manager.clear_all_caches()
-            await self.send_text("✅ 模块缓存清理完成！建议重载相关插件以确保生效。")
-        except Exception as e:
-            await self.send_text(f"❌ 清理缓存时发生错误: {str(e)}")
+            await self.send_text(f"❌ 强制重载过程中发生错误: {e!s}")
 
     async def _add_dir(self, dir_path: str):
         """添加插件目录"""
@@ -319,17 +270,17 @@ class ManagementCommand(PlusCommand):
             await self.send_text(f"❌ 插件目录添加失败: `{dir_path}`")
 
     @staticmethod
-    def _fetch_all_registered_components() -> List[ComponentInfo]:
+    def _fetch_all_registered_components() -> list[ComponentInfo]:
         all_plugin_info = component_manage_api.get_all_plugin_info()
         if not all_plugin_info:
             return []
 
-        components_info: List[ComponentInfo] = []
+        components_info: list[ComponentInfo] = []
         for plugin_info in all_plugin_info.values():
             components_info.extend(plugin_info.components)
         return components_info
 
-    def _fetch_locally_disabled_components(self) -> List[str]:
+    def _fetch_locally_disabled_components(self) -> list[str]:
         """获取本地禁用的组件列表"""
         stream_id = self.message.chat_stream.stream_id
         locally_disabled_components_actions = component_manage_api.get_locally_disabled_components(
@@ -548,16 +499,16 @@ class PluginManagementPlugin(BasePlugin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # 注册权限节点
-        
+
     async def on_plugin_loaded(self):
         await permission_api.register_permission_node(
-                "plugin.management.admin",
-                "插件管理：可以管理插件和组件的加载、卸载、启用、禁用等操作",
-                "plugin_management",
-                False,
+            "plugin.management.admin",
+            "插件管理：可以管理插件和组件的加载、卸载、启用、禁用等操作",
+            "plugin_management",
+            False,
         )
 
-    def get_plugin_components(self) -> List[Tuple[PlusCommandInfo, Type[PlusCommand]]]:
+    def get_plugin_components(self) -> list[tuple[PlusCommandInfo, type[PlusCommand]]]:
         """返回插件的PlusCommand组件"""
         components = []
         if self.get_config("plugin.enabled", True):

@@ -14,7 +14,6 @@ class MetaEventHandler:
     """
 
     def __init__(self):
-        self.last_heart_beat = time.time()
         self.interval = 5.0  # 默认值，稍后通过set_plugin_config设置
         self._interval_checking = False
         self.plugin_config = None
@@ -23,7 +22,9 @@ class MetaEventHandler:
         """设置插件配置"""
         self.plugin_config = plugin_config
         # 更新interval值
-        self.interval = config_api.get_plugin_config(self.plugin_config, "napcat_server.heartbeat_interval", 5000) / 1000
+        self.interval = (
+            config_api.get_plugin_config(self.plugin_config, "napcat_server.heartbeat_interval", 5000) / 1000
+        )
 
     async def handle_meta_event(self, message: dict) -> None:
         event_type = message.get("meta_event_type")
@@ -38,6 +39,7 @@ class MetaEventHandler:
             if message["status"].get("online") and message["status"].get("good"):
                 if not self._interval_checking:
                     asyncio.create_task(self.check_heartbeat())
+                self.last_heart_beat = time.time()
                 self.interval = message.get("interval") / 1000
             else:
                 self_id = message.get("self_id")

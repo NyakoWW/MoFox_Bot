@@ -1,23 +1,27 @@
-from src.config.config import global_config
-from src.common.logger import get_logger
-from src.chat.utils.prompt import Prompt, global_prompt_manager
-from src.chat.utils.chat_message_builder import build_readable_messages, get_raw_msg_before_timestamp_with_chat
-import time
-from src.chat.utils.utils import get_recent_group_speaker
-from src.chat.memory_system.Hippocampus import hippocampus_manager
-import random
-from datetime import datetime
 import asyncio
-from src.mais4u.s4u_config import s4u_config
-from src.chat.message_receive.message import MessageRecvS4U
-from src.person_info.relationship_fetcher import relationship_fetcher_manager
-from src.person_info.person_info import PersonInfoManager, get_person_info_manager
-from src.chat.message_receive.chat_stream import ChatStream
-from src.mais4u.mais4u_chat.super_chat_manager import get_super_chat_manager
-from src.mais4u.mais4u_chat.screen_manager import screen_manager
+
+# 旧的Hippocampus系统已被移除，现在使用增强记忆系统
+# from src.chat.memory_system.enhanced_memory_manager import enhanced_memory_manager
+import random
+import time
+from datetime import datetime
+
 from src.chat.express.expression_selector import expression_selector
-from .s4u_mood_manager import mood_manager
+from src.chat.message_receive.chat_stream import ChatStream
+from src.chat.message_receive.message import MessageRecvS4U
+from src.chat.utils.chat_message_builder import build_readable_messages, get_raw_msg_before_timestamp_with_chat
+from src.chat.utils.prompt import Prompt, global_prompt_manager
+from src.chat.utils.utils import get_recent_group_speaker
+from src.common.logger import get_logger
+from src.config.config import global_config
 from src.mais4u.mais4u_chat.internal_manager import internal_manager
+from src.mais4u.mais4u_chat.screen_manager import screen_manager
+from src.mais4u.mais4u_chat.super_chat_manager import get_super_chat_manager
+from src.mais4u.s4u_config import s4u_config
+from src.person_info.person_info import PersonInfoManager, get_person_info_manager
+from src.person_info.relationship_fetcher import relationship_fetcher_manager
+
+from .s4u_mood_manager import mood_manager
 
 logger = get_logger("prompt")
 
@@ -171,26 +175,40 @@ class PromptBuilder:
 
     @staticmethod
     async def build_memory_block(text: str) -> str:
-        related_memory = await hippocampus_manager.get_memory_from_text(
-            text=text, max_memory_num=2, max_memory_length=2, max_depth=3, fast_retrieval=False
-        )
+        # 使用新的统一记忆系统检索记忆
+        try:
+            from src.chat.memory_system import get_memory_system
 
-        related_memory_info = ""
-        if related_memory:
-            for memory in related_memory:
-                related_memory_info += memory[1]
-            return await global_prompt_manager.format_prompt("memory_prompt", memory_info=related_memory_info)
-        return ""
+            memory_system = get_memory_system()
+            enhanced_memories = await memory_system.retrieve_relevant_memories(
+                query_text=text,
+                user_id="system",  # 系统查询
+                scope_id="system",
+                limit=5,
+            )
+
+            related_memory_info = ""
+            if enhanced_memories:
+                for memory_chunk in enhanced_memories:
+                    related_memory_info += memory_chunk.display or memory_chunk.text_content or ""
+                return await global_prompt_manager.format_prompt(
+                    "memory_prompt", memory_info=related_memory_info.strip()
+                )
+            return ""
+
+        except Exception as e:
+            logger.warning(f"增强记忆系统检索失败: {e}")
+            return ""
 
     @staticmethod
     async def build_chat_history_prompts(chat_stream: ChatStream, message: MessageRecvS4U):
-        message_list_before_now = get_raw_msg_before_timestamp_with_chat(
+        message_list_before_now = await get_raw_msg_before_timestamp_with_chat(
             chat_id=chat_stream.stream_id,
             timestamp=time.time(),
             limit=300,
         )
 
-        talk_type = f"{message.message_info.platform}:{str(message.chat_stream.user_info.user_id)}"
+        talk_type = f"{message.message_info.platform}:{message.chat_stream.user_info.user_id!s}"
 
         core_dialogue_list = []
         background_dialogue_list = []
@@ -261,7 +279,7 @@ class PromptBuilder:
             for msg in all_msg_seg_list:
                 core_msg_str += msg
 
-        all_dialogue_prompt = get_raw_msg_before_timestamp_with_chat(
+        all_dialogue_prompt = await get_raw_msg_before_timestamp_with_chat(
             chat_id=chat_stream.stream_id,
             timestamp=time.time(),
             limit=20,

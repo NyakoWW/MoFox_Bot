@@ -6,30 +6,31 @@
 
 import time
 import traceback
-from typing import Dict, List, Any, Union, Optional
+from typing import Any
 
-from sqlalchemy import desc, asc, func, and_, select
+from sqlalchemy import and_, asc, desc, func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.common.database.sqlalchemy_models import (
-    get_db_session,
-    Messages,
     ActionRecords,
-    PersonInfo,
-    ChatStreams,
-    LLMUsage,
-    Emoji,
-    Images,
-    ImageDescriptions,
-    OnlineTime,
-    Memory,
-    Expression,
-    ThinkingLog,
-    GraphNodes,
-    GraphEdges,
-    Schedule,
-    MaiZoneScheduleStatus,
     CacheEntries,
+    ChatStreams,
+    Emoji,
+    Expression,
+    GraphEdges,
+    GraphNodes,
+    ImageDescriptions,
+    Images,
+    LLMUsage,
+    MaiZoneScheduleStatus,
+    Memory,
+    Messages,
+    OnlineTime,
+    PersonInfo,
+    Schedule,
+    ThinkingLog,
+    UserRelationships,
+    get_db_session,
 )
 from src.common.logger import get_logger
 
@@ -54,10 +55,11 @@ MODEL_MAPPING = {
     "Schedule": Schedule,
     "MaiZoneScheduleStatus": MaiZoneScheduleStatus,
     "CacheEntries": CacheEntries,
+    "UserRelationships": UserRelationships,
 }
 
 
-async def build_filters(model_class, filters: Dict[str, Any]):
+async def build_filters(model_class, filters: dict[str, Any]):
     """构建查询过滤条件"""
     conditions = []
 
@@ -96,13 +98,13 @@ async def build_filters(model_class, filters: Dict[str, Any]):
 
 async def db_query(
     model_class,
-    data: Optional[Dict[str, Any]] = None,
-    query_type: Optional[str] = "get",
-    filters: Optional[Dict[str, Any]] = None,
-    limit: Optional[int] = None,
-    order_by: Optional[List[str]] = None,
-    single_result: Optional[bool] = False,
-) -> Union[List[Dict[str, Any]], Dict[str, Any], None]:
+    data: dict[str, Any] | None = None,
+    query_type: str | None = "get",
+    filters: dict[str, Any] | None = None,
+    limit: int | None = None,
+    order_by: list[str] | None = None,
+    single_result: bool | None = False,
+) -> list[dict[str, Any]] | dict[str, Any] | None:
     """执行异步数据库查询操作
 
     Args:
@@ -122,6 +124,10 @@ async def db_query(
             raise ValueError("query_type must be 'get', 'create', 'update', 'delete' or 'count'")
 
         async with get_db_session() as session:
+            if not session:
+                logger.error("[SQLAlchemy] 无法获取数据库会话")
+                return None if single_result else []
+
             if query_type == "get":
                 query = select(model_class)
 
@@ -192,7 +198,7 @@ async def db_query(
                 # 首先获取要更新的记录
                 result = await session.execute(query)
                 records_to_update = result.scalars().all()
-                
+
                 # 更新每个记录
                 affected_rows = 0
                 for record in records_to_update:
@@ -200,7 +206,7 @@ async def db_query(
                         if hasattr(record, field):
                             setattr(record, field, value)
                     affected_rows += 1
-                
+
                 return affected_rows
 
             elif query_type == "delete":
@@ -215,13 +221,13 @@ async def db_query(
                 # 首先获取要删除的记录
                 result = await session.execute(query)
                 records_to_delete = result.scalars().all()
-                
+
                 # 删除记录
                 affected_rows = 0
                 for record in records_to_delete:
-                    session.delete(record)
+                    await session.delete(record)
                     affected_rows += 1
-                
+
                 return affected_rows
 
             elif query_type == "count":
@@ -257,8 +263,8 @@ async def db_query(
 
 
 async def db_save(
-    model_class, data: Dict[str, Any], key_field: Optional[str] = None, key_value: Optional[Any] = None
-) -> Optional[Dict[str, Any]]:
+    model_class, data: dict[str, Any], key_field: str | None = None, key_value: Any | None = None
+) -> dict[str, Any] | None:
     """异步保存数据到数据库（创建或更新）
 
     Args:
@@ -272,6 +278,9 @@ async def db_save(
     """
     try:
         async with get_db_session() as session:
+            if not session:
+                logger.error("[SQLAlchemy] 无法获取数据库会话")
+                return None
             # 如果提供了key_field和key_value，尝试更新现有记录
             if key_field and key_value is not None:
                 if hasattr(model_class, key_field):
@@ -316,11 +325,11 @@ async def db_save(
 
 async def db_get(
     model_class,
-    filters: Optional[Dict[str, Any]] = None,
-    limit: Optional[int] = None,
-    order_by: Optional[str] = None,
-    single_result: Optional[bool] = False,
-) -> Union[List[Dict[str, Any]], Dict[str, Any], None]:
+    filters: dict[str, Any] | None = None,
+    limit: int | None = None,
+    order_by: str | None = None,
+    single_result: bool | None = False,
+) -> list[dict[str, Any]] | dict[str, Any] | None:
     """异步从数据库获取记录
 
     Args:
@@ -350,9 +359,9 @@ async def store_action_info(
     action_prompt_display: str = "",
     action_done: bool = True,
     thinking_id: str = "",
-    action_data: Optional[dict] = None,
+    action_data: dict | None = None,
     action_name: str = "",
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """异步存储动作信息到数据库
 
     Args:

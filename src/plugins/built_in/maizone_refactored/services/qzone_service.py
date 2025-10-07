@@ -1,32 +1,28 @@
-# -*- coding: utf-8 -*-
 """
 QQ空间服务模块
 封装了所有与QQ空间API的直接交互，是插件的核心业务逻辑层。
 """
 
 import asyncio
-import orjson
+import base64
 import os
 import random
 import time
-import base64
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional, Dict, Any, List, Tuple
+from typing import Any
 
 import aiohttp
 import bs4
 import json5
+import orjson
+
 from src.common.logger import get_logger
-from src.plugin_system.apis import config_api, person_api
-from src.chat.message_receive.chat_stream import get_chat_manager
-from src.chat.utils.chat_message_builder import (
-    build_readable_messages_with_id,
-    get_raw_msg_by_timestamp_with_chat,
-)
+from src.plugin_system.apis import config_api, cross_context_api, person_api
 
 from .content_service import ContentService
-from .image_service import ImageService
 from .cookie_service import CookieService
+from .image_service import ImageService
 from .reply_tracker_service import ReplyTrackerService
 
 logger = get_logger("MaiZone.QZoneService")
@@ -59,10 +55,12 @@ class QZoneService:
         self.cookie_service = cookie_service
         # 如果没有提供 reply_tracker 实例，则创建一个新的
         self.reply_tracker = reply_tracker if reply_tracker is not None else ReplyTrackerService()
+        # 用于防止并发回复/评论的内存锁
+        self.processing_comments = set()
 
     # --- Public Methods (High-Level Business Logic) ---
 
-    async def send_feed(self, topic: str, stream_id: Optional[str]) -> Dict[str, Any]:
+    async def send_feed(self, topic: str, stream_id: str | None) -> dict[str, Any]:
         """发送一条说说"""
         # --- 获取互通组上下文 ---
         context = await self._get_intercom_context(stream_id) if stream_id else None
@@ -90,7 +88,7 @@ class QZoneService:
             logger.error(f"发布说说时发生异常: {e}", exc_info=True)
             return {"success": False, "message": f"发布说说异常: {e}"}
 
-    async def send_feed_from_activity(self, activity: str) -> Dict[str, Any]:
+    async def send_feed_from_activity(self, activity: str) -> dict[str, Any]:
         """根据日程活动发送一条说说"""
         story = await self.content_service.generate_story_from_activity(activity)
         if not story:
@@ -116,9 +114,9 @@ class QZoneService:
             logger.error(f"根据活动发布说说时发生异常: {e}", exc_info=True)
             return {"success": False, "message": f"发布说说异常: {e}"}
 
-    async def read_and_process_feeds(self, target_name: str, stream_id: Optional[str]) -> Dict[str, Any]:
+    async def read_and_process_feeds(self, target_name: str, stream_id: str | None) -> dict[str, Any]:
         """读取并处理指定好友的说说"""
-        target_person_id = person_api.get_person_id_by_name(target_name)
+        target_person_id = await person_api.get_person_id_by_name(target_name)
         if not target_person_id:
             return {"success": False, "message": f"找不到名为'{target_name}'的好友"}
         target_qq = await person_api.get_person_value(target_person_id, "user_id")
@@ -145,7 +143,7 @@ class QZoneService:
             logger.error(f"读取和处理说说时发生异常: {e}", exc_info=True)
             return {"success": False, "message": f"处理说说异常: {e}"}
 
-    async def monitor_feeds(self, stream_id: Optional[str] = None):
+    async def monitor_feeds(self, stream_id: str | None = None):
         """监控并处理所有好友的动态，包括回复自己说说的评论"""
         logger.info("开始执行好友动态监控...")
         qq_account = config_api.get_global_config("bot.qq_account", "")
@@ -159,7 +157,7 @@ class QZoneService:
             if self.get_config("monitor.enable_auto_reply", False):
                 try:
                     # 传入新参数，表明正在检查自己的说说
-                    own_feeds = await api_client["list_feeds"](qq_account, 5, is_monitoring_own_feeds=True)
+                    own_feeds = await api_client["list_feeds"](qq_account, 5)
                     if own_feeds:
                         logger.info(f"获取到自己 {len(own_feeds)} 条说说，检查评论...")
                         for feed in own_feeds:
@@ -187,65 +185,14 @@ class QZoneService:
 
     # --- Internal Helper Methods ---
 
-    async def _get_intercom_context(self, stream_id: str) -> Optional[str]:
+    async def _get_intercom_context(self, stream_id: str) -> str | None:
         """
-        根据 stream_id 查找其所属的互通组，并构建该组的聊天上下文。
-
-        Args:
-            stream_id: 需要查找的当前聊天流ID。
-
-        Returns:
-            如果找到匹配的组，则返回一个包含聊天记录的字符串；否则返回 None。
+        获取互通组的聊天上下文。
         """
-        intercom_config = config_api.get_global_config("maizone_intercom")
-        if not (intercom_config and intercom_config.enable):
-            return None
+        # 实际的逻辑已迁移到 cross_context_api
+        return await cross_context_api.get_intercom_group_context_by_name("maizone_context_group")
 
-        chat_manager = get_chat_manager()
-        bot_platform = config_api.get_global_config("bot.platform")
-
-        for group in intercom_config.groups:
-            # 使用集合以优化查找效率
-            group_stream_ids = {chat_manager.get_stream_id(bot_platform, chat_id, True) for chat_id in group.chat_ids}
-
-            if stream_id in group_stream_ids:
-                logger.debug(
-                    f"Stream ID '{stream_id}' 在互通组 '{getattr(group, 'name', 'Unknown')}' 中找到，正在构建上下文。"
-                )
-
-                all_messages = []
-                end_time = time.time()
-                start_time = end_time - (3 * 24 * 60 * 60)  # 获取过去3天的消息
-
-                for chat_id in group.chat_ids:
-                    # 使用正确的函数获取历史消息
-                    messages = get_raw_msg_by_timestamp_with_chat(
-                        chat_id=chat_id,
-                        timestamp_start=start_time,
-                        timestamp_end=end_time,
-                        limit=20,  # 每个聊天最多获取20条
-                        limit_mode="latest",
-                    )
-                    all_messages.extend(messages)
-
-                if not all_messages:
-                    return None
-
-                # 按时间戳对所有消息进行排序
-                all_messages.sort(key=lambda x: x.get("time", 0))
-
-                # 限制总消息数，例如最多100条
-                if len(all_messages) > 100:
-                    all_messages = all_messages[-100:]
-
-                # build_readable_messages_with_id 返回一个元组 (formatted_string, message_id_list)
-                formatted_string, _ = await build_readable_messages_with_id(all_messages)
-                return formatted_string
-
-        logger.debug(f"Stream ID '{stream_id}' 未在任何互通组中找到。")
-        return None
-
-    async def _reply_to_own_feed_comments(self, feed: Dict, api_client: Dict):
+    async def _reply_to_own_feed_comments(self, feed: dict, api_client: dict):
         """处理对自己说说的评论并进行回复"""
         qq_account = config_api.get_global_config("bot.qq_account", "")
         comments = feed.get("comments", [])
@@ -257,34 +204,33 @@ class QZoneService:
 
         # 1. 将评论分为用户评论和自己的回复
         user_comments = [c for c in comments if str(c.get("qq_account")) != str(qq_account)]
-        my_replies = [c for c in comments if str(c.get("qq_account")) == str(qq_account)]
+        [c for c in comments if str(c.get("qq_account")) == str(qq_account)]
 
         if not user_comments:
             return
 
         # 直接检查评论是否已回复，不做验证清理
-        comments_to_reply = []
+        comments_to_process = []
         for comment in user_comments:
             comment_tid = comment.get("comment_tid")
             if not comment_tid:
                 continue
 
-            # 检查是否已经在持久化记录中标记为已回复
-            if not self.reply_tracker.has_replied(fid, comment_tid):
-                # 记录日志以便追踪
-                logger.debug(
-                    f"发现新评论需要回复 - 说说ID: {fid}, 评论ID: {comment_tid}, "
-                    f"评论人: {comment.get('nickname', '')}, 内容: {comment.get('content', '')}"
-                )
-                comments_to_reply.append(comment)
+            comment_key = f"{fid}_{comment_tid}"
+            # 检查持久化记录和内存锁
+            if not self.reply_tracker.has_replied(fid, comment_tid) and comment_key not in self.processing_comments:
+                logger.debug(f"锁定待回复评论: {comment_key}")
+                self.processing_comments.add(comment_key)
+                comments_to_process.append(comment)
 
-        if not comments_to_reply:
-            logger.debug(f"说说 {fid} 下的所有评论都已回复过或无需回复")
+        if not comments_to_process:
+            logger.debug(f"说说 {fid} 下的所有评论都已回复过或正在处理中")
             return
 
-        logger.info(f"发现自己说说下的 {len(comments_to_reply)} 条新评论，准备回复...")
-        for comment in comments_to_reply:
+        logger.info(f"发现自己说说下的 {len(comments_to_process)} 条新评论，准备回复...")
+        for comment in comments_to_process:
             comment_tid = comment.get("comment_tid")
+            comment_key = f"{fid}_{comment_tid}"
             nickname = comment.get("nickname", "")
             comment_content = comment.get("content", "")
 
@@ -293,7 +239,6 @@ class QZoneService:
                 if reply_content:
                     success = await api_client["reply"](fid, qq_account, nickname, reply_content, comment_tid)
                     if success:
-                        # 标记为已回复
                         self.reply_tracker.mark_as_replied(fid, comment_tid)
                         logger.info(f"成功回复'{nickname}'的评论: '{reply_content}'")
                     else:
@@ -303,8 +248,13 @@ class QZoneService:
                     logger.warning(f"生成回复内容失败，跳过回复'{nickname}'的评论")
             except Exception as e:
                 logger.error(f"回复'{nickname}'的评论时发生异常: {e}", exc_info=True)
+            finally:
+                # 无论成功与否，都解除锁定
+                logger.debug(f"解锁评论: {comment_key}")
+                if comment_key in self.processing_comments:
+                    self.processing_comments.remove(comment_key)
 
-    async def _validate_and_cleanup_reply_records(self, fid: str, my_replies: List[Dict]):
+    async def _validate_and_cleanup_reply_records(self, fid: str, my_replies: list[dict]):
         """验证并清理已删除的回复记录"""
         # 获取当前记录中该说说的所有已回复评论ID
         recorded_replied_comments = self.reply_tracker.get_replied_comments(fid)
@@ -328,22 +278,45 @@ class QZoneService:
                 self.reply_tracker.remove_reply_record(fid, comment_tid)
                 logger.debug(f"已清理删除的回复记录: feed_id={fid}, comment_id={comment_tid}")
 
-    async def _process_single_feed(self, feed: Dict, api_client: Dict, target_qq: str, target_name: str):
+    async def _process_single_feed(self, feed: dict, api_client: dict, target_qq: str, target_name: str):
         """处理单条说说，决定是否评论和点赞"""
         content = feed.get("content", "")
         fid = feed.get("tid", "")
         rt_con = feed.get("rt_con", "")
         images = feed.get("images", [])
 
-        if random.random() <= self.get_config("read.comment_possibility", 0.3):
-            comment_text = await self.content_service.generate_comment(content, target_name, rt_con, images)
-            if comment_text:
-                await api_client["comment"](target_qq, fid, comment_text)
+        # --- 处理评论 ---
+        comment_key = f"{fid}_main_comment"
+        should_comment = random.random() <= self.get_config("read.comment_possibility", 0.3)
 
+        if (
+            should_comment
+            and not self.reply_tracker.has_replied(fid, "main_comment")
+            and comment_key not in self.processing_comments
+        ):
+            logger.debug(f"锁定待评论说说: {comment_key}")
+            self.processing_comments.add(comment_key)
+            try:
+                comment_text = await self.content_service.generate_comment(content, target_name, rt_con, images)
+                if comment_text:
+                    success = await api_client["comment"](target_qq, fid, comment_text)
+                    if success:
+                        self.reply_tracker.mark_as_replied(fid, "main_comment")
+                        logger.info(f"成功评论'{target_name}'的说说: '{comment_text}'")
+                    else:
+                        logger.error(f"评论'{target_name}'的说说失败")
+            except Exception as e:
+                logger.error(f"评论'{target_name}'的说说时发生异常: {e}", exc_info=True)
+            finally:
+                logger.debug(f"解锁说说: {comment_key}")
+                if comment_key in self.processing_comments:
+                    self.processing_comments.remove(comment_key)
+
+        # --- 处理点赞 (逻辑不变) ---
         if random.random() <= self.get_config("read.like_possibility", 1.0):
             await api_client["like"](target_qq, fid)
 
-    def _load_local_images(self, image_dir: str) -> List[bytes]:
+    def _load_local_images(self, image_dir: str) -> list[bytes]:
         """随机加载本地图片（不删除文件）"""
         images = []
         if not image_dir or not os.path.exists(image_dir):
@@ -404,13 +377,14 @@ class QZoneService:
             hash_val += (hash_val << 5) + ord(char)
         return str(hash_val & 2147483647)
 
-    async def _renew_and_load_cookies(self, qq_account: str, stream_id: Optional[str]) -> Optional[Dict[str, str]]:
+    async def _renew_and_load_cookies(self, qq_account: str, stream_id: str | None) -> dict[str, str] | None:
         cookie_dir = Path(__file__).resolve().parent.parent / "cookies"
         cookie_dir.mkdir(exist_ok=True)
         cookie_file_path = cookie_dir / f"cookies-{qq_account}.json"
 
+        # 优先尝试通过Napcat HTTP服务获取最新的Cookie
         try:
-            # 使用HTTP服务器方式获取Cookie
+            logger.info("尝试通过Napcat HTTP服务获取Cookie...")
             host = self.get_config("cookie.http_fallback_host", "172.20.130.55")
             port = self.get_config("cookie.http_fallback_port", "9999")
             napcat_token = self.get_config("cookie.napcat_token", "")
@@ -421,23 +395,43 @@ class QZoneService:
                 parsed_cookies = {
                     k.strip(): v.strip() for k, v in (p.split("=", 1) for p in cookie_str.split("; ") if "=" in p)
                 }
-                with open(cookie_file_path, "wb") as f:
-                    f.write(orjson.dumps(parsed_cookies))
-                logger.info(f"Cookie已更新并保存至: {cookie_file_path}")
+                # 成功获取后，异步写入本地文件作为备份
+                try:
+                    with open(cookie_file_path, "wb") as f:
+                        f.write(orjson.dumps(parsed_cookies))
+                    logger.info(f"通过Napcat服务成功更新Cookie，并已保存至: {cookie_file_path}")
+                except Exception as e:
+                    logger.warning(f"保存Cookie到文件时出错: {e}")
                 return parsed_cookies
+            else:
+                logger.warning("通过Napcat服务未能获取有效Cookie。")
 
-            # 如果HTTP获取失败，尝试读取本地文件
-            if cookie_file_path.exists():
-                with open(cookie_file_path, "rb") as f:
-                    return orjson.loads(f.read())
-            return None
         except Exception as e:
-            logger.error(f"更新或加载Cookie时发生异常: {e}")
-            return None
+            logger.warning(f"通过Napcat HTTP服务获取Cookie时发生异常: {e}。将尝试从本地文件加载。")
 
-    async def _fetch_cookies_http(self, host: str, port: str, napcat_token: str) -> Optional[Dict]:
+        # 如果通过服务获取失败，则尝试从本地文件加载
+        logger.info("尝试从本地Cookie文件加载...")
+        if cookie_file_path.exists():
+            try:
+                with open(cookie_file_path, "rb") as f:
+                    cookies = orjson.loads(f.read())
+                    logger.info(f"成功从本地文件加载Cookie: {cookie_file_path}")
+                    return cookies
+            except Exception as e:
+                logger.error(f"从本地文件 {cookie_file_path} 读取或解析Cookie失败: {e}")
+        else:
+            logger.warning(f"本地Cookie文件不存在: {cookie_file_path}")
+
+        logger.error("所有获取Cookie的方式均失败。")
+        return None
+
+    async def _fetch_cookies_http(self, host: str, port: int, napcat_token: str) -> dict | None:
         """通过HTTP服务器获取Cookie"""
-        url = f"http://{host}:{port}/get_cookies"
+        # 从配置中读取主机和端口，如果未提供则使用传入的参数
+        final_host = self.get_config("cookie.http_fallback_host", host)
+        final_port = self.get_config("cookie.http_fallback_port", port)
+        url = f"http://{final_host}:{final_port}/get_cookies"
+
         max_retries = 5
         retry_delay = 1
 
@@ -466,29 +460,36 @@ class QZoneService:
 
             except aiohttp.ClientError as e:
                 if attempt < max_retries - 1:
-                    logger.warning(f"无法连接到Napcat服务(尝试 {attempt + 1}/{max_retries}): {url}，错误: {str(e)}")
+                    logger.warning(f"无法连接到Napcat服务(尝试 {attempt + 1}/{max_retries}): {url}，错误: {e!s}")
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2
                     continue
-                logger.error(f"无法连接到Napcat服务(最终尝试): {url}，错误: {str(e)}")
+                logger.error(f"无法连接到Napcat服务(最终尝试): {url}，错误: {e!s}")
                 raise RuntimeError(f"无法连接到Napcat服务: {url}") from e
             except Exception as e:
-                logger.error(f"获取cookie异常: {str(e)}")
+                logger.error(f"获取cookie异常: {e!s}")
                 raise
 
         raise RuntimeError(f"无法连接到Napcat服务: 超过最大重试次数({max_retries})")
 
-    async def _get_api_client(self, qq_account: str, stream_id: Optional[str]) -> Optional[Dict]:
+    async def _get_api_client(self, qq_account: str, stream_id: str | None) -> dict | None:
         cookies = await self.cookie_service.get_cookies(qq_account, stream_id)
         if not cookies:
+            logger.error(
+                "获取API客户端失败：未能获取到Cookie。请检查Napcat连接是否正常，或是否存在有效的本地Cookie文件。"
+            )
             return None
 
         p_skey = cookies.get("p_skey") or cookies.get("p_skey".upper())
         if not p_skey:
+            logger.error(f"获取API客户端失败：Cookie中缺少关键的 'p_skey'。Cookie内容: {cookies}")
             return None
 
         gtk = self._generate_gtk(p_skey)
         uin = cookies.get("uin", "").lstrip("o")
+        if not uin:
+            logger.error(f"获取API客户端失败：Cookie中缺少关键的 'uin'。Cookie内容: {cookies}")
+            return None
 
         async def _request(method, url, params=None, data=None, headers=None):
             final_headers = {"referer": f"https://user.qzone.qq.com/{uin}", "origin": "https://user.qzone.qq.com"}
@@ -503,7 +504,7 @@ class QZoneService:
                     response.raise_for_status()
                     return await response.text()
 
-        async def _publish(content: str, images: List[bytes]) -> Tuple[bool, str]:
+        async def _publish(content: str, images: list[bytes]) -> tuple[bool, str]:
             """发布说说"""
             try:
                 post_data = {
@@ -604,7 +605,7 @@ class QZoneService:
 
             return picbo, richval
 
-        async def _upload_image(image_bytes: bytes, index: int) -> Optional[Dict[str, str]]:
+        async def _upload_image(image_bytes: bytes, index: int) -> dict[str, str] | None:
             """上传图片到QQ空间（完全按照原版实现）"""
             try:
                 upload_url = "https://up.qzone.qq.com/cgi-bin/upload/cgi_upload_image"
@@ -670,7 +671,8 @@ class QZoneService:
                                         return {"pic_bo": picbo, "richval": richval}
                                     except Exception as e:
                                         logger.error(
-                                            f"从上传结果中提取图片参数失败: {e}, 上传结果: {upload_result}", exc_info=True
+                                            f"从上传结果中提取图片参数失败: {e}, 上传结果: {upload_result}",
+                                            exc_info=True,
                                         )
                                         return None
                                 else:
@@ -688,9 +690,10 @@ class QZoneService:
                 logger.error(f"上传图片 {index + 1} 异常: {e}", exc_info=True)
                 return None
 
-        async def _list_feeds(t_qq: str, num: int, is_monitoring_own_feeds: bool = False) -> List[Dict]:
-            """获取指定用户说说列表"""
+        async def _list_feeds(t_qq: str, num: int) -> list[dict]:
+            """获取指定用户说说列表 (统一接口)"""
             try:
+                # 统一使用 format=json 获取完整评论
                 params = {
                     "g_tk": gtk,
                     "uin": t_qq,
@@ -698,44 +701,75 @@ class QZoneService:
                     "sort": 0,
                     "pos": 0,
                     "num": num,
-                    "replynum": 100,
-                    "callback": "_preloadCallback",
+                    "replynum": 999,  # 尽量获取更多
                     "code_version": 1,
-                    "format": "jsonp",
+                    "format": "json",  # 关键：使用JSON格式
                     "need_comment": 1,
                 }
                 res_text = await _request("GET", self.LIST_URL, params=params)
-                json_str = res_text[len("_preloadCallback(") : -2]
-                json_data = orjson.loads(json_str)
+                json_data = orjson.loads(res_text)
 
                 if json_data.get("code") != 0:
+                    logger.warning(
+                        f"获取说说列表API返回错误: code={json_data.get('code')}, message={json_data.get('message')}"
+                    )
                     return []
 
                 feeds_list = []
                 my_name = json_data.get("logininfo", {}).get("name", "")
+
                 for msg in json_data.get("msglist", []):
-                    # 只有在处理好友说说时，才检查是否已评论并跳过
-                    if not is_monitoring_own_feeds:
-                        is_commented = any(
-                            c.get("name") == my_name for c in msg.get("commentlist", []) if isinstance(c, dict)
-                        )
+                    # 当读取的是好友动态时，检查是否已评论过，如果是则跳过
+                    is_friend_feed = str(t_qq) != str(uin)
+                    if is_friend_feed:
+                        commentlist_for_check = msg.get("commentlist")
+                        is_commented = False
+                        if isinstance(commentlist_for_check, list):
+                            is_commented = any(
+                                c.get("name") == my_name for c in commentlist_for_check if isinstance(c, dict)
+                            )
                         if is_commented:
                             continue
 
-                    images = [pic["url1"] for pic in msg.get("pictotal", []) if "url1" in pic]
+                    # --- 安全地处理图片列表 ---
+                    images = []
+                    if "pic" in msg and isinstance(msg["pic"], list):
+                        images = [pic.get("url1", "") for pic in msg["pic"] if pic.get("url1")]
+                    elif "pictotal" in msg and isinstance(msg["pictotal"], list):
+                        images = [pic.get("url1", "") for pic in msg["pictotal"] if pic.get("url1")]
 
+                    # --- 解析完整评论列表 (包括二级评论) ---
                     comments = []
-                    if "commentlist" in msg:
-                        for c in msg["commentlist"]:
+                    commentlist = msg.get("commentlist")
+                    if isinstance(commentlist, list):
+                        for c in commentlist:
+                            if not isinstance(c, dict):
+                                continue
+
+                            # 添加主评论
                             comments.append(
                                 {
                                     "qq_account": c.get("uin"),
                                     "nickname": c.get("name"),
                                     "content": c.get("content"),
                                     "comment_tid": c.get("tid"),
-                                    "parent_tid": c.get("parent_tid"),  # API直接返回了父ID
+                                    "parent_tid": None,  # 主评论没有父ID
                                 }
                             )
+                            # 检查并添加二级评论 (回复)
+                            if "list_3" in c and isinstance(c["list_3"], list):
+                                for reply in c["list_3"]:
+                                    if not isinstance(reply, dict):
+                                        continue
+                                    comments.append(
+                                        {
+                                            "qq_account": reply.get("uin"),
+                                            "nickname": reply.get("name"),
+                                            "content": reply.get("content"),
+                                            "comment_tid": reply.get("tid"),
+                                            "parent_tid": c.get("tid"),  # 父ID是主评论的ID
+                                        }
+                                    )
 
                     feeds_list.append(
                         {
@@ -751,6 +785,8 @@ class QZoneService:
                             "comments": comments,
                         }
                     )
+
+                logger.info(f"成功获取到 {len(feeds_list)} 条说说 from {t_qq} (使用统一JSON接口)")
                 return feeds_list
             except Exception as e:
                 logger.error(f"获取说说列表失败: {e}", exc_info=True)
@@ -829,7 +865,7 @@ class QZoneService:
                 logger.error(f"回复评论异常: {e}", exc_info=True)
                 return False
 
-        async def _monitor_list_feeds(num: int) -> List[Dict]:
+        async def _monitor_list_feeds(num: int) -> list[dict]:
             """监控好友动态"""
             try:
                 params = {

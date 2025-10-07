@@ -1,9 +1,11 @@
-from src.common.server import get_global_server
 import importlib.metadata
-from maim_message import MessageServer
-from src.common.logger import get_logger
-from src.config.config import global_config
 import os
+
+from maim_message import MessageServer
+
+from src.common.logger import get_logger
+from src.common.server import get_global_server
+from src.config.config import global_config
 
 global_api = None
 
@@ -23,15 +25,15 @@ def get_global_api() -> MessageServer:  # sourcery skip: extract-method
         maim_message_config = global_config.maim_message
 
         # 设置基本参数
-        
+
         host = os.getenv("HOST", "127.0.0.1")
         port_str = os.getenv("PORT", "8000")
-        
+
         try:
             port = int(port_str)
         except ValueError:
             port = 8000
-            
+
         kwargs = {
             "host": host,
             "port": port,

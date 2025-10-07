@@ -1,17 +1,17 @@
 import asyncio
-import io
-import orjson
-import re
 import base64
-from collections.abc import Iterable
-from typing import Callable, Any, Coroutine, Optional
-from json_repair import repair_json
+import io
+import re
+from collections.abc import Callable, Coroutine, Iterable
+from typing import Any
 
+import orjson
+from json_repair import repair_json
 from openai import (
-    AsyncOpenAI,
+    NOT_GIVEN,
     APIConnectionError,
     APIStatusError,
-    NOT_GIVEN,
+    AsyncOpenAI,
     AsyncStream,
 )
 from openai.types.chat import (
@@ -22,18 +22,19 @@ from openai.types.chat import (
 )
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
 
-from src.config.api_ada_configs import ModelInfo, APIProvider
 from src.common.logger import get_logger
-from .base_client import APIResponse, UsageRecord, BaseClient, client_registry
+from src.config.api_ada_configs import APIProvider, ModelInfo
+
 from ..exceptions import (
-    RespParseException,
     NetworkConnectionError,
-    RespNotOkException,
     ReqAbortException,
+    RespNotOkException,
+    RespParseException,
 )
 from ..payload_content.message import Message, RoleType
 from ..payload_content.resp_format import RespFormat
-from ..payload_content.tool_option import ToolOption, ToolParam, ToolCall
+from ..payload_content.tool_option import ToolCall, ToolOption, ToolParam
+from .base_client import APIResponse, BaseClient, UsageRecord, client_registry
 
 logger = get_logger("OpenAI客户端")
 
@@ -241,7 +242,7 @@ def _build_stream_api_resp(
 async def _default_stream_response_handler(
     resp_stream: AsyncStream[ChatCompletionChunk],
     interrupt_flag: asyncio.Event | None,
-) -> tuple[APIResponse, Optional[tuple[int, int, int]]]:
+) -> tuple[APIResponse, tuple[int, int, int] | None]:
     """
     流式响应处理函数 - 处理OpenAI API的流式响应
     :param resp_stream: 流式响应对象
@@ -315,7 +316,7 @@ pattern = re.compile(
 
 def _default_normal_response_parser(
     resp: ChatCompletion,
-) -> tuple[APIResponse, Optional[tuple[int, int, int]]]:
+) -> tuple[APIResponse, tuple[int, int, int] | None]:
     """
     解析对话补全响应 - 将OpenAI API响应解析为APIResponse对象
     :param resp: 响应对象
@@ -374,14 +375,59 @@ def _default_normal_response_parser(
 
 @client_registry.register_client_class("openai")
 class OpenaiClient(BaseClient):
+    # 类级别的全局缓存：所有 OpenaiClient 实例共享
+    _global_client_cache: dict[int, AsyncOpenAI] = {}
+    """全局 AsyncOpenAI 客户端缓存：config_hash -> AsyncOpenAI 实例"""
+
     def __init__(self, api_provider: APIProvider):
         super().__init__(api_provider)
-        self.client: AsyncOpenAI = AsyncOpenAI(
-            base_url=api_provider.base_url,
-            api_key=api_provider.api_key,
-            max_retries=0,
-            timeout=api_provider.timeout,
+        self._config_hash = self._calculate_config_hash()
+        """当前 provider 的配置哈希值"""
+
+    def _calculate_config_hash(self) -> int:
+        """计算当前配置的哈希值"""
+        config_tuple = (
+            self.api_provider.base_url,
+            self.api_provider.get_api_key(),
+            self.api_provider.timeout,
         )
+        return hash(config_tuple)
+
+    def _create_client(self) -> AsyncOpenAI:
+        """
+        获取或创建 OpenAI 客户端实例（全局缓存）
+
+        多个 OpenaiClient 实例如果配置相同（base_url + api_key + timeout），
+        将共享同一个 AsyncOpenAI 客户端实例，最大化连接池复用。
+        """
+        # 检查全局缓存
+        if self._config_hash in self._global_client_cache:
+            return self._global_client_cache[self._config_hash]
+
+        # 创建新的 AsyncOpenAI 实例
+        logger.debug(
+            f"创建新的 AsyncOpenAI 客户端实例 (base_url={self.api_provider.base_url}, config_hash={self._config_hash})"
+        )
+
+        client = AsyncOpenAI(
+            base_url=self.api_provider.base_url,
+            api_key=self.api_provider.get_api_key(),
+            max_retries=0,
+            timeout=self.api_provider.timeout,
+        )
+
+        # 存入全局缓存
+        self._global_client_cache[self._config_hash] = client
+
+        return client
+
+    @classmethod
+    def get_cache_stats(cls) -> dict:
+        """获取全局缓存统计信息"""
+        return {
+            "cached_openai_clients": len(cls._global_client_cache),
+            "config_hashes": list(cls._global_client_cache.keys()),
+        }
 
     async def get_response(
         self,
@@ -391,15 +437,13 @@ class OpenaiClient(BaseClient):
         max_tokens: int = 1024,
         temperature: float = 0.7,
         response_format: RespFormat | None = None,
-        stream_response_handler: Optional[
-            Callable[
-                [AsyncStream[ChatCompletionChunk], asyncio.Event | None],
-                Coroutine[Any, Any, tuple[APIResponse, Optional[tuple[int, int, int]]]],
-            ]
-        ] = None,
-        async_response_parser: Optional[
-            Callable[[ChatCompletion], tuple[APIResponse, Optional[tuple[int, int, int]]]]
-        ] = None,
+        stream_response_handler: Callable[
+            [AsyncStream[ChatCompletionChunk], asyncio.Event | None],
+            Coroutine[Any, Any, tuple[APIResponse, tuple[int, int, int] | None]],
+        ]
+        | None = None,
+        async_response_parser: Callable[[ChatCompletion], tuple[APIResponse, tuple[int, int, int] | None]]
+        | None = None,
         interrupt_flag: asyncio.Event | None = None,
         extra_params: dict[str, Any] | None = None,
     ) -> APIResponse:
@@ -429,10 +473,11 @@ class OpenaiClient(BaseClient):
         # 将tool_options转换为OpenAI API所需的格式
         tools: Iterable[ChatCompletionToolParam] = _convert_tool_options(tool_options) if tool_options else NOT_GIVEN  # type: ignore
 
+        client = self._create_client()
         try:
             if model_info.force_stream_mode:
                 req_task = asyncio.create_task(
-                    self.client.chat.completions.create(
+                    client.chat.completions.create(
                         model=model_info.model_identifier,
                         messages=messages,
                         tools=tools,
@@ -455,7 +500,7 @@ class OpenaiClient(BaseClient):
                 # 发送请求并获取响应
                 # start_time = time.time()
                 req_task = asyncio.create_task(
-                    self.client.chat.completions.create(
+                    client.chat.completions.create(
                         model=model_info.model_identifier,
                         messages=messages,
                         tools=tools,
@@ -506,25 +551,26 @@ class OpenaiClient(BaseClient):
         :param embedding_input: 嵌入输入文本
         :return: 嵌入响应
         """
+        client = self._create_client()
         try:
-            raw_response = await self.client.embeddings.create(
+            raw_response = await client.embeddings.create(
                 model=model_info.model_identifier,
                 input=embedding_input,
                 extra_body=extra_params,
             )
         except APIConnectionError as e:
             # 添加详细的错误信息以便调试
-            logger.error(f"OpenAI API连接错误（嵌入模型）: {str(e)}")
+            logger.error(f"OpenAI API连接错误（嵌入模型）: {e!s}")
             logger.error(f"错误类型: {type(e)}")
             if hasattr(e, "__cause__") and e.__cause__:
-                logger.error(f"底层错误: {str(e.__cause__)}")
+                logger.error(f"底层错误: {e.__cause__!s}")
             raise NetworkConnectionError() from e
         except APIStatusError as e:
             # 重封装APIError为RespNotOkException
             raise RespNotOkException(e.status_code) from e
         except Exception as e:
             # 添加通用异常处理和日志记录
-            logger.error(f"获取嵌入时发生未知错误: {str(e)}")
+            logger.error(f"获取嵌入时发生未知错误: {e!s}")
             logger.error(f"错误类型: {type(e)}")
             raise
 
@@ -564,8 +610,9 @@ class OpenaiClient(BaseClient):
         :extra_params: 附加的请求参数
         :return: 音频转录响应
         """
+        client = self._create_client()
         try:
-            raw_response = await self.client.audio.transcriptions.create(
+            raw_response = await client.audio.transcriptions.create(
                 model=model_info.model_identifier,
                 file=("audio.wav", io.BytesIO(base64.b64decode(audio_base64))),
                 extra_body=extra_params,

@@ -1,7 +1,8 @@
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from src.common.logger import get_logger
+from src.plugin_system.base.base_events_handler import BaseEventHandler
 
 logger = get_logger("base_event")
 
@@ -25,22 +26,22 @@ class HandlerResult:
 class HandlerResultsCollection:
     """HandlerResult集合，提供便捷的查询方法"""
 
-    def __init__(self, results: List[HandlerResult]):
+    def __init__(self, results: list[HandlerResult]):
         self.results = results
 
     def all_continue_process(self) -> bool:
         """检查是否所有handler的continue_process都为True"""
         return all(result.continue_process for result in self.results)
 
-    def get_all_results(self) -> List[HandlerResult]:
+    def get_all_results(self) -> list[HandlerResult]:
         """获取所有HandlerResult"""
         return self.results
 
-    def get_failed_handlers(self) -> List[HandlerResult]:
+    def get_failed_handlers(self) -> list[HandlerResult]:
         """获取执行失败的handler结果"""
         return [result for result in self.results if not result.success]
 
-    def get_stopped_handlers(self) -> List[HandlerResult]:
+    def get_stopped_handlers(self) -> list[HandlerResult]:
         """获取continue_process为False的handler结果"""
         return [result for result in self.results if not result.continue_process]
 
@@ -57,7 +58,7 @@ class HandlerResultsCollection:
         else:
             return {result.handler_name: result.message for result in self.results}
 
-    def get_handler_result(self, handler_name: str) -> Optional[HandlerResult]:
+    def get_handler_result(self, handler_name: str) -> HandlerResult | None:
         """获取指定handler的结果"""
         for result in self.results:
             if result.handler_name == handler_name:
@@ -72,7 +73,7 @@ class HandlerResultsCollection:
         """获取执行失败的handler数量"""
         return sum(1 for result in self.results if not result.success)
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """获取执行摘要"""
         return {
             "total_handlers": len(self.results),
@@ -85,13 +86,15 @@ class HandlerResultsCollection:
 
 
 class BaseEvent:
-    def __init__(self, name: str, allowed_subscribers: List[str] = None, allowed_triggers: List[str] = None):
+    def __init__(
+        self, name: str, allowed_subscribers: list[str] | None = None, allowed_triggers: list[str] | None = None
+    ):
         self.name = name
         self.enabled = True
         self.allowed_subscribers = allowed_subscribers  # 记录事件处理器名
         self.allowed_triggers = allowed_triggers  # 记录插件名
 
-        self.subscribers: List["BaseEventHandler"] = []  # 订阅该事件的事件处理器列表
+        self.subscribers: list["BaseEventHandler"] = []  # 订阅该事件的事件处理器列表
 
         self.event_handle_lock = asyncio.Lock()
 

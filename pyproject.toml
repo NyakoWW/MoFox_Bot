@@ -21,7 +21,7 @@ dependencies = [
     "google>=3.0.0",
     "google-genai>=1.29.0",
     "httpx>=0.28.1",
-    "jieba>=0.42.1",
+    "rjieba>=0.42.1",
     "json-repair>=0.47.6",
     "json5>=0.12.1",
     "jsonlines>=4.0.0",
@@ -74,36 +74,51 @@ dependencies = [
     "websockets>=15.0.1",
     "aiomysql>=0.2.0",
     "aiosqlite>=0.21.0",
-    "inkfox>=0.1.0",
+    "inkfox>=0.1.1",
+    "rrjieba>=0.1.13",
+    "mcp>=0.9.0",
+    "sse-starlette>=2.2.1",
 ]
 
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 default = true
 
+[tool.uv.sources]
+amrita = { workspace = true }
+
 [tool.ruff]
-
-include = ["*.py"]
-
-# 行长度设置
 line-length = 120
+target-version = "py310"
 
 [tool.ruff.lint]
-fixable = ["ALL"]
-unfixable = []
+select = [
+    "F",     # Pyflakes
+    "W",     # pycodestyle warnings
+    "E",     # pycodestyle errors
+    "UP",    # pyupgrade
+    "ASYNC", # flake8-async
+    "C4",    # flake8-comprehensions
+    "T10",   # flake8-debugger
+    "PYI",   # flake8-pyi
+    "PT",    # flake8-pytest-style
+    "Q",     # flake8-quotes
+    "RUF",   # Ruff-specific rules
+    "I",     # isort
+    "PERF",  # pylint-performance
+]
+ignore = [
+    "E402",   # module-import-not-at-top-of-file
+    "E501",   # line-too-long
+    "UP037",  # quoted-annotation
+    "RUF001", # ambiguous-unicode-character-string
+    "RUF002", # ambiguous-unicode-character-docstring
+    "RUF003", # ambiguous-unicode-character-comment
+]
+
 
 # 如果一个变量的名称以下划线开头，即使它未被使用，也不应该被视为错误或警告。
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
-
-# 启用的规则
-select = [
-    "E", # pycodestyle 错误
-    "F", # pyflakes
-    "B", # flake8-bugbear
-]
-
-ignore = ["E711","E501"]
-
 [tool.ruff.format]
 docstring-code-format = true
 indent-style = "space"
@@ -125,6 +140,4 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [dependency-groups]
-lint = [
-    "loguru>=0.7.3",
-]
+lint = ["loguru>=0.7.3"]

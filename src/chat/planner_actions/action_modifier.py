@@ -1,20 +1,21 @@
-import random
 import asyncio
 import hashlib
+import random
 import time
-from typing import List, Any, Dict, TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING, Any
 
+from src.chat.message_receive.chat_stream import get_chat_manager
+from src.chat.planner_actions.action_manager import ChatterActionManager
+from src.chat.utils.chat_message_builder import build_readable_messages, get_raw_msg_before_timestamp_with_chat
+from src.common.data_models.message_manager_data_model import StreamContext
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
-from src.chat.message_receive.chat_stream import get_chat_manager, ChatMessageContext
-from src.chat.planner_actions.action_manager import ActionManager
-from src.chat.utils.chat_message_builder import get_raw_msg_before_timestamp_with_chat, build_readable_messages
-from src.plugin_system.base.component_types import ActionInfo, ActionActivationType
+from src.plugin_system.base.component_types import ActionActivationType, ActionInfo
 from src.plugin_system.core.global_announcement_manager import global_announcement_manager
 
 if TYPE_CHECKING:
-    from src.chat.message_receive.chat_stream import ChatStream
+    pass
 
 logger = get_logger("action_manager")
 
@@ -27,11 +28,12 @@ class ActionModifier:
     支持并行判定和智能缓存优化。
     """
 
-    def __init__(self, action_manager: ActionManager, chat_id: str):
+    def __init__(self, action_manager: ChatterActionManager, chat_id: str):
         """初始化动作处理器"""
         self.chat_id = chat_id
-        self.chat_stream: ChatStream = get_chat_manager().get_stream(self.chat_id)  # type: ignore
-        self.log_prefix = f"[{get_chat_manager().get_stream_name(self.chat_id) or self.chat_id}]"
+        # chat_stream 和 log_prefix 将在异步方法中初始化
+        self.chat_stream = None  # type: ignore
+        self.log_prefix = f"[{chat_id}]"
 
         self.action_manager = action_manager
 
@@ -42,6 +44,15 @@ class ActionModifier:
         self._llm_judge_cache = {}  # 缓存LLM判定结果
         self._cache_expiry_time = 30  # 缓存过期时间（秒）
         self._last_context_hash = None  # 上次上下文的哈希值
+        self._log_prefix_initialized = False
+
+    async def _initialize_log_prefix(self):
+        """异步初始化log_prefix和chat_stream"""
+        if not self._log_prefix_initialized:
+            self.chat_stream = await get_chat_manager().get_stream(self.chat_id)
+            stream_name = await get_chat_manager().get_stream_name(self.chat_id)
+            self.log_prefix = f"[{stream_name or self.chat_id}]"
+            self._log_prefix_initialized = True
 
     async def modify_actions(
         self,
@@ -56,20 +67,22 @@ class ActionModifier:
 
         处理后，ActionManager 将包含最终的可用动作集，供规划器直接使用
         """
+        # 初始化log_prefix
+        await self._initialize_log_prefix()
+
         logger.debug(f"{self.log_prefix}开始完整动作修改流程")
 
-        removals_s1: List[Tuple[str, str]] = []
-        removals_s2: List[Tuple[str, str]] = []
-        removals_s3: List[Tuple[str, str]] = []
+        removals_s1: list[tuple[str, str]] = []
+        removals_s2: list[tuple[str, str]] = []
+        removals_s3: list[tuple[str, str]] = []
 
         self.action_manager.restore_actions()
         all_actions = self.action_manager.get_using_actions()
 
         # === 第0阶段：根据聊天类型过滤动作 ===
-        from src.plugin_system.base.component_types import ChatType
-        from src.plugin_system.core.component_registry import component_registry
-        from src.plugin_system.base.component_types import ComponentType
         from src.chat.utils.utils import get_chat_type_and_target_info
+        from src.plugin_system.base.component_types import ChatType, ComponentType
+        from src.plugin_system.core.component_registry import component_registry
 
         # 获取聊天类型
         is_group_chat, _ = await get_chat_type_and_target_info(self.chat_id)
@@ -124,8 +137,9 @@ class ActionModifier:
                     logger.debug(f"{self.log_prefix}阶段一移除动作: {disabled_action_name}，原因: 用户自行禁用")
 
         # === 第二阶段：检查动作的关联类型 ===
-        chat_context = self.chat_stream.context
-        type_mismatched_actions = self._check_action_associated_types(all_actions, chat_context)
+        chat_context = self.chat_stream.stream_context
+        current_actions_s2 = self.action_manager.get_using_actions()
+        type_mismatched_actions = self._check_action_associated_types(current_actions_s2, chat_context)
 
         if type_mismatched_actions:
             removals_s2.extend(type_mismatched_actions)
@@ -140,11 +154,12 @@ class ActionModifier:
             logger.debug(f"{self.log_prefix}开始激活类型判定阶段")
 
             # 获取当前使用的动作集（经过第一阶段处理）
-            current_using_actions = self.action_manager.get_using_actions()
+            # 在第三阶段开始前，再次获取最新的动作列表
+            current_actions_s3 = self.action_manager.get_using_actions()
 
             # 获取因激活类型判定而需要移除的动作
             removals_s3 = await self._get_deactivated_actions_by_type(
-                current_using_actions,
+                current_actions_s3,
                 chat_content,
             )
 
@@ -164,8 +179,8 @@ class ActionModifier:
 
         logger.info(f"{self.log_prefix} 当前可用动作: {available_actions_text}||移除: {removals_summary}")
 
-    def _check_action_associated_types(self, all_actions: Dict[str, ActionInfo], chat_context: ChatMessageContext):
-        type_mismatched_actions: List[Tuple[str, str]] = []
+    def _check_action_associated_types(self, all_actions: dict[str, ActionInfo], chat_context: StreamContext):
+        type_mismatched_actions: list[tuple[str, str]] = []
         for action_name, action_info in all_actions.items():
             if action_info.associated_types and not chat_context.check_types(action_info.associated_types):
                 associated_types_str = ", ".join(action_info.associated_types)
@@ -176,9 +191,9 @@ class ActionModifier:
 
     async def _get_deactivated_actions_by_type(
         self,
-        actions_with_info: Dict[str, ActionInfo],
+        actions_with_info: dict[str, ActionInfo],
         chat_content: str = "",
-    ) -> List[tuple[str, str]]:
+    ) -> list[tuple[str, str]]:
         """
         根据激活类型过滤，返回需要停用的动作列表及原因
 
@@ -251,9 +266,9 @@ class ActionModifier:
 
     async def _process_llm_judge_actions_parallel(
         self,
-        llm_judge_actions: Dict[str, Any],
+        llm_judge_actions: dict[str, Any],
         chat_content: str = "",
-    ) -> Dict[str, bool]:
+    ) -> dict[str, bool]:
         """
         并行处理LLM判定actions，支持智能缓存
 

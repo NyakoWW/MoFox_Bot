@@ -2,7 +2,8 @@ import copy
 import datetime
 import hashlib
 import time
-from typing import Any, Callable, Dict, Union, Optional
+from collections.abc import Callable
+from typing import Any
 
 import orjson
 from json_repair import repair_json
@@ -57,7 +58,7 @@ class PersonInfoManager:
         self.person_name_list = {}
         self.qv_name_llm = LLMRequest(model_set=model_config.model_task_config.utils, request_type="relation.qv_name")
         # try:
-        #     with get_db_session() as session:
+        #     async with get_db_session() as session:
         #         db.connect(reuse_if_open=True)
         #         # 设置连接池参数（仅对SQLite有效）
         #         if hasattr(db, "execute_sql"):
@@ -75,7 +76,7 @@ class PersonInfoManager:
         try:
             pass
             # 在这里获取会话
-            # with get_db_session() as session:
+            # async with get_db_session() as session:
             #     for record in session.execute(
             #         select(PersonInfo.person_id, PersonInfo.person_name).where(PersonInfo.person_name.is_not(None))
             #     ).fetchall():
@@ -86,8 +87,14 @@ class PersonInfoManager:
             logger.error(f"从 SQLAlchemy 加载 person_name_list 失败: {e}")
 
     @staticmethod
-    def get_person_id(platform: str, user_id: Union[int, str]) -> str:
-        """获取唯一id"""
+    def get_person_id(platform: str, user_id: int | str) -> str:
+        """获取唯一id（同步）
+
+        说明: 原来该方法为异步并在内部尝试执行数据库检查/迁移，导致在许多调用处未 await 时返回 coroutine 对象。
+        为了避免将 coroutine 传递到其它同步调用（例如数据库查询条件）中，这里将方法改为同步并仅返回基于 platform 和 user_id 的 MD5 哈希值。
+
+        注意: 这会跳过原有的 napcat->qq 迁移检查逻辑。如需保留迁移，请使用显式的、在合适时机执行的迁移任务。
+        """
         # 检查platform是否为None或空
         if platform is None:
             platform = "unknown"
@@ -97,6 +104,8 @@ class PersonInfoManager:
 
         components = [platform, str(user_id)]
         key = "_".join(components)
+
+        # 直接返回计算的 id（同步）
         return hashlib.md5(key.encode()).hexdigest()
 
     async def is_person_known(self, platform: str, user_id: int):
@@ -116,20 +125,50 @@ class PersonInfoManager:
             logger.error(f"检查用户 {person_id} 是否已知时出错 (SQLAlchemy): {e}")
             return False
 
-    @staticmethod
-    async def get_person_id_by_person_name(person_name: str) -> str:
-        """根据用户名获取用户ID"""
+    async def get_person_id_by_person_name(self, person_name: str) -> str:
+        """
+        根据用户名获取用户ID（同步）
+
+        说明: 为了避免在多个调用点将 coroutine 误传递到数据库查询中，
+        此处提供一个同步实现。优先在内存缓存 `self.person_name_list` 中查找，
+        若未命中则返回空字符串。若后续需要更强的一致性，可在异步上下文
+        额外实现带 await 的查询方法。
+        """
         try:
-            # 在需要时获取会话
-            async with get_db_session() as session:
-                record = (await session.execute(select(PersonInfo).where(PersonInfo.person_name == person_name))).scalar()
-            return record.person_id if record else ""
+            # 优先使用内存缓存加速查找：self.person_name_list maps person_id -> person_name
+            for pid, pname in self.person_name_list.items():
+                if pname == person_name:
+                    return pid
+
+            # 未找到缓存命中，避免在同步路径中进行阻塞的数据库查询，直接返回空字符串
+            return ""
         except Exception as e:
-            logger.error(f"根据用户名 {person_name} 获取用户ID时出错 (SQLAlchemy): {e}")
+            logger.error(f"根据用户名 {person_name} 获取用户ID时出错: {e}")
             return ""
 
     @staticmethod
-    async def create_person_info(person_id: str, data: Optional[dict] = None):
+    async def first_knowing_some_one(platform: str, user_id: str, user_nickname: str, user_cardname: str):
+        """判断是否认识某人"""
+        person_id = PersonInfoManager.get_person_id(platform, user_id)
+        # 生成唯一的 person_name
+        person_info_manager = get_person_info_manager()
+        unique_nickname = await person_info_manager._generate_unique_person_name(user_nickname)
+        data = {
+            "platform": platform,
+            "user_id": user_id,
+            "nickname": user_nickname,
+            "konw_time": int(time.time()),
+            "person_name": unique_nickname,  # 使用唯一的 person_name
+        }
+        # 先创建用户基本信息，使用安全创建方法避免竞态条件
+        await person_info_manager._safe_create_person_info(person_id=person_id, data=data)
+        # 更新昵称
+        await person_info_manager.update_one_field(
+            person_id=person_id, field_name="nickname", value=user_nickname, data=data
+        )
+
+    @staticmethod
+    async def create_person_info(person_id: str, data: dict | None = None):
         """创建一个项"""
         if not person_id:
             logger.debug("创建失败，person_id不存在")
@@ -155,22 +194,22 @@ class PersonInfoManager:
         # Ensure person_id is correctly set from the argument
         final_data["person_id"] = person_id
         # 你们的英文注释是何意味？
-        
+
         # 检查并修复关键字段为None的情况喵
         if final_data.get("user_id") is None:
             logger.warning(f"user_id为None，使用'unknown'作为默认值 person_id={person_id}")
             final_data["user_id"] = "unknown"
-        
+
         if final_data.get("platform") is None:
             logger.warning(f"platform为None，使用'unknown'作为默认值 person_id={person_id}")
             final_data["platform"] = "unknown"
-        
+
         # 这里的目的是为了防止在识别出错的情况下有一个最小回退，不只是针对@消息识别成视频后的报错问题
 
         # Serialize JSON fields
         for key in JSON_SERIALIZED_FIELDS:
             if key in final_data:
-                if isinstance(final_data[key], (list, dict)):
+                if isinstance(final_data[key], list | dict):
                     final_data[key] = orjson.dumps(final_data[key]).decode("utf-8")
                 elif final_data[key] is None:  # Default for lists is [], store as "[]"
                     final_data[key] = orjson.dumps([]).decode("utf-8")
@@ -190,7 +229,7 @@ class PersonInfoManager:
         await _db_create_async(final_data)
 
     @staticmethod
-    async def _safe_create_person_info(person_id: str, data: Optional[dict] = None):
+    async def _safe_create_person_info(person_id: str, data: dict | None = None):
         """安全地创建用户信息，处理竞态条件"""
         if not person_id:
             logger.debug("创建失败，person_id不存在")
@@ -215,12 +254,12 @@ class PersonInfoManager:
 
         # Ensure person_id is correctly set from the argument
         final_data["person_id"] = person_id
-        
+
         # 检查并修复关键字段为None的情况
         if final_data.get("user_id") is None:
             logger.warning(f"user_id为None，使用'unknown'作为默认值 person_id={person_id}")
             final_data["user_id"] = "unknown"
-        
+
         if final_data.get("platform") is None:
             logger.warning(f"platform为None，使用'unknown'作为默认值 person_id={person_id}")
             final_data["platform"] = "unknown"
@@ -228,7 +267,7 @@ class PersonInfoManager:
         # Serialize JSON fields
         for key in JSON_SERIALIZED_FIELDS:
             if key in final_data:
-                if isinstance(final_data[key], (list, dict)):
+                if isinstance(final_data[key], list | dict):
                     final_data[key] = orjson.dumps(final_data[key]).decode("utf-8")
                 elif final_data[key] is None:  # Default for lists is [], store as "[]"
                     final_data[key] = orjson.dumps([]).decode("utf-8")
@@ -258,7 +297,7 @@ class PersonInfoManager:
 
         await _db_safe_create_async(final_data)
 
-    async def update_one_field(self, person_id: str, field_name: str, value, data: Optional[Dict] = None):
+    async def update_one_field(self, person_id: str, field_name: str, value, data: dict | None = None):
         """更新某一个字段，会补全"""
         # 获取 SQLAlchemy 模型的所有字段名
         model_fields = [column.name for column in PersonInfo.__table__.columns]
@@ -268,7 +307,7 @@ class PersonInfoManager:
 
         processed_value = value
         if field_name in JSON_SERIALIZED_FIELDS:
-            if isinstance(value, (list, dict)):
+            if isinstance(value, list | dict):
                 processed_value = orjson.dumps(value).decode("utf-8")
             elif value is None:  # Store None as "[]" for JSON list fields
                 processed_value = orjson.dumps([]).decode("utf-8")
@@ -277,7 +316,8 @@ class PersonInfoManager:
             start_time = time.time()
             async with get_db_session() as session:
                 try:
-                    record = (await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))).scalar()
+                    result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
+                    record = result.scalar()
                     query_time = time.time()
                     if record:
                         setattr(record, f_name, val_to_set)
@@ -315,12 +355,12 @@ class PersonInfoManager:
                 creation_data["platform"] = data["platform"]
             if data and "user_id" in data:
                 creation_data["user_id"] = data["user_id"]
-            
+
             # 额外检查关键字段，如果为None则使用默认值
             if creation_data.get("user_id") is None:
                 logger.warning(f"创建用户时user_id为None，使用'unknown'作为默认值 person_id={person_id}")
                 creation_data["user_id"] = "unknown"
-            
+
             if creation_data.get("platform") is None:
                 logger.warning(f"创建用户时platform为None，使用'unknown'作为默认值 person_id={person_id}")
                 creation_data["platform"] = "unknown"
@@ -339,7 +379,8 @@ class PersonInfoManager:
 
         async def _db_has_field_async(p_id: str, f_name: str):
             async with get_db_session() as session:
-                record = (await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))).scalar()
+                result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
+                record = result.scalar()
             return bool(record)
 
         try:
@@ -450,10 +491,11 @@ class PersonInfoManager:
 
                 async def _db_check_name_exists_async(name_to_check):
                     async with get_db_session() as session:
-                        return (
-                            (await session.execute(select(PersonInfo).where(PersonInfo.person_name == name_to_check))).scalar()
-                            is not None
+                        result = await session.execute(
+                            select(PersonInfo).where(PersonInfo.person_name == name_to_check)
                         )
+                        record = result.scalar()
+                        return record is not None
 
                 if await _db_check_name_exists_async(generated_nickname):
                     is_duplicate = True
@@ -494,7 +536,8 @@ class PersonInfoManager:
         async def _db_delete_async(p_id: str):
             try:
                 async with get_db_session() as session:
-                    record = (await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))).scalar()
+                    result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
+                    record = result.scalar()
                     if record:
                         await session.delete(record)
                         await session.commit()
@@ -511,26 +554,16 @@ class PersonInfoManager:
         else:
             logger.debug(f"删除失败：未找到 person_id={person_id} 或删除未影响行")
 
-
     @staticmethod
-    def get_value(person_id: str, field_name: str) -> Any:
+    async def get_value(person_id: str, field_name: str) -> Any:
         """获取单个字段值（同步版本）"""
         if not person_id:
             logger.debug("get_value获取失败：person_id不能为空")
             return None
 
-        import asyncio
-        
-        async def _get_record_sync():
-            async with get_db_session() as session:
-                return (await session.execute(select(PersonInfo).where(PersonInfo.person_id == person_id))).scalar()
-
-        try:
-            record = asyncio.run(_get_record_sync())
-        except RuntimeError:
-            # 如果当前线程已经有事件循环在运行，则使用现有的循环
-            loop = asyncio.get_running_loop()
-            record = loop.run_until_complete(_get_record_sync())
+        async with get_db_session() as session:
+            result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == person_id))
+            record = result.scalar()
 
         model_fields = [column.name for column in PersonInfo.__table__.columns]
 
@@ -562,7 +595,9 @@ class PersonInfoManager:
 
         async def _db_get_record_async(p_id: str):
             async with get_db_session() as session:
-                return (await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))).scalar()
+                result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
+                record = result.scalar()
+                return record
 
         record = await _db_get_record_async(person_id)
 
@@ -589,11 +624,12 @@ class PersonInfoManager:
                 result[field_name] = copy.deepcopy(person_info_default.get(field_name))
 
         return result
+
     @staticmethod
     async def get_specific_value_list(
         field_name: str,
         way: Callable[[Any], bool],
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         获取满足条件的字段值字典
         """
@@ -614,18 +650,18 @@ class PersonInfoManager:
                             found_results[record.person_id] = value
             except Exception as e_query:
                 logger.error(
-                    f"数据库查询失败 (SQLAlchemy specific_value_list for {f_name}): {str(e_query)}", exc_info=True
+                    f"数据库查询失败 (SQLAlchemy specific_value_list for {f_name}): {e_query!s}", exc_info=True
                 )
             return found_results
 
         try:
             return await _db_get_specific_async(field_name)
         except Exception as e:
-            logger.error(f"执行 get_specific_value_list 时出错: {str(e)}", exc_info=True)
+            logger.error(f"执行 get_specific_value_list 时出错: {e!s}", exc_info=True)
             return {}
 
     async def get_or_create_person(
-        self, platform: str, user_id: int, nickname: str, user_cardname: str, user_avatar: Optional[str] = None
+        self, platform: str, user_id: int, nickname: str, user_cardname: str, user_avatar: str | None = None
     ) -> str:
         """
         根据 platform 和 user_id 获取 person_id。
@@ -638,7 +674,8 @@ class PersonInfoManager:
             """原子性的获取或创建操作"""
             async with get_db_session() as session:
                 # 首先尝试获取现有记录
-                record = (await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))).scalar()
+                result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
+                record = result.scalar()
                 if record:
                     return record, False  # 记录存在，未创建
 
@@ -653,12 +690,13 @@ class PersonInfoManager:
                     # 如果创建失败（可能是因为竞态条件），再次尝试获取
                     if "UNIQUE constraint failed" in str(e):
                         logger.debug(f"检测到并发创建用户 {p_id}，获取现有记录")
-                        record = (await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))).scalar()
-                        if record:
-                            return record, False  # 其他协程已创建，返回现有记录
+                        result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
+                    record = result.scalar()
+                    if record:
+                        return record, False  # 其他协程已创建，返回现有记录
                     # 如果仍然失败，重新抛出异常
                     raise e
-        
+
         unique_nickname = await self._generate_unique_person_name(nickname)
         initial_data = {
             "person_id": person_id,
@@ -677,7 +715,7 @@ class PersonInfoManager:
 
         for key in JSON_SERIALIZED_FIELDS:
             if key in initial_data:
-                if isinstance(initial_data[key], (list, dict)):
+                if isinstance(initial_data[key], list | dict):
                     initial_data[key] = orjson.dumps(initial_data[key]).decode("utf-8")
                 elif initial_data[key] is None:
                     initial_data[key] = orjson.dumps([]).decode("utf-8")

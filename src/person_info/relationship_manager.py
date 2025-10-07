@@ -1,18 +1,21 @@
-from src.common.logger import get_logger
-from .person_info import PersonInfoManager, get_person_info_manager
-import time
 import random
-from src.llm_models.utils_model import LLMRequest
-from src.config.config import global_config, model_config
-from src.chat.utils.chat_message_builder import build_readable_messages
-import orjson
-from json_repair import repair_json
+import time
 from datetime import datetime
 from difflib import SequenceMatcher
-import jieba
+from typing import Any
+
+import orjson
+import rjieba
+from json_repair import repair_json
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from typing import List, Dict, Any
+
+from src.chat.utils.chat_message_builder import build_readable_messages
+from src.common.logger import get_logger
+from src.config.config import global_config, model_config
+from src.llm_models.utils_model import LLMRequest
+
+from .person_info import PersonInfoManager, get_person_info_manager
 
 logger = get_logger("relation")
 
@@ -54,7 +57,7 @@ class RelationshipManager:
         # person_id=person_id, user_nickname=user_nickname, user_cardname=user_cardname, user_avatar=user_avatar
         # )
 
-    async def update_person_impression(self, person_id, timestamp, bot_engaged_messages: List[Dict[str, Any]]):
+    async def update_person_impression(self, person_id, timestamp, bot_engaged_messages: list[dict[str, Any]]):
         """更新用户印象
 
         Args:
@@ -255,7 +258,7 @@ class RelationshipManager:
 
                 if similar_points:
                     # 合并相似的点
-                    all_points = [new_point] + similar_points
+                    all_points = [new_point, *similar_points]
                     # 使用最新的时间
                     latest_time = max(p[2] for p in all_points)
                     # 合并权重
@@ -532,9 +535,9 @@ class RelationshipManager:
         s1 = str(s1)
         s2 = str(s2)
 
-        # 1. 使用 jieba 进行分词
-        s1_words = " ".join(jieba.cut(s1))
-        s2_words = " ".join(jieba.cut(s2))
+        # 1. 使用 rjieba 进行分词
+        s1_words = " ".join(rjieba.cut(s1))
+        s2_words = " ".join(rjieba.cut(s2))
 
         # 2. 将两句话放入一个列表中
         corpus = [s1_words, s2_words]

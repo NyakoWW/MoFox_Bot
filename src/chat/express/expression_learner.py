@@ -1,21 +1,20 @@
-import time
-import random
-import orjson
 import os
+import random
+import time
 from datetime import datetime
+from typing import Any
 
-from typing import List, Dict, Optional, Any, Tuple
-
-from src.common.logger import get_logger
-from src.common.database.sqlalchemy_database_api import get_db_session
+import orjson
 from sqlalchemy import select
-from src.common.database.sqlalchemy_models import Expression
-from src.llm_models.utils_model import LLMRequest
-from src.config.config import model_config, global_config
-from src.chat.utils.chat_message_builder import get_raw_msg_by_timestamp_with_chat_inclusive, build_anonymous_messages
-from src.chat.utils.prompt import Prompt, global_prompt_manager
-from src.chat.message_receive.chat_stream import get_chat_manager
 
+from src.chat.message_receive.chat_stream import get_chat_manager
+from src.chat.utils.chat_message_builder import build_anonymous_messages, get_raw_msg_by_timestamp_with_chat_inclusive
+from src.chat.utils.prompt import Prompt, global_prompt_manager
+from src.common.database.sqlalchemy_database_api import get_db_session
+from src.common.database.sqlalchemy_models import Expression
+from src.common.logger import get_logger
+from src.config.config import global_config, model_config
+from src.llm_models.utils_model import LLMRequest
 
 MAX_EXPRESSION_COUNT = 300
 DECAY_DAYS = 30  # 30天衰减到0.01
@@ -86,7 +85,7 @@ class ExpressionLearner:
             model_set=model_config.model_task_config.replyer, request_type="expressor.learner"
         )
         self.chat_id = chat_id
-        self.chat_name = get_chat_manager().get_stream_name(chat_id) or chat_id
+        self.chat_name = chat_id  # 初始化时使用chat_id，稍后异步更新
 
         # 维护每个chat的上次学习时间
         self.last_learning_time: float = time.time()
@@ -94,6 +93,14 @@ class ExpressionLearner:
         # 学习参数
         self.min_messages_for_learning = 25  # 触发学习所需的最少消息数
         self.min_learning_interval = 300  # 最短学习时间间隔（秒）
+        self._chat_name_initialized = False
+
+    async def _initialize_chat_name(self):
+        """异步初始化chat_name"""
+        if not self._chat_name_initialized:
+            stream_name = await get_chat_manager().get_stream_name(self.chat_id)
+            self.chat_name = stream_name or self.chat_id
+            self._chat_name_initialized = True
 
     def can_learn_for_chat(self) -> bool:
         """
@@ -167,6 +174,9 @@ class ExpressionLearner:
         Returns:
             bool: 是否成功触发学习
         """
+        # 初始化chat_name
+        await self._initialize_chat_name()
+
         if not await self.should_trigger_learning():
             return False
 
@@ -193,7 +203,7 @@ class ExpressionLearner:
             logger.error(f"为聊天流 {self.chat_name} 触发学习失败: {e}")
             return False
 
-    async def get_expression_by_chat_id(self) -> Tuple[List[Dict[str, float]], List[Dict[str, float]]]:
+    async def get_expression_by_chat_id(self) -> tuple[list[dict[str, float]], list[dict[str, float]]]:
         """
         获取指定chat_id的style和grammar表达方式
         返回的每个表达方式字典中都包含了source_id, 用于后续的更新操作
@@ -263,7 +273,7 @@ class ExpressionLearner:
 
                 if new_count <= 0.01:
                     # 如果count太小，删除这个表达方式
-                    session.delete(expr)
+                    await session.delete(expr)
                     await session.commit()
                     deleted_count += 1
                 else:
@@ -324,7 +334,7 @@ class ExpressionLearner:
             return []
         learnt_expressions, chat_id = res
 
-        chat_stream = get_chat_manager().get_stream(chat_id)
+        chat_stream = await get_chat_manager().get_stream(chat_id)
         if chat_stream is None:
             group_name = f"聊天流 {chat_id}"
         elif chat_stream.group_info:
@@ -341,7 +351,7 @@ class ExpressionLearner:
             return []
 
         # 按chat_id分组
-        chat_dict: Dict[str, List[Dict[str, Any]]] = {}
+        chat_dict: dict[str, list[dict[str, Any]]] = {}
         for chat_id, situation, style in learnt_expressions:
             if chat_id not in chat_dict:
                 chat_dict[chat_id] = []
@@ -382,7 +392,7 @@ class ExpressionLearner:
                             create_date=current_time,  # 手动设置创建日期
                         )
                         session.add(new_expression)
-                
+
                 # 限制最大数量
                 exprs_result = await session.execute(
                     select(Expression)
@@ -398,7 +408,7 @@ class ExpressionLearner:
             return learnt_expressions
         return None
 
-    async def learn_expression(self, type: str, num: int = 10) -> Optional[Tuple[List[Tuple[str, str, str]], str]]:
+    async def learn_expression(self, type: str, num: int = 10) -> tuple[list[tuple[str, str, str]], str] | None:
         """从指定聊天流学习表达方式
 
         Args:
@@ -416,7 +426,7 @@ class ExpressionLearner:
         current_time = time.time()
 
         # 获取上次学习时间
-        random_msg: Optional[List[Dict[str, Any]]] = await get_raw_msg_by_timestamp_with_chat_inclusive(
+        random_msg: list[dict[str, Any]] | None = await get_raw_msg_by_timestamp_with_chat_inclusive(
             chat_id=self.chat_id,
             timestamp_start=self.last_learning_time,
             timestamp_end=current_time,
@@ -447,16 +457,16 @@ class ExpressionLearner:
 
         logger.debug(f"学习{type_str}的response: {response}")
 
-        expressions: List[Tuple[str, str, str]] = self.parse_expression_response(response, chat_id)
+        expressions: list[tuple[str, str, str]] = self.parse_expression_response(response, chat_id)
 
         return expressions, chat_id
 
     @staticmethod
-    def parse_expression_response(response: str, chat_id: str) -> List[Tuple[str, str, str]]:
+    def parse_expression_response(response: str, chat_id: str) -> list[tuple[str, str, str]]:
         """
         解析LLM返回的表达风格总结，每一行提取"当"和"使用"之间的内容，存储为(situation, style)元组
         """
-        expressions: List[Tuple[str, str, str]] = []
+        expressions: list[tuple[str, str, str]] = []
         for line in response.splitlines():
             line = line.strip()
             if not line:
@@ -492,11 +502,10 @@ class ExpressionLearnerManager:
 
         self._ensure_expression_directories()
 
-
     async def get_expression_learner(self, chat_id: str) -> ExpressionLearner:
         await self._auto_migrate_json_to_db()
         await self._migrate_old_data_create_date()
-        
+
         if chat_id not in self.expression_learners:
             self.expression_learners[chat_id] = ExpressionLearner(chat_id)
         return self.expression_learners[chat_id]
@@ -513,12 +522,12 @@ class ExpressionLearnerManager:
             os.path.join(base_dir, "learnt_grammar"),
         ]
 
-        for directory in directories_to_create:
-            try:
+        try:
+            for directory in directories_to_create:
                 os.makedirs(directory, exist_ok=True)
-                logger.debug(f"确保目录存在: {directory}")
-            except Exception as e:
-                logger.error(f"创建目录失败 {directory}: {e}")
+            logger.debug(f"确保目录存在: {directory}")
+        except Exception as e:
+            logger.error(f"创建目录失败 {directory}: {e}")
 
     @staticmethod
     async def _auto_migrate_json_to_db():
@@ -538,7 +547,7 @@ class ExpressionLearnerManager:
             return
 
         if os.path.exists(done_flag):
-            logger.info("表达方式JSON已迁移，无需重复迁移。")
+            logger.debug("表达方式JSON已迁移，无需重复迁移。")
             return
 
         logger.info("开始迁移表达方式JSON到数据库...")
@@ -563,7 +572,7 @@ class ExpressionLearnerManager:
                 if not os.path.exists(expr_file):
                     continue
                 try:
-                    with open(expr_file, "r", encoding="utf-8") as f:
+                    with open(expr_file, encoding="utf-8") as f:
                         expressions = orjson.loads(f.read())
 
                     if not isinstance(expressions, list):
@@ -644,7 +653,9 @@ class ExpressionLearnerManager:
         try:
             async with get_db_session() as session:
                 # 查找所有create_date为空的表达方式
-                old_expressions_result = await session.execute(select(Expression).where(Expression.create_date.is_(None)))
+                old_expressions_result = await session.execute(
+                    select(Expression).where(Expression.create_date.is_(None))
+                )
                 old_expressions = old_expressions_result.scalars().all()
                 updated_count = 0
 

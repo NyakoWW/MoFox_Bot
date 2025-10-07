@@ -1,14 +1,14 @@
-# -*- coding: utf-8 -*-
 """
 Cookie服务模块
 负责从多种来源获取、缓存和管理QZone的Cookie。
 """
 
-import orjson
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional, Dict
 
 import aiohttp
+import orjson
+
 from src.common.logger import get_logger
 from src.plugin_system.apis import send_api
 
@@ -29,28 +29,28 @@ class CookieService:
         """获取指定QQ账号的cookie文件路径"""
         return self.cookie_dir / f"cookies-{qq_account}.json"
 
-    def _save_cookies_to_file(self, qq_account: str, cookies: Dict[str, str]):
+    def _save_cookies_to_file(self, qq_account: str, cookies: dict[str, str]):
         """将Cookie保存到本地文件"""
         cookie_file_path = self._get_cookie_file_path(qq_account)
         try:
             with open(cookie_file_path, "w", encoding="utf-8") as f:
                 f.write(orjson.dumps(cookies, option=orjson.OPT_INDENT_2).decode("utf-8"))
             logger.info(f"Cookie已成功缓存至: {cookie_file_path}")
-        except IOError as e:
+        except OSError as e:
             logger.error(f"无法写入Cookie文件 {cookie_file_path}: {e}")
 
-    def _load_cookies_from_file(self, qq_account: str) -> Optional[Dict[str, str]]:
+    def _load_cookies_from_file(self, qq_account: str) -> dict[str, str] | None:
         """从本地文件加载Cookie"""
         cookie_file_path = self._get_cookie_file_path(qq_account)
         if cookie_file_path.exists():
             try:
-                with open(cookie_file_path, "r", encoding="utf-8") as f:
+                with open(cookie_file_path, encoding="utf-8") as f:
                     return orjson.loads(f.read())
-            except (IOError, orjson.JSONDecodeError) as e:
+            except (OSError, orjson.JSONDecodeError) as e:
                 logger.error(f"无法读取或解析Cookie文件 {cookie_file_path}: {e}")
         return None
 
-    async def _get_cookies_from_adapter(self, stream_id: Optional[str]) -> Optional[Dict[str, str]]:
+    async def _get_cookies_from_adapter(self, stream_id: str | None) -> dict[str, str] | None:
         """通过Adapter API获取Cookie"""
         try:
             params = {"domain": "user.qzone.qq.com"}
@@ -73,7 +73,7 @@ class CookieService:
             logger.error(f"通过Adapter获取Cookie时发生异常: {e}")
         return None
 
-    async def _get_cookies_from_http(self) -> Optional[Dict[str, str]]:
+    async def _get_cookies_from_http(self) -> dict[str, str] | None:
         """通过备用HTTP端点获取Cookie"""
         host = self.get_config("cookie.http_fallback_host", "172.20.130.55")
         port = self.get_config("cookie.http_fallback_port", "9999")
@@ -110,34 +110,37 @@ class CookieService:
             logger.error(f"通过HTTP备用地址 {http_url} 获取Cookie失败: {e}")
         return None
 
-    async def get_cookies(self, qq_account: str, stream_id: Optional[str]) -> Optional[Dict[str, str]]:
+    async def get_cookies(self, qq_account: str, stream_id: str | None) -> dict[str, str] | None:
         """
         获取Cookie，按以下顺序尝试：
-        1. Adapter API
-        2. HTTP备用端点
-        3. 本地文件缓存
+        1. HTTP备用端点 (更稳定)
+        2. 本地文件缓存
+        3. Adapter API (作为最后手段)
         """
-        # 1. 尝试从Adapter获取
-        cookies = await self._get_cookies_from_adapter(stream_id)
-        if cookies:
-            logger.info("成功从Adapter获取Cookie。")
-            self._save_cookies_to_file(qq_account, cookies)
-            return cookies
-
-        # 2. 尝试从HTTP备用端点获取
-        logger.warning("从Adapter获取Cookie失败，尝试使用HTTP备用地址。")
+        # 1. 尝试从HTTP备用端点获取
+        logger.info(f"开始尝试从HTTP备用地址获取 {qq_account} 的Cookie...")
         cookies = await self._get_cookies_from_http()
         if cookies:
-            logger.info("成功从HTTP备用地址获取Cookie。")
+            logger.info(f"成功从HTTP备用地址为 {qq_account} 获取Cookie。")
             self._save_cookies_to_file(qq_account, cookies)
             return cookies
 
-        # 3. 尝试从本地文件加载
-        logger.warning("从HTTP备用地址获取Cookie失败，尝试加载本地缓存。")
+        # 2. 尝试从本地文件加载
+        logger.warning(f"从HTTP备用地址获取 {qq_account} 的Cookie失败，尝试加载本地缓存。")
         cookies = self._load_cookies_from_file(qq_account)
         if cookies:
-            logger.info("成功从本地文件加载缓存的Cookie。")
+            logger.info(f"成功从本地文件为 {qq_account} 加载缓存的Cookie。")
             return cookies
 
-        logger.error("所有Cookie获取方法均失败。")
+        # 3. 尝试从Adapter获取 (作为最后的备用方案)
+        logger.warning(f"从本地缓存加载 {qq_account} 的Cookie失败，最后尝试使用Adapter API。")
+        cookies = await self._get_cookies_from_adapter(stream_id)
+        if cookies:
+            logger.info(f"成功从Adapter API为 {qq_account} 获取Cookie。")
+            self._save_cookies_to_file(qq_account, cookies)
+            return cookies
+
+        logger.error(
+            f"为 {qq_account} 获取Cookie的所有方法均失败。请确保Napcat HTTP服务或Adapter连接至少有一个正常工作，或存在有效的本地Cookie文件。"
+        )
         return None

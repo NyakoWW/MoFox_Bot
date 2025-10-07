@@ -1,57 +1,57 @@
 import os
-import tomlkit
 import shutil
 import sys
-
 from datetime import datetime
-from tomlkit import TOMLDocument
-from tomlkit.items import Table, KeyType
-from rich.traceback import install
-from typing import List, Optional
+
+import tomlkit
 from pydantic import Field
+from rich.traceback import install
+from tomlkit import TOMLDocument
+from tomlkit.items import KeyType, Table
 
 from src.common.logger import get_logger
 from src.config.config_base import ValidatedConfigBase
 from src.config.official_configs import (
-    DatabaseConfig,
+    AffinityFlowConfig,
+    AntiPromptInjectionConfig,
     BotConfig,
-    PersonalityConfig,
-    ExpressionConfig,
     ChatConfig,
-    NormalChatConfig,
-    EmojiConfig,
-    MemoryConfig,
-    MoodConfig,
-    KeywordReactionConfig,
     ChineseTypoConfig,
+    CommandConfig,
+    CrossContextConfig,
+    CustomPromptConfig,
+    DatabaseConfig,
+    DebugConfig,
+    DependencyManagementConfig,
+    EmojiConfig,
+    ExperimentalConfig,
+    ExpressionConfig,
+    KeywordReactionConfig,
+    LPMMKnowledgeConfig,
+    MaimMessageConfig,
+    MemoryConfig,
+    MessageReceiveConfig,
+    MoodConfig,
+    NormalChatConfig,
+    PermissionConfig,
+    PersonalityConfig,
+    PlanningSystemConfig,
+    ProactiveThinkingConfig,
+    RelationshipConfig,
     ResponsePostProcessConfig,
     ResponseSplitterConfig,
-    ExperimentalConfig,
-    MessageReceiveConfig,
-    MaimMessageConfig,
-    LPMMKnowledgeConfig,
-    RelationshipConfig,
-    ToolConfig,
-    VoiceConfig,
-    DebugConfig,
-    CustomPromptConfig,
-    VideoAnalysisConfig,
-    DependencyManagementConfig,
-    WebSearchConfig,
-    AntiPromptInjectionConfig,
     SleepSystemConfig,
-    CrossContextConfig,
-    PermissionConfig,
-    CommandConfig,
-    PlanningSystemConfig
+    ToolConfig,
+    VideoAnalysisConfig,
+    VoiceConfig,
+    WebSearchConfig,
 )
 
 from .api_ada_configs import (
-    ModelTaskConfig,
-    ModelInfo,
     APIProvider,
+    ModelInfo,
+    ModelTaskConfig,
 )
-
 
 install(extra_lines=3)
 
@@ -66,7 +66,7 @@ TEMPLATE_DIR = os.path.join(PROJECT_ROOT, "template")
 
 # 考虑到，实际上配置文件中的mai_version是不会自动更新的,所以采用硬编码
 # 对该字段的更新，请严格参照语义化版本规范：https://semver.org/lang/zh-CN/
-MMC_VERSION = "0.10.0-alpha-2"
+MMC_VERSION = "0.11.0"
 
 
 def get_key_comment(toml_table, key):
@@ -96,16 +96,16 @@ def compare_dicts(new, old, path=None, logs=None):
             continue
         if key not in old:
             comment = get_key_comment(new, key)
-            logs.append(f"新增: {'.'.join(path + [str(key)])}  注释: {comment or '无'}")
-        elif isinstance(new[key], (dict, Table)) and isinstance(old.get(key), (dict, Table)):
-            compare_dicts(new[key], old[key], path + [str(key)], logs)
+            logs.append(f"新增: {'.'.join([*path, str(key)])}  注释: {comment or '无'}")
+        elif isinstance(new[key], dict | Table) and isinstance(old.get(key), dict | Table):
+            compare_dicts(new[key], old[key], [*path, str(key)], logs)
     # 删减项
     for key in old:
         if key == "version":
             continue
         if key not in new:
             comment = get_key_comment(old, key)
-            logs.append(f"删减: {'.'.join(path + [str(key)])}  注释: {comment or '无'}")
+            logs.append(f"删减: {'.'.join([*path, str(key)])}  注释: {comment or '无'}")
     return logs
 
 
@@ -138,19 +138,19 @@ def compare_default_values(new, old, path=None, logs=None, changes=None):
         if key == "version":
             continue
         if key in old:
-            if isinstance(new[key], (dict, Table)) and isinstance(old[key], (dict, Table)):
-                compare_default_values(new[key], old[key], path + [str(key)], logs, changes)
+            if isinstance(new[key], dict | Table) and isinstance(old[key], dict | Table):
+                compare_default_values(new[key], old[key], [*path, str(key)], logs, changes)
             elif new[key] != old[key]:
-                logs.append(f"默认值变化: {'.'.join(path + [str(key)])}  旧默认值: {old[key]}  新默认值: {new[key]}")
-                changes.append((path + [str(key)], old[key], new[key]))
+                logs.append(f"默认值变化: {'.'.join([*path, str(key)])}  旧默认值: {old[key]}  新默认值: {new[key]}")
+                changes.append(([*path, str(key)], old[key], new[key]))
     return logs, changes
 
 
-def _get_version_from_toml(toml_path) -> Optional[str]:
+def _get_version_from_toml(toml_path) -> str | None:
     """从TOML文件中获取版本号"""
     if not os.path.exists(toml_path):
         return None
-    with open(toml_path, "r", encoding="utf-8") as f:
+    with open(toml_path, encoding="utf-8") as f:
         doc = tomlkit.load(f)
     if "inner" in doc and "version" in doc["inner"]:  # type: ignore
         return doc["inner"]["version"]  # type: ignore
@@ -172,7 +172,7 @@ def _remove_obsolete_keys(target: TOMLDocument | dict | Table, reference: TOMLDo
     for key in list(target.keys()):
         if key not in reference:
             del target[key]
-        elif isinstance(target.get(key), (dict, Table)) and isinstance(reference.get(key), (dict, Table)):
+        elif isinstance(target.get(key), dict | Table) and isinstance(reference.get(key), dict | Table):
             _remove_obsolete_keys(target[key], reference[key])
 
 
@@ -190,7 +190,7 @@ def _update_dict(target: TOMLDocument | dict | Table, source: TOMLDocument | dic
         if key in target:
             # 键已存在，更新值
             target_value = target[key]
-            if isinstance(value, dict) and isinstance(target_value, (dict, Table)):
+            if isinstance(value, dict) and isinstance(target_value, dict | Table):
                 _update_dict(target_value, value)
             else:
                 try:
@@ -262,17 +262,17 @@ def _update_config_generic(config_name: str, template_name: str):
 
     # 先读取 compare 下的模板（如果有），用于默认值变动检测
     if os.path.exists(compare_path):
-        with open(compare_path, "r", encoding="utf-8") as f:
+        with open(compare_path, encoding="utf-8") as f:
             compare_config = tomlkit.load(f)
 
     # 读取当前模板
-    with open(template_path, "r", encoding="utf-8") as f:
+    with open(template_path, encoding="utf-8") as f:
         new_config = tomlkit.load(f)
 
     # 检查默认值变化并处理（只有 compare_config 存在时才做）
     if compare_config:
         # 读取旧配置
-        with open(old_config_path, "r", encoding="utf-8") as f:
+        with open(old_config_path, encoding="utf-8") as f:
             old_config = tomlkit.load(f)
         logs, changes = compare_default_values(new_config, compare_config)
         if logs:
@@ -302,7 +302,7 @@ def _update_config_generic(config_name: str, template_name: str):
 
     # 读取旧配置文件和模板文件（如果前面没读过 old_config，这里再读一次）
     if old_config is None:
-        with open(old_config_path, "r", encoding="utf-8") as f:
+        with open(old_config_path, encoding="utf-8") as f:
             old_config = tomlkit.load(f)
     # new_config 已经读取
 
@@ -348,7 +348,7 @@ def _update_config_generic(config_name: str, template_name: str):
 
     # 移除在新模板中已不存在的旧配置项
     logger.info(f"开始移除{config_name}中已废弃的配置项...")
-    with open(template_path, "r", encoding="utf-8") as f:
+    with open(template_path, encoding="utf-8") as f:
         template_doc = tomlkit.load(f)
     _remove_obsolete_keys(new_config, template_doc)
     logger.info(f"已移除{config_name}中已废弃的配置项")
@@ -417,14 +417,18 @@ class Config(ValidatedConfigBase):
     cross_context: CrossContextConfig = Field(
         default_factory=lambda: CrossContextConfig(), description="跨群聊上下文共享配置"
     )
+    affinity_flow: AffinityFlowConfig = Field(default_factory=lambda: AffinityFlowConfig(), description="亲和流配置")
+    proactive_thinking: ProactiveThinkingConfig = Field(
+        default_factory=lambda: ProactiveThinkingConfig(), description="主动思考配置"
+    )
 
 
 class APIAdapterConfig(ValidatedConfigBase):
     """API Adapter配置类"""
 
-    models: List[ModelInfo] = Field(..., min_items=1, description="模型列表")
+    models: list[ModelInfo] = Field(..., min_items=1, description="模型列表")
     model_task_config: ModelTaskConfig = Field(..., description="模型任务配置")
-    api_providers: List[APIProvider] = Field(..., min_items=1, description="API提供商列表")
+    api_providers: list[APIProvider] = Field(..., min_items=1, description="API提供商列表")
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -488,7 +492,7 @@ def load_config(config_path: str) -> Config:
         Config对象
     """
     # 读取配置文件
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         config_data = tomlkit.load(f)
 
     # 创建Config对象（各个配置类会自动进行 Pydantic 验证）
@@ -511,7 +515,7 @@ def api_ada_load_config(config_path: str) -> APIAdapterConfig:
         APIAdapterConfig对象
     """
     # 读取配置文件
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         config_data = tomlkit.load(f)
 
     config_dict = dict(config_data)

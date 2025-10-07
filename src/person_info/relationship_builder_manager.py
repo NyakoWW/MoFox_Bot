@@ -1,6 +1,7 @@
-from typing import Dict, Optional, List, Any
+from typing import Any
 
 from src.common.logger import get_logger
+
 from .relationship_builder import RelationshipBuilder
 
 logger = get_logger("relationship_builder_manager")
@@ -13,7 +14,7 @@ class RelationshipBuilderManager:
     """
 
     def __init__(self):
-        self.builders: Dict[str, RelationshipBuilder] = {}
+        self.builders: dict[str, RelationshipBuilder] = {}
 
     def get_or_create_builder(self, chat_id: str) -> RelationshipBuilder:
         """获取或创建关系构建器
@@ -30,7 +31,7 @@ class RelationshipBuilderManager:
 
         return self.builders[chat_id]
 
-    def get_builder(self, chat_id: str) -> Optional[RelationshipBuilder]:
+    def get_builder(self, chat_id: str) -> RelationshipBuilder | None:
         """获取关系构建器
 
         Args:
@@ -56,7 +57,7 @@ class RelationshipBuilderManager:
             return True
         return False
 
-    def get_all_chat_ids(self) -> List[str]:
+    def get_all_chat_ids(self) -> list[str]:
         """获取所有管理的聊天ID列表
 
         Returns:
@@ -64,7 +65,7 @@ class RelationshipBuilderManager:
         """
         return list(self.builders.keys())
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """获取管理器状态
 
         Returns:

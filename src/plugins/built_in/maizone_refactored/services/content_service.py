@@ -1,23 +1,23 @@
-# -*- coding: utf-8 -*-
 """
 内容服务模块
 负责生成所有与QQ空间相关的文本内容，例如说说、评论等。
 """
 
-from typing import Callable, Optional
-import datetime
-
-import base64
-import aiohttp
-from src.common.logger import get_logger
-import imghdr
 import asyncio
-from src.plugin_system.apis import llm_api, config_api, generator_api
-from src.plugin_system.apis.cross_context_api import get_chat_history_by_group_name
-from src.chat.message_receive.chat_stream import get_chat_manager
+import base64
+import datetime
+import imghdr
+from collections.abc import Callable
+
+import aiohttp
 from maim_message import UserInfo
-from src.llm_models.utils_model import LLMRequest
+
+from src.chat.message_receive.chat_stream import get_chat_manager
+from src.common.logger import get_logger
 from src.config.api_ada_configs import TaskConfig
+from src.llm_models.utils_model import LLMRequest
+from src.plugin_system.apis import config_api, generator_api, llm_api
+from src.plugin_system.apis.cross_context_api import get_chat_history_by_group_name
 
 # 导入旧的工具函数，我们稍后会考虑是否也需要重构它
 from ..utils.history_utils import get_send_history
@@ -38,7 +38,7 @@ class ContentService:
         """
         self.get_config = get_config
 
-    async def generate_story(self, topic: str, context: Optional[str] = None) -> str:
+    async def generate_story(self, topic: str, context: str | None = None) -> str:
         """
         根据指定主题和可选的上下文生成一条QQ空间说说。
 
@@ -72,7 +72,7 @@ class ContentService:
             prompt = f"""
             你是'{bot_personality}'，现在是{current_time}（{weekday}），你想写一条{prompt_topic}的说说发表在qq空间上。
             {bot_expression}
-            
+
             请严格遵守以下规则：
             1.  **绝对禁止**在说说中直接、完整地提及当前的年月日或几点几分。
             2.  你应该将当前时间作为创作的背景，用它来判断现在是“清晨”、“傍晚”还是“深夜”。
@@ -231,7 +231,7 @@ class ContentService:
                     return ""
         return ""
 
-    async def _describe_image(self, image_url: str) -> Optional[str]:
+    async def _describe_image(self, image_url: str) -> str | None:
         """
         使用LLM识别图片内容。
         """
@@ -318,7 +318,7 @@ class ContentService:
             7.  **严禁重复**：下方会提供你最近发过的说说历史，你必须创作一条全新的、与历史记录内容和主题都不同的说说。
             8.  不要刻意突出自身学科背景，不要浮夸，不要夸张修辞。
             9.  只输出一条说说正文的内容，不要有其他的任何正文以外的冗余输出。
-            
+
             注意：
             - 如果活动是学习相关的，可以分享学习心得或感受
             - 如果活动是休息相关的，可以分享放松的感受

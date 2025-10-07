@@ -1,10 +1,16 @@
 import os
+
 from rich.traceback import install
-from src.common.logger import get_logger
+
+from src.common.database.connection_pool_manager import start_connection_pool, stop_connection_pool
+
+# 数据库批量调度器和连接池
+from src.common.database.db_batch_scheduler import get_db_batch_scheduler
 
 # SQLAlchemy相关导入
 from src.common.database.sqlalchemy_init import initialize_database_compat
-from src.common.database.sqlalchemy_models import get_engine, get_db_session
+from src.common.database.sqlalchemy_models import get_engine
+from src.common.logger import get_logger
 
 install(extra_lines=3)
 
@@ -22,38 +28,24 @@ class DatabaseProxy:
         self._session = None
 
     @staticmethod
-    def initialize(*args, **kwargs):
+    async def initialize(*args, **kwargs):
         """初始化数据库连接"""
-        return initialize_database_compat()
+        result = await initialize_database_compat()
 
-
-class SQLAlchemyTransaction:
-    """SQLAlchemy 异步事务上下文管理器 (兼容旧代码示例，推荐直接使用 get_db_session)。"""
-
-    def __init__(self):
-        self._ctx = None
-        self.session = None
-
-    async def __aenter__(self):
-        # get_db_session 是一个 async contextmanager
-        self._ctx = get_db_session()
-        self.session = await self._ctx.__aenter__()
-        return self.session
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        # 启动数据库优化系统
         try:
-            if self.session:
-                if exc_type is None:
-                    try:
-                        await self.session.commit()
-                    except Exception:
-                        await self.session.rollback()
-                        raise
-                else:
-                    await self.session.rollback()
-        finally:
-            if self._ctx:
-                await self._ctx.__aexit__(exc_type, exc_val, exc_tb)
+            # 启动数据库批量调度器
+            batch_scheduler = get_db_batch_scheduler()
+            await batch_scheduler.start()
+            logger.info("🚀 数据库批量调度器启动成功")
+
+            # 启动连接池管理器
+            await start_connection_pool()
+            logger.info("🚀 连接池管理器启动成功")
+        except Exception as e:
+            logger.error(f"启动数据库优化系统失败: {e}")
+
+        return result
 
 
 # 创建全局数据库代理实例
@@ -88,7 +80,7 @@ async def initialize_sql_database(database_config):
             logger.info(f"  数据库文件: {db_path}")
 
         # 使用SQLAlchemy初始化
-        success = initialize_database_compat()
+        success = await initialize_database_compat()
         if success:
             _sql_engine = await get_engine()
             logger.info("SQLAlchemy数据库初始化成功")
@@ -100,3 +92,18 @@ async def initialize_sql_database(database_config):
     except Exception as e:
         logger.error(f"初始化SQL数据库失败: {e}")
         return None
+
+
+async def stop_database():
+    """停止数据库相关服务"""
+    try:
+        # 停止连接池管理器
+        await stop_connection_pool()
+        logger.info("🛑 连接池管理器已停止")
+
+        # 停止数据库批量调度器
+        batch_scheduler = get_db_batch_scheduler()
+        await batch_scheduler.stop()
+        logger.info("🛑 数据库批量调度器已停止")
+    except Exception as e:
+        logger.error(f"停止数据库优化系统时出错: {e}")

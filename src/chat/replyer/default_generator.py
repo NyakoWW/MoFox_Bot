@@ -3,41 +3,41 @@
 使用重构后的统一Prompt系统替换原有的复杂提示词构建逻辑
 """
 
-import traceback
-import time
 import asyncio
 import random
 import re
-
-from typing import List, Optional, Dict, Any, Tuple
+import time
+import traceback
 from datetime import datetime
-from src.mais4u.mai_think import mai_thinking_manager
-from src.common.logger import get_logger
-from src.config.config import global_config, model_config
-from src.individuality.individuality import get_individuality
-from src.llm_models.utils_model import LLMRequest
-from src.chat.message_receive.message import UserInfo, Seg, MessageRecv, MessageSending
+from typing import Any
+
+from src.chat.express.expression_selector import expression_selector
 from src.chat.message_receive.chat_stream import ChatStream
+from src.chat.message_receive.message import MessageRecv, MessageSending, Seg, UserInfo
 from src.chat.message_receive.uni_message_sender import HeartFCSender
-from src.chat.utils.timer_calculator import Timer
-from src.chat.utils.utils import get_chat_type_and_target_info
-from src.chat.utils.prompt import Prompt, global_prompt_manager
 from src.chat.utils.chat_message_builder import (
     build_readable_messages,
     get_raw_msg_before_timestamp_with_chat,
     replace_user_references_sync,
 )
-from src.chat.express.expression_selector import expression_selector
-from src.chat.memory_system.memory_activator import MemoryActivator
-from src.chat.memory_system.vector_instant_memory import VectorInstantMemoryV2
-from src.mood.mood_manager import mood_manager
-from src.person_info.relationship_fetcher import relationship_fetcher_manager
-from src.person_info.person_info import get_person_info_manager
-from src.plugin_system.base.component_types import ActionInfo, EventType
-from src.plugin_system.apis import llm_api
+from src.chat.utils.memory_mappings import get_memory_type_chinese_label
 
 # 导入新的统一Prompt系统
-from src.chat.utils.prompt import PromptParameters
+from src.chat.utils.prompt import Prompt, PromptParameters, global_prompt_manager
+from src.chat.utils.timer_calculator import Timer
+from src.chat.utils.utils import get_chat_type_and_target_info
+from src.common.logger import get_logger
+from src.config.config import global_config, model_config
+from src.individuality.individuality import get_individuality
+from src.llm_models.utils_model import LLMRequest
+from src.mais4u.mai_think import mai_thinking_manager
+
+# 旧记忆系统已被移除
+# 旧记忆系统已被移除
+from src.mood.mood_manager import mood_manager
+from src.person_info.person_info import get_person_info_manager
+from src.plugin_system.apis import llm_api
+from src.plugin_system.base.component_types import ActionInfo, EventType
 
 logger = get_logger("replyer")
 
@@ -67,6 +67,9 @@ def init_prompt():
 {moderation_prompt}
 不要复读你前面发过的内容，意思相近也不行。
 不要浮夸，不要夸张修辞，平淡且不要输出多余内容(包括前后缀，冒号和引号，括号，表情包，at或 @等 )，只输出一条回复就好。
+
+*你叫{bot_name}，也有人叫你{bot_nickname}*
+
 现在，你说：
 """,
         "default_expressor_prompt",
@@ -83,13 +86,13 @@ def init_prompt():
 - {schedule_block}
 
 ## 历史记录
-### {chat_context_type}中的所有人的聊天记录：
-{background_dialogue_prompt}
+### 📜 已读历史消息（仅供参考）
+{read_history_prompt}
 
 {cross_context_block}
 
-### {chat_context_type}中正在与你对话的聊天记录
-{core_dialogue_prompt}
+### 📬 未读历史消息（动作执行对象）
+{unread_history_prompt}
 
 ## 表达方式
 - *你需要参考你的回复风格：*
@@ -105,19 +108,38 @@ def init_prompt():
 ## 其他信息
 {memory_block}
 {relation_info_block}
+
 {extra_info_block}
+
 {action_descriptions}
 
 ## 任务
 
-*你正在一个{chat_context_type}里聊天，你需要理解整个{chat_context_type}的聊天动态和话题走向，并做出自然的回应。*
+*{chat_scene}*
 
 ### 核心任务
-- 你现在的主要任务是和 {sender_name} 聊天。
-- {reply_target_block} ，你需要生成一段紧密相关且能推动对话的回复。
+- 你现在的主要任务是和 {sender_name} 聊天。同时，也有其他用户会参与聊天，你可以参考他们的回复内容，但是你现在想回复{sender_name}的发言。
+
+-  {reply_target_block} 你需要生成一段紧密相关且能推动对话的回复。
 
 ## 规则
 {safety_guidelines_block}
+**重要提醒：**
+- **已读历史消息仅作为当前聊天情景的参考**
+- **动作执行对象只能是未读历史消息中的消息**
+- **请优先对兴趣值高的消息做出回复**（兴趣度标注在未读消息末尾）
+
+在回应之前，首先分析消息的针对性：
+1. **直接针对你**：@你、回复你、明确询问你 → 必须回应
+2. **间接相关**：涉及你感兴趣的话题但未直接问你 → 谨慎参与
+3. **他人对话**：与你无关的私人交流 → 通常不参与
+4. **重复内容**：他人已充分回答的问题 → 避免重复
+
+你的回复应该：
+1.  明确回应目标消息，而不是宽泛地评论。
+2.  可以分享你的看法、提出相关问题，或者开个合适的玩笑。
+3.  目的是让对话更有趣、更深入。
+4.  不要浮夸，不要夸张修辞，不要输出多余内容(包括前后缀，冒号和引号，括号()，表情包，at或 @等 )。
 最终请输出一条简短、完整且口语化的回复。
 
  --------------------------------
@@ -127,6 +149,8 @@ def init_prompt():
 
 请注意不要输出多余内容(包括前后缀，冒号和引号，at或 @等 )。只输出回复内容。
 {moderation_prompt}
+
+*你叫{bot_name}，也有人叫你{bot_nickname}*
 
 现在，你说：
 """,
@@ -153,10 +177,14 @@ If you need to use the search tool, please directly call the function "lpmm_sear
     logger.debug("[Prompt模式调试] 正在注册normal_style_prompt模板")
     Prompt(
         """
-你正在一个QQ群里聊天，你需要理解整个群的聊天动态和话题走向，并做出自然的回应。
+{chat_scene}
 
 **重要：消息针对性判断**
-{safety_guidelines_block}
+在回应之前，首先分析消息的针对性：
+1. **直接针对你**：@你、回复你、明确询问你 → 必须回应
+2. **间接相关**：涉及你感兴趣的话题但未直接问你 → 谨慎参与
+3. **他人对话**：与你无关的私人交流 → 通常不参与
+4. **重复内容**：他人已充分回答的问题 → 避免重复
 
 {expression_habits_block}
 {tool_info_block}
@@ -186,7 +214,14 @@ If you need to use the search tool, please directly call the function "lpmm_sear
 {keywords_reaction_prompt}
 请注意不要输出多余内容(包括前后缀，冒号和引号，at或 @等 )。只输出回复内容。
 {moderation_prompt}
+你的核心任务是针对 {reply_target_block} 中提到的内容，{relation_info_block}生成一段紧密相关且能推动对话的回复。你的回复应该：
+1.  明确回应目标消息，而不是宽泛地评论。
+2.  可以分享你的看法、提出相关问题，或者开个合适的玩笑。
+3.  目的是让对话更有趣、更深入。
 最终请输出一条简短、完整且口语化的回复。
+
+*你叫{bot_name}，也有人叫你{bot_nickname}*
+
 现在，你说：
 """,
         "normal_style_prompt",
@@ -202,43 +237,40 @@ class DefaultReplyer:
     ):
         self.express_model = LLMRequest(model_set=model_config.model_task_config.replyer, request_type=request_type)
         self.chat_stream = chat_stream
-        self.is_group_chat: Optional[bool] = None
-        self.chat_target_info: Optional[Dict[str, Any]] = None
-        self._initialized = False
+        # 这些将在异步初始化中设置
+        self.is_group_chat = False
+        self.chat_target_info = None
+        self._chat_info_initialized = False
 
         self.heart_fc_sender = HeartFCSender()
-        self.memory_activator = MemoryActivator()
-        # 使用纯向量瞬时记忆系统V2，支持自定义保留时间
-        self.instant_memory = VectorInstantMemoryV2(chat_id=self.chat_stream.stream_id, retention_hours=1)
+        # 使用新的增强记忆系统
+        # from src.chat.memory_system.enhanced_memory_activator import EnhancedMemoryActivator
+        self._chat_info_initialized = False
+
+    async def _initialize_chat_info(self):
+        """异步初始化聊天信息"""
+        if not self._chat_info_initialized:
+            self.is_group_chat, self.chat_target_info = await get_chat_type_and_target_info(self.chat_stream.stream_id)
+            self._chat_info_initialized = True
+        # self.memory_activator = EnhancedMemoryActivator()
+        self.memory_activator = None  # 暂时禁用记忆激活器
+        # 旧的即时记忆系统已被移除，现在使用增强记忆系统
+        # self.instant_memory = VectorInstantMemoryV2(chat_id=self.chat_stream.stream_id, retention_hours=1)
 
         from src.plugin_system.core.tool_use import ToolExecutor  # 延迟导入ToolExecutor，不然会循环依赖
 
         self.tool_executor = ToolExecutor(chat_id=self.chat_stream.stream_id)
 
-    def _should_block_self_message(self, reply_message: Optional[Dict[str, Any]]) -> bool:
-        """判定是否应阻断当前待处理消息（自消息且无外部触发）"""
-        try:
-            bot_id = str(global_config.bot.qq_account)
-            uid = str(reply_message.get("user_id"))
-            if uid != bot_id:
-                return False
-
-            return True
-        except Exception as e:
-            logger.warning(f"[SelfGuard] 判定异常，回退为不阻断: {e}")
-            return False
-
     async def generate_reply_with_context(
         self,
         reply_to: str = "",
         extra_info: str = "",
-        available_actions: Optional[Dict[str, ActionInfo]] = None,
+        available_actions: dict[str, ActionInfo] | None = None,
         enable_tool: bool = True,
         from_plugin: bool = True,
-        stream_id: Optional[str] = None,
-        reply_message: Optional[Dict[str, Any]] = None,
-        read_mark: float = 0.0,
-    ) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
+        stream_id: str | None = None,
+        reply_message: dict[str, Any] | None = None,
+    ) -> tuple[bool, dict[str, Any] | None, str | None]:
         # sourcery skip: merge-nested-ifs
         """
         回复器 (Replier): 负责生成回复文本的核心逻辑。
@@ -253,13 +285,12 @@ class DefaultReplyer:
         Returns:
             Tuple[bool, Optional[Dict[str, Any]], Optional[str]]: (是否成功, 生成的回复, 使用的prompt)
         """
+        # 初始化聊天信息
+        await self._initialize_chat_info()
+
         prompt = None
         if available_actions is None:
             available_actions = {}
-        # 自消息阻断
-        if self._should_block_self_message(reply_message):
-            logger.debug("[SelfGuard] 阻断：自消息且无外部触发。")
-            return False, None, None
         llm_response = None
         try:
             # 构建 Prompt
@@ -270,7 +301,6 @@ class DefaultReplyer:
                     available_actions=available_actions,
                     enable_tool=enable_tool,
                     reply_message=reply_message,
-                    read_mark=read_mark,
                 )
 
             if not prompt:
@@ -300,7 +330,7 @@ class DefaultReplyer:
                     "model": model_name,
                     "tool_calls": tool_call,
                 }
-                
+
                 # 触发 AFTER_LLM 事件
                 if not from_plugin:
                     result = await event_manager.trigger_event(
@@ -321,6 +351,13 @@ class DefaultReplyer:
                 logger.error(f"LLM 生成失败: {llm_e}")
                 return False, None, prompt  # LLM 调用失败则无法生成回复
 
+            # 回复生成成功后，异步存储聊天记忆（不阻塞返回）
+            try:
+                await self._store_chat_memory_async(reply_to, reply_message)
+            except Exception as memory_e:
+                # 记忆存储失败不应该影响回复生成的成功返回
+                logger.warning(f"记忆存储失败，但不影响回复生成: {memory_e}")
+
             return True, llm_response, prompt
 
         except UserWarning as uw:
@@ -336,7 +373,7 @@ class DefaultReplyer:
         reason: str = "",
         reply_to: str = "",
         return_prompt: bool = False,
-    ) -> Tuple[bool, Optional[str], Optional[str]]:
+    ) -> tuple[bool, str | None, str | None]:
         """
         表达器 (Expressor): 负责重写和优化回复文本。
 
@@ -454,98 +491,211 @@ class DefaultReplyer:
 
         instant_memory = None
 
-        running_memories = await self.memory_activator.activate_memory_with_chat_history(
-            target_message=target, chat_history_prompt=chat_history
-        )
+        # 使用新的增强记忆系统检索记忆
+        running_memories = []
+        instant_memory = None
 
-        if global_config.memory.enable_instant_memory:
-            # 使用异步记忆包装器（最优化的非阻塞模式）
+        if global_config.memory.enable_memory:
             try:
-                from src.chat.memory_system.async_instant_memory_wrapper import get_async_instant_memory
+                # 使用新的统一记忆系统
+                from src.chat.memory_system import get_memory_system
 
-                # 获取异步记忆包装器
-                async_memory = get_async_instant_memory(self.chat_stream.stream_id)
+                stream = self.chat_stream
+                user_info_obj = getattr(stream, "user_info", None)
+                group_info_obj = getattr(stream, "group_info", None)
 
-                # 后台存储聊天历史（完全非阻塞）
-                async_memory.store_memory_background(chat_history)
+                memory_user_id = str(stream.stream_id)
+                memory_user_display = None
+                memory_aliases = []
+                user_info_dict = {}
 
-                # 快速检索记忆，最大超时2秒
-                instant_memory = await async_memory.get_memory_with_fallback(target, max_timeout=2.0)
+                if user_info_obj is not None:
+                    raw_user_id = getattr(user_info_obj, "user_id", None)
+                    if raw_user_id:
+                        memory_user_id = str(raw_user_id)
 
-                logger.info(f"异步瞬时记忆：{instant_memory}")
-
-            except ImportError:
-                # 如果异步包装器不可用，尝试使用异步记忆管理器
-                try:
-                    from src.chat.memory_system.async_memory_optimizer import (
-                        retrieve_memory_nonblocking,
-                        store_memory_nonblocking,
-                    )
-
-                    # 异步存储聊天历史（非阻塞）
-                    asyncio.create_task(
-                        store_memory_nonblocking(chat_id=self.chat_stream.stream_id, content=chat_history)
-                    )
-
-                    # 尝试从缓存获取瞬时记忆
-                    instant_memory = await retrieve_memory_nonblocking(chat_id=self.chat_stream.stream_id, query=target)
-
-                    # 如果没有缓存结果，快速检索一次
-                    if instant_memory is None:
+                    if hasattr(user_info_obj, "to_dict"):
                         try:
-                            instant_memory = await asyncio.wait_for(
-                                self.instant_memory.get_memory_for_context(target), timeout=1.5
-                            )
-                        except asyncio.TimeoutError:
-                            logger.warning("瞬时记忆检索超时，使用空结果")
-                            instant_memory = ""
+                            user_info_dict = user_info_obj.to_dict()  # type: ignore[attr-defined]
+                        except Exception:
+                            user_info_dict = {}
 
-                    logger.info(f"向量瞬时记忆：{instant_memory}")
+                    candidate_keys = [
+                        "user_cardname",
+                        "user_nickname",
+                        "nickname",
+                        "remark",
+                        "display_name",
+                        "user_name",
+                    ]
 
-                except ImportError:
-                    # 最后的fallback：使用原有逻辑但加上超时控制
-                    logger.warning("异步记忆系统不可用，使用带超时的同步方式")
+                    for key in candidate_keys:
+                        value = user_info_dict.get(key)
+                        if isinstance(value, str) and value.strip():
+                            stripped = value.strip()
+                            if memory_user_display is None:
+                                memory_user_display = stripped
+                            elif stripped not in memory_aliases:
+                                memory_aliases.append(stripped)
 
-                    # 异步存储聊天历史
-                    asyncio.create_task(self.instant_memory.store_message(chat_history))
+                    attr_keys = [
+                        "user_cardname",
+                        "user_nickname",
+                        "nickname",
+                        "remark",
+                        "display_name",
+                        "name",
+                    ]
 
-                    # 带超时的记忆检索
-                    try:
-                        instant_memory = await asyncio.wait_for(
-                            self.instant_memory.get_memory_for_context(target),
-                            timeout=1.0,  # 最保守的1秒超时
+                    for attr in attr_keys:
+                        value = getattr(user_info_obj, attr, None)
+                        if isinstance(value, str) and value.strip():
+                            stripped = value.strip()
+                            if memory_user_display is None:
+                                memory_user_display = stripped
+                            elif stripped not in memory_aliases:
+                                memory_aliases.append(stripped)
+
+                    alias_values = (
+                        user_info_dict.get("aliases")
+                        or user_info_dict.get("alias_names")
+                        or user_info_dict.get("alias")
+                    )
+                    if isinstance(alias_values, list | tuple | set):
+                        for alias in alias_values:
+                            if isinstance(alias, str) and alias.strip():
+                                stripped = alias.strip()
+                                if stripped not in memory_aliases and stripped != memory_user_display:
+                                    memory_aliases.append(stripped)
+
+                memory_context = {
+                    "user_id": memory_user_id,
+                    "user_display_name": memory_user_display or "",
+                    "user_name": memory_user_display or "",
+                    "nickname": memory_user_display or "",
+                    "sender_name": memory_user_display or "",
+                    "platform": getattr(stream, "platform", None),
+                    "chat_id": stream.stream_id,
+                    "stream_id": stream.stream_id,
+                }
+
+                if memory_aliases:
+                    memory_context["user_aliases"] = memory_aliases
+
+                if group_info_obj is not None:
+                    group_name = getattr(group_info_obj, "group_name", None) or getattr(
+                        group_info_obj, "group_nickname", None
+                    )
+                    if group_name:
+                        memory_context["group_name"] = str(group_name)
+                    group_id = getattr(group_info_obj, "group_id", None)
+                    if group_id:
+                        memory_context["group_id"] = str(group_id)
+
+                memory_context = {key: value for key, value in memory_context.items() if value}
+
+                # 获取记忆系统实例
+                memory_system = get_memory_system()
+
+                # 使用统一记忆系统检索相关记忆
+                enhanced_memories = await memory_system.retrieve_relevant_memories(
+                    query=target, user_id=memory_user_id, scope_id=stream.stream_id, context=memory_context, limit=10
+                )
+
+                # 注意：记忆存储已迁移到回复生成完成后进行，不在查询阶段执行
+
+                # 转换格式以兼容现有代码
+                running_memories = []
+                if enhanced_memories:
+                    logger.debug(f"[记忆转换] 收到 {len(enhanced_memories)} 条原始记忆")
+                    for idx, memory_chunk in enumerate(enhanced_memories, 1):
+                        # 获取结构化内容的字符串表示
+                        structure_display = str(memory_chunk.content) if hasattr(memory_chunk, "content") else "unknown"
+
+                        # 获取记忆内容，优先使用display
+                        content = memory_chunk.display or memory_chunk.text_content or ""
+
+                        # 调试：记录每条记忆的内容获取情况
+                        logger.debug(
+                            f"[记忆转换] 第{idx}条: display={repr(memory_chunk.display)[:80]}, text_content={repr(memory_chunk.text_content)[:80]}, final_content={repr(content)[:80]}"
                         )
-                    except asyncio.TimeoutError:
-                        logger.warning("瞬时记忆检索超时，跳过记忆获取")
-                        instant_memory = ""
-                    except Exception as e:
-                        logger.error(f"瞬时记忆检索失败: {e}")
-                        instant_memory = ""
 
-                    logger.info(f"同步瞬时记忆：{instant_memory}")
+                        running_memories.append(
+                            {
+                                "content": content,
+                                "memory_type": memory_chunk.memory_type.value,
+                                "confidence": memory_chunk.metadata.confidence.value,
+                                "importance": memory_chunk.metadata.importance.value,
+                                "relevance": getattr(memory_chunk.metadata, "relevance_score", 0.5),
+                                "source": memory_chunk.metadata.source,
+                                "structure": structure_display,
+                            }
+                        )
+
+                # 构建瞬时记忆字符串
+                if running_memories:
+                    top_memory = running_memories[:1]
+                    if top_memory:
+                        instant_memory = top_memory[0].get("content", "")
+
+                logger.info(
+                    f"增强记忆系统检索到 {len(enhanced_memories)} 条原始记忆，转换为 {len(running_memories)} 条可用记忆"
+                )
 
             except Exception as e:
-                logger.error(f"瞬时记忆系统异常: {e}")
+                logger.warning(f"增强记忆系统检索失败: {e}")
+                running_memories = []
                 instant_memory = ""
 
-        # 构建记忆字符串，即使某种记忆为空也要继续
+        # 构建记忆字符串，使用方括号格式
         memory_str = ""
         has_any_memory = False
 
-        # 添加长期记忆
+        # 添加长期记忆（来自增强记忆系统）
         if running_memories:
-            if not memory_str:
-                memory_str = "以下是当前在聊天中，你回忆起的记忆：\n"
-            for running_memory in running_memories:
-                memory_str += f"- {running_memory['content']}\n"
+            # 使用方括号格式
+            memory_parts = ["### 🧠 相关记忆 (Relevant Memories)", ""]
+
+            # 按相关度排序，并记录相关度信息用于调试
+            sorted_memories = sorted(running_memories, key=lambda x: x.get("relevance", 0.0), reverse=True)
+
+            # 调试相关度信息
+            relevance_info = [(m.get("memory_type", "unknown"), m.get("relevance", 0.0)) for m in sorted_memories]
+            logger.debug(f"记忆相关度信息: {relevance_info}")
+            logger.debug(f"[记忆构建] 准备将 {len(sorted_memories)} 条记忆添加到提示词")
+
+            for idx, running_memory in enumerate(sorted_memories, 1):
+                content = running_memory.get("content", "")
+                memory_type = running_memory.get("memory_type", "unknown")
+
+                # 跳过空内容
+                if not content or not content.strip():
+                    logger.warning(f"[记忆构建] 跳过第 {idx} 条记忆：内容为空 (type={memory_type})")
+                    logger.debug(f"[记忆构建] 空记忆详情: {running_memory}")
+                    continue
+
+                # 使用全局记忆类型映射表
+                chinese_type = get_memory_type_chinese_label(memory_type)
+
+                # 提取纯净内容（如果包含旧格式的元数据）
+                clean_content = content
+                if "（类型:" in content and "）" in content:
+                    clean_content = content.split("（类型:")[0].strip()
+
+                logger.debug(f"[记忆构建] 添加第 {idx} 条记忆: [{chinese_type}] {clean_content[:50]}...")
+                memory_parts.append(f"- **[{chinese_type}]** {clean_content}")
+
+            memory_str = "\n".join(memory_parts) + "\n"
             has_any_memory = True
+            logger.debug(f"[记忆构建] 成功构建记忆字符串，包含 {len(memory_parts) - 2} 条记忆")
 
         # 添加瞬时记忆
         if instant_memory:
-            if not memory_str:
-                memory_str = "以下是当前在聊天中，你回忆起的记忆：\n"
-            memory_str += f"- {instant_memory}\n"
-            has_any_memory = True
+            if not any(rm["content"] == instant_memory for rm in running_memories):
+                if not memory_str:
+                    memory_str = "以下是当前在聊天中，你回忆起的记忆：\n"
+                memory_str += f"- 最相关记忆：{instant_memory}\n"
+                has_any_memory = True
 
         # 只有当完全没有任何记忆时才返回空字符串
         return memory_str if has_any_memory else ""
@@ -592,17 +742,16 @@ class DefaultReplyer:
             logger.error(f"工具信息获取失败: {e}")
             return ""
 
-    @staticmethod
-    def _parse_reply_target(target_message: str) -> Tuple[str, str]:
+    def _parse_reply_target(self, target_message: str) -> tuple[str, str]:
         """解析回复目标消息 - 使用共享工具"""
         from src.chat.utils.prompt import Prompt
+
         if target_message is None:
             logger.warning("target_message为None，返回默认值")
             return "未知用户", "(无消息内容)"
         return Prompt.parse_reply_target(target_message)
 
-    @staticmethod
-    async def build_keywords_reaction_prompt(target: Optional[str]) -> str:
+    async def build_keywords_reaction_prompt(self, target: str | None) -> str:
         """构建关键词反应提示
 
         Args:
@@ -637,15 +786,14 @@ class DefaultReplyer:
                             keywords_reaction_prompt += f"{reaction}，"
                             break
                     except re.error as e:
-                        logger.error(f"正则表达式编译错误: {pattern_str}, 错误信息: {str(e)}")
+                        logger.error(f"正则表达式编译错误: {pattern_str}, 错误信息: {e!s}")
                         continue
         except Exception as e:
-            logger.error(f"关键词检测与反应时发生异常: {str(e)}", exc_info=True)
+            logger.error(f"关键词检测与反应时发生异常: {e!s}", exc_info=True)
 
         return keywords_reaction_prompt
 
-    @staticmethod
-    async def _time_and_run_task(coroutine, name: str) -> Tuple[str, Any, float]:
+    async def _time_and_run_task(self, coroutine, name: str) -> tuple[str, Any, float]:
         """计时并运行异步任务的辅助函数
 
         Args:
@@ -662,79 +810,241 @@ class DefaultReplyer:
         return name, result, duration
 
     async def build_s4u_chat_history_prompts(
-        self, message_list_before_now: List[Dict[str, Any]], target_user_id: str, sender: str
-    ) -> Tuple[str, str]:
+        self, message_list_before_now: list[dict[str, Any]], target_user_id: str, sender: str, chat_id: str
+    ) -> tuple[str, str]:
         """
-        构建 s4u 风格的分离对话 prompt
+        构建 s4u 风格的已读/未读历史消息 prompt
 
         Args:
             message_list_before_now: 历史消息列表
             target_user_id: 目标用户ID（当前对话对象）
+            sender: 发送者名称
+            chat_id: 聊天ID
 
         Returns:
-            Tuple[str, str]: (核心对话prompt, 背景对话prompt)
+            Tuple[str, str]: (已读历史消息prompt, 未读历史消息prompt)
         """
-        core_dialogue_list = []
+        try:
+            # 从message_manager获取真实的已读/未读消息
+
+            # 获取聊天流的上下文
+            from src.plugin_system.apis.chat_api import get_chat_manager
+
+            chat_manager = get_chat_manager()
+            chat_stream = await chat_manager.get_stream(chat_id)
+            if chat_stream:
+                stream_context = chat_stream.context_manager
+                # 使用真正的已读和未读消息
+                read_messages = stream_context.context.history_messages  # 已读消息
+                unread_messages = stream_context.get_unread_messages()  # 未读消息
+
+                # 构建已读历史消息 prompt
+                read_history_prompt = ""
+                if read_messages:
+                    read_content = await build_readable_messages(
+                        [msg.flatten() for msg in read_messages[-50:]],  # 限制数量
+                        replace_bot_name=True,
+                        timestamp_mode="normal_no_YMD",
+                        truncate=True,
+                    )
+                    read_history_prompt = f"这是已读历史消息，仅作为当前聊天情景的参考：\n{read_content}"
+                else:
+                    # 如果没有已读消息，则从数据库加载最近的上下文
+                    logger.info("暂无已读历史消息，正在从数据库加载上下文...")
+                    fallback_messages = await get_raw_msg_before_timestamp_with_chat(
+                        chat_id=chat_id,
+                        timestamp=time.time(),
+                        limit=global_config.chat.max_context_size,
+                    )
+                    if fallback_messages:
+                        # 从 unread_messages 获取 message_id 列表，用于去重
+                        unread_message_ids = {msg.message_id for msg in unread_messages}
+                        filtered_fallback_messages = [
+                            msg for msg in fallback_messages if msg.get("message_id") not in unread_message_ids
+                        ]
+
+                        if filtered_fallback_messages:
+                            read_content = await build_readable_messages(
+                                filtered_fallback_messages,
+                                replace_bot_name=True,
+                                timestamp_mode="normal_no_YMD",
+                                truncate=True,
+                            )
+                            read_history_prompt = f"这是已读历史消息，仅作为当前聊天情景的参考：\n{read_content}"
+                        else:
+                            read_history_prompt = "暂无已读历史消息"
+                    else:
+                        read_history_prompt = "暂无已读历史消息"
+
+                # 构建未读历史消息 prompt（包含兴趣度）
+                unread_history_prompt = ""
+                if unread_messages:
+                    # 尝试获取兴趣度评分
+                    interest_scores = await self._get_interest_scores_for_messages(
+                        [msg.flatten() for msg in unread_messages]
+                    )
+
+                    unread_lines = []
+                    for msg in unread_messages:
+                        msg_id = msg.message_id
+                        msg_time = time.strftime("%H:%M:%S", time.localtime(msg.time))
+                        msg_content = msg.processed_plain_text
+
+                        # 使用与已读历史消息相同的方法获取用户名
+                        from src.person_info.person_info import PersonInfoManager, get_person_info_manager
+
+                        # 获取用户信息
+                        user_info = getattr(msg, "user_info", {})
+                        platform = getattr(user_info, "platform", "") or getattr(msg, "platform", "")
+                        user_id = getattr(user_info, "user_id", "") or getattr(msg, "user_id", "")
+
+                        # 获取用户名
+                        if platform and user_id:
+                            person_id = PersonInfoManager.get_person_id(platform, user_id)
+                            person_info_manager = get_person_info_manager()
+                            sender_name = await person_info_manager.get_value(person_id, "person_name") or "未知用户"
+                        else:
+                            sender_name = "未知用户"
+
+                        # 添加兴趣度信息
+                        interest_score = interest_scores.get(msg_id, 0.0)
+                        interest_text = f" [兴趣度: {interest_score:.3f}]" if interest_score > 0 else ""
+
+                        unread_lines.append(f"{msg_time} {sender_name}: {msg_content}{interest_text}")
+
+                    unread_history_prompt_str = "\n".join(unread_lines)
+                    unread_history_prompt = f"这是未读历史消息，包含兴趣度评分，请优先对兴趣值高的消息做出动作：\n{unread_history_prompt_str}"
+                else:
+                    unread_history_prompt = "暂无未读历史消息"
+
+                return read_history_prompt, unread_history_prompt
+            else:
+                # 回退到传统方法
+                return await self._fallback_build_chat_history_prompts(message_list_before_now, target_user_id, sender)
+
+        except Exception as e:
+            logger.warning(f"获取已读/未读历史消息失败，使用回退方法: {e}")
+            return await self._fallback_build_chat_history_prompts(message_list_before_now, target_user_id, sender)
+
+    async def _fallback_build_chat_history_prompts(
+        self, message_list_before_now: list[dict[str, Any]], target_user_id: str, sender: str
+    ) -> tuple[str, str]:
+        """
+        回退的已读/未读历史消息构建方法
+        """
+        # 通过is_read字段分离已读和未读消息
+        read_messages = []
+        unread_messages = []
         bot_id = str(global_config.bot.qq_account)
 
-        # 过滤消息：分离bot和目标用户的对话 vs 其他用户的对话
         for msg_dict in message_list_before_now:
             try:
                 msg_user_id = str(msg_dict.get("user_id"))
-                reply_to = msg_dict.get("reply_to", "")
-                _platform, reply_to_user_id = self._parse_reply_target(reply_to)
-                if (msg_user_id == bot_id and reply_to_user_id == target_user_id) or msg_user_id == target_user_id:
-                    # bot 和目标用户的对话
-                    core_dialogue_list.append(msg_dict)
+                if msg_dict.get("is_read", False):
+                    read_messages.append(msg_dict)
+                else:
+                    unread_messages.append(msg_dict)
             except Exception as e:
                 logger.error(f"处理消息记录时出错: {msg_dict}, 错误: {e}")
 
-        # 构建背景对话 prompt
-        all_dialogue_prompt = ""
-        if message_list_before_now:
-            latest_25_msgs = message_list_before_now[-int(global_config.chat.max_context_size) :]
-            all_dialogue_prompt_str = await build_readable_messages(
-                latest_25_msgs,
+        # 如果没有is_read字段，使用原有的逻辑
+        if not read_messages and not unread_messages:
+            # 使用原有的核心对话逻辑
+            core_dialogue_list = []
+            for msg_dict in message_list_before_now:
+                try:
+                    msg_user_id = str(msg_dict.get("user_id"))
+                    reply_to = msg_dict.get("reply_to", "")
+                    _platform, reply_to_user_id = self._parse_reply_target(reply_to)
+                    if (msg_user_id == bot_id and reply_to_user_id == target_user_id) or msg_user_id == target_user_id:
+                        core_dialogue_list.append(msg_dict)
+                except Exception as e:
+                    logger.error(f"处理消息记录时出错: {msg_dict}, 错误: {e}")
+
+            read_messages = [msg for msg in message_list_before_now if msg not in core_dialogue_list]
+            unread_messages = core_dialogue_list
+
+        # 构建已读历史消息 prompt
+        read_history_prompt = ""
+        if read_messages:
+            read_content = await build_readable_messages(
+                read_messages[-50:],
                 replace_bot_name=True,
-                timestamp_mode="normal",
+                timestamp_mode="normal_no_YMD",
                 truncate=True,
             )
-            all_dialogue_prompt = f"所有用户的发言：\n{all_dialogue_prompt_str}"
+            read_history_prompt = f"这是已读历史消息，仅作为当前聊天情景的参考：\n{read_content}"
+        else:
+            read_history_prompt = "暂无已读历史消息"
 
-        # 构建核心对话 prompt
-        core_dialogue_prompt = ""
-        if core_dialogue_list:
-            # 检查最新五条消息中是否包含bot自己说的消息
-            latest_5_messages = core_dialogue_list[-5:] if len(core_dialogue_list) >= 5 else core_dialogue_list
-            has_bot_message = any(str(msg.get("user_id")) == bot_id for msg in latest_5_messages)
+        # 构建未读历史消息 prompt
+        unread_history_prompt = ""
+        if unread_messages:
+            # 尝试获取兴趣度评分
+            interest_scores = await self._get_interest_scores_for_messages(unread_messages)
 
-            # logger.info(f"最新五条消息：{latest_5_messages}")
-            # logger.info(f"最新五条消息中是否包含bot自己说的消息：{has_bot_message}")
+            unread_lines = []
+            for msg in unread_messages:
+                msg_id = msg.get("message_id", "")
+                msg_time = time.strftime("%H:%M:%S", time.localtime(msg.get("time", time.time())))
+                msg_content = msg.get("processed_plain_text", "")
 
-            # 如果最新五条消息中不包含bot的消息，则返回空字符串
-            if not has_bot_message:
-                core_dialogue_prompt = ""
-            else:
-                core_dialogue_list = core_dialogue_list[-int(global_config.chat.max_context_size * 2) :]  # 限制消息数量
+                # 使用与已读历史消息相同的方法获取用户名
+                from src.person_info.person_info import PersonInfoManager, get_person_info_manager
 
-                core_dialogue_prompt_str = await build_readable_messages(
-                    core_dialogue_list,
-                    replace_bot_name=True,
-                    merge_messages=False,
-                    timestamp_mode="normal_no_YMD",
-                    read_mark=0.0,
-                    truncate=True,
-                    show_actions=True,
-                )
-                core_dialogue_prompt = f"""
-{core_dialogue_prompt_str}
-"""
+                # 获取用户信息
+                user_info = msg.get("user_info", {})
+                platform = user_info.get("platform") or msg.get("platform", "")
+                user_id = user_info.get("user_id") or msg.get("user_id", "")
 
-        return core_dialogue_prompt, all_dialogue_prompt
+                # 获取用户名
+                if platform and user_id:
+                    person_id = PersonInfoManager.get_person_id(platform, user_id)
+                    person_info_manager = get_person_info_manager()
+                    sender_name = await person_info_manager.get_value(person_id, "person_name") or "未知用户"
+                else:
+                    sender_name = "未知用户"
 
-    @staticmethod
+                # 添加兴趣度信息
+                interest_score = interest_scores.get(msg_id, 0.0)
+                interest_text = f" [兴趣度: {interest_score:.3f}]" if interest_score > 0 else ""
+
+                unread_lines.append(f"{msg_time} {sender_name}: {msg_content}{interest_text}")
+
+            unread_history_prompt_str = "\n".join(unread_lines)
+            unread_history_prompt = (
+                f"这是未读历史消息，包含兴趣度评分，请优先对兴趣值高的消息做出动作：\n{unread_history_prompt_str}"
+            )
+        else:
+            unread_history_prompt = "暂无未读历史消息"
+
+        return read_history_prompt, unread_history_prompt
+
+    async def _get_interest_scores_for_messages(self, messages: list[dict]) -> dict[str, float]:
+        """为消息获取兴趣度评分（使用预计算的兴趣值）"""
+        interest_scores = {}
+
+        try:
+            # 直接使用消息中的预计算兴趣值
+            for msg_dict in messages:
+                message_id = msg_dict.get("message_id", "")
+                interest_value = msg_dict.get("interest_value")
+
+                if interest_value is not None:
+                    interest_scores[message_id] = float(interest_value)
+                    logger.debug(f"使用预计算兴趣度 - 消息 {message_id}: {interest_value:.3f}")
+                else:
+                    interest_scores[message_id] = 0.5  # 默认值
+                    logger.debug(f"消息 {message_id} 无预计算兴趣值，使用默认值 0.5")
+
+        except Exception as e:
+            logger.warning(f"处理预计算兴趣值失败: {e}")
+
+        return interest_scores
+
     def build_mai_think_context(
-            chat_id: str,
+        self,
+        chat_id: str,
         memory_block: str,
         relation_info: str,
         time_block: str,
@@ -777,20 +1087,13 @@ class DefaultReplyer:
         mai_think.target = target
         return mai_think
 
-    async def _async_init(self):
-        if self._initialized:
-            return
-        self.is_group_chat, self.chat_target_info = await get_chat_type_and_target_info(self.chat_stream.stream_id)
-        self._initialized = True
-
     async def build_prompt_reply_context(
         self,
         reply_to: str,
         extra_info: str = "",
-        available_actions: Optional[Dict[str, ActionInfo]] = None,
+        available_actions: dict[str, ActionInfo] | None = None,
         enable_tool: bool = True,
-        reply_message: Optional[Dict[str, Any]] = None,
-        read_mark: float = 0.0,
+        reply_message: dict[str, Any] | None = None,
     ) -> str:
         """
         构建回复器上下文
@@ -808,11 +1111,10 @@ class DefaultReplyer:
         """
         if available_actions is None:
             available_actions = {}
-        await self._async_init()
         chat_stream = self.chat_stream
         chat_id = chat_stream.stream_id
         person_info_manager = get_person_info_manager()
-        is_group_chat = self.is_group_chat
+        is_group_chat = bool(chat_stream.group_info)
 
         if global_config.mood.enable_mood:
             chat_mood = mood_manager.get_mood_by_chat_id(chat_id)
@@ -829,35 +1131,38 @@ class DefaultReplyer:
             # 兼容旧的reply_to
             sender, target = self._parse_reply_target(reply_to)
         else:
-            # 需求：遍历最近消息，找到第一条 user_id != bot_id 的消息作为目标；找不到则静默退出
-            bot_user_id = str(global_config.bot.qq_account)
-            # 优先使用传入的 reply_message 如果它不是 bot
-            candidate_msg = None
-            if reply_message and str(reply_message.get("user_id")) != bot_user_id:
-                candidate_msg = reply_message
-            else:
-                try:
-                    recent_msgs = await get_raw_msg_before_timestamp_with_chat(
-                        chat_id=chat_id,
-                        timestamp=time.time(),
-                        limit= max(10, int(global_config.chat.max_context_size * 0.5)),
-                    )
-                    # 从最近到更早遍历，找第一条不是bot的
-                    for m in reversed(recent_msgs):
-                        if str(m.get("user_id")) != bot_user_id:
-                            candidate_msg = m
-                            break
-                except Exception as e:
-                    logger.error(f"获取最近消息失败: {e}")
-            if not candidate_msg:
-                logger.debug("未找到可作为目标的非bot消息，静默不回复。")
+            # 获取 platform，如果不存在则从 chat_stream 获取，如果还是 None 则使用默认值
+            if reply_message is None:
+                logger.warning("reply_message 为 None，无法构建prompt")
                 return ""
-            platform = candidate_msg.get("chat_info_platform") or self.chat_stream.platform
-            person_id = person_info_manager.get_person_id(platform, candidate_msg.get("user_id"))
-            person_info = await person_info_manager.get_values(person_id, ["person_name", "user_id"]) if person_id else {}
-            person_name = person_info.get("person_name") or candidate_msg.get("user_nickname") or candidate_msg.get("user_id") or "未知用户"
-            sender = person_name
-            target = candidate_msg.get("processed_plain_text") or candidate_msg.get("raw_message") or ""
+            platform = reply_message.get("chat_info_platform")
+            person_id = person_info_manager.get_person_id(
+                platform,  # type: ignore
+                reply_message.get("user_id"),  # type: ignore
+            )
+            person_name = await person_info_manager.get_value(person_id, "person_name")
+
+            # 如果person_name为None，使用fallback值
+            if person_name is None:
+                # 尝试从reply_message获取用户名
+                await person_info_manager.first_knowing_some_one(
+                    platform,  # type: ignore
+                    reply_message.get("user_id"),  # type: ignore
+                    reply_message.get("user_nickname"),
+                    reply_message.get("user_cardname"),
+                )
+
+            # 检查是否是bot自己的名字，如果是则替换为"(你)"
+            bot_user_id = str(global_config.bot.qq_account)
+            current_user_id = await person_info_manager.get_value(person_id, "user_id")
+            current_platform = reply_message.get("chat_info_platform")
+
+            if current_user_id == bot_user_id and current_platform == global_config.bot.platform:
+                sender = f"{person_name}(你)"
+            else:
+                # 如果不是bot自己，直接使用person_name
+                sender = person_name
+            target = reply_message.get("processed_plain_text")
 
         # 最终的空值检查，确保sender和target不为None
         if sender is None:
@@ -868,12 +1173,10 @@ class DefaultReplyer:
             target = "(无消息内容)"
 
         person_info_manager = get_person_info_manager()
-        person_id = person_info_manager.get_person_id(platform, reply_message.get("user_id")) if reply_message else None
+        person_id = await person_info_manager.get_person_id_by_person_name(sender)
         platform = chat_stream.platform
 
         target = replace_user_references_sync(target, chat_stream.platform, replace_bot_name=True)
-
-    # （简化）不再对自消息做额外任务段落清理，只通过前置选择逻辑避免自目标
 
         # 构建action描述 (如果启用planner)
         action_descriptions = ""
@@ -900,31 +1203,68 @@ class DefaultReplyer:
             replace_bot_name=True,
             merge_messages=False,
             timestamp_mode="relative",
-            read_mark=read_mark,
+            read_mark=0.0,
             show_actions=True,
         )
+
         # 获取目标用户信息，用于s4u模式
         target_user_info = None
         if sender:
             target_user_info = await person_info_manager.get_person_info_by_name(sender)
-            
+
         from src.chat.utils.prompt import Prompt
+
         # 并行执行六个构建任务
-        task_results = await asyncio.gather(
-            self._time_and_run_task(
-                self.build_expression_habits(chat_talking_prompt_short, target), "expression_habits"
+        tasks = {
+            "expression_habits": asyncio.create_task(
+                self._time_and_run_task(
+                    self.build_expression_habits(chat_talking_prompt_short, target), "expression_habits"
+                )
             ),
-            self._time_and_run_task(self.build_relation_info(sender, target), "relation_info"),
-            self._time_and_run_task(self.build_memory_block(chat_talking_prompt_short, target), "memory_block"),
-            self._time_and_run_task(
-                self.build_tool_info(chat_talking_prompt_short, sender, target, enable_tool=enable_tool), "tool_info"
+            "relation_info": asyncio.create_task(
+                self._time_and_run_task(self.build_relation_info(sender, target), "relation_info")
             ),
-            self._time_and_run_task(self.get_prompt_info(chat_talking_prompt_short, sender, target), "prompt_info"),
-            self._time_and_run_task(
-                Prompt.build_cross_context(chat_id, global_config.personality.prompt_mode, target_user_info),
-                "cross_context",
+            "memory_block": asyncio.create_task(
+                self._time_and_run_task(self.build_memory_block(chat_talking_prompt_short, target), "memory_block")
             ),
-        )
+            "tool_info": asyncio.create_task(
+                self._time_and_run_task(
+                    self.build_tool_info(chat_talking_prompt_short, sender, target, enable_tool=enable_tool),
+                    "tool_info",
+                )
+            ),
+            "prompt_info": asyncio.create_task(
+                self._time_and_run_task(self.get_prompt_info(chat_talking_prompt_short, sender, target), "prompt_info")
+            ),
+            "cross_context": asyncio.create_task(
+                self._time_and_run_task(
+                    Prompt.build_cross_context(chat_id, global_config.personality.prompt_mode, target_user_info),
+                    "cross_context",
+                )
+            ),
+        }
+
+        # 设置超时
+        timeout = 15.0  # 秒
+
+        async def get_task_result(task_name, task):
+            try:
+                return await asyncio.wait_for(task, timeout=timeout)
+            except asyncio.TimeoutError:
+                logger.warning(f"构建任务{task_name}超时 ({timeout}s)，使用默认值")
+                # 为超时任务提供默认值
+                default_values = {
+                    "expression_habits": "",
+                    "relation_info": "",
+                    "memory_block": "",
+                    "tool_info": "",
+                    "prompt_info": "",
+                    "cross_context": "",
+                }
+                logger.info(f"为超时任务 {task_name} 提供默认值")
+                return task_name, default_values[task_name], timeout
+
+        task_results = await asyncio.gather(*(get_task_result(name, task) for name, task in tasks.items()))
 
         # 任务名称中英文映射
         task_name_mapping = {
@@ -984,6 +1324,7 @@ class DefaultReplyer:
         schedule_block = ""
         if global_config.planning_system.schedule_enable:
             from src.schedule.schedule_manager import schedule_manager
+
             current_activity = schedule_manager.get_current_activity()
             if current_activity:
                 schedule_block = f"你当前正在：{current_activity}。"
@@ -996,43 +1337,12 @@ class DefaultReplyer:
         safety_guidelines = global_config.personality.safety_guidelines
         safety_guidelines_block = ""
         if safety_guidelines:
-            guidelines_text = "\n".join(f"{i+1}. {line}" for i, line in enumerate(safety_guidelines))
+            guidelines_text = "\n".join(f"{i + 1}. {line}" for i, line in enumerate(safety_guidelines))
             safety_guidelines_block = f"""### 安全与互动底线
 在任何情况下，你都必须遵守以下由你的设定者为你定义的原则：
 {guidelines_text}
 如果遇到违反上述原则的请求，请在保持你核心人设的同时，巧妙地拒绝或转移话题。
 """
-        
-        # 新增逻辑：构建回复规则块
-        reply_targeting_rules = global_config.personality.reply_targeting_rules
-        message_targeting_analysis = global_config.personality.message_targeting_analysis
-        reply_principles = global_config.personality.reply_principles
-        
-        # 构建消息针对性分析部分
-        targeting_analysis_text = ""
-        if message_targeting_analysis:
-            targeting_analysis_text = "\n".join(f"{i+1}. {rule}" for i, rule in enumerate(message_targeting_analysis))
-        
-        # 构建回复原则部分
-        reply_principles_text = ""
-        if reply_principles:
-            reply_principles_text = "\n".join(f"{i+1}. {principle}" for i, principle in enumerate(reply_principles))
-        
-        # 综合构建完整的规则块
-        if targeting_analysis_text or reply_principles_text:
-            complete_rules_block = ""
-            if targeting_analysis_text:
-                complete_rules_block += f"""
-在回应之前，首先分析消息的针对性：
-{targeting_analysis_text}
-"""
-            if reply_principles_text:
-                complete_rules_block += f"""
-你的回复应该：
-{reply_principles_text}
-"""
-            # 将规则块添加到safety_guidelines_block
-            safety_guidelines_block += complete_rules_block
 
         if sender and target:
             if is_group_chat:
@@ -1057,8 +1367,15 @@ class DefaultReplyer:
         # 根据配置选择模板
         current_prompt_mode = global_config.personality.prompt_mode
 
+        # 动态生成聊天场景提示
+        if is_group_chat:
+            chat_scene_prompt = "你正在一个QQ群里聊天，你需要理解整个群的聊天动态和话题走向，并做出自然的回应。"
+        else:
+            chat_scene_prompt = f"你正在和 {sender} 私下聊天，你需要理解你们的对话并做出自然的回应。"
+
         # 使用新的统一Prompt系统 - 创建PromptParameters
         prompt_parameters = PromptParameters(
+            chat_scene=chat_scene_prompt,
             chat_id=chat_id,
             is_group_chat=is_group_chat,
             sender=sender,
@@ -1090,7 +1407,8 @@ class DefaultReplyer:
             reply_target_block=reply_target_block,
             mood_prompt=mood_prompt,
             action_descriptions=action_descriptions,
-            read_mark=read_mark,
+            bot_name=global_config.bot.nickname,
+            bot_nickname=",".join(global_config.bot.alias_names) if global_config.bot.alias_names else "",
         )
 
         # 使用新的统一Prompt系统 - 使用正确的模板名称
@@ -1101,13 +1419,11 @@ class DefaultReplyer:
             template_name = "normal_style_prompt"
         elif current_prompt_mode == "minimal":
             template_name = "default_expressor_prompt"
-            
+
         # 获取模板内容
         template_prompt = await global_prompt_manager.get_prompt_async(template_name)
         prompt = Prompt(template=template_prompt.template, parameters=prompt_parameters)
         prompt_text = await prompt.build()
-
-    # 自目标情况已在上游通过筛选避免，这里不再额外修改 prompt
 
         # --- 动态添加分割指令 ---
         if global_config.response_splitter.enable and global_config.response_splitter.split_mode == "llm":
@@ -1135,12 +1451,11 @@ class DefaultReplyer:
         raw_reply: str,
         reason: str,
         reply_to: str,
-        reply_message: Optional[Dict[str, Any]] = None,
+        reply_message: dict[str, Any] | None = None,
     ) -> str:  # sourcery skip: merge-else-if-into-elif, remove-redundant-if
-        await self._async_init()
         chat_stream = self.chat_stream
         chat_id = chat_stream.stream_id
-        is_group_chat = self.is_group_chat
+        is_group_chat = bool(chat_stream.group_info)
 
         if reply_message:
             sender = reply_message.get("sender")
@@ -1178,7 +1493,7 @@ class DefaultReplyer:
             replace_bot_name=True,
             merge_messages=False,
             timestamp_mode="relative",
-            read_mark=read_mark,
+            read_mark=0.0,
             show_actions=True,
         )
 
@@ -1219,22 +1534,16 @@ class DefaultReplyer:
             reply_target_block = ""
 
         if is_group_chat:
-            chat_target_1 = await global_prompt_manager.get_prompt_async("chat_target_group1")
-            chat_target_2 = await global_prompt_manager.get_prompt_async("chat_target_group2")
+            await global_prompt_manager.get_prompt_async("chat_target_group1")
+            await global_prompt_manager.get_prompt_async("chat_target_group2")
         else:
             chat_target_name = "对方"
             if self.chat_target_info:
                 chat_target_name = (
                     self.chat_target_info.get("person_name") or self.chat_target_info.get("user_nickname") or "对方"
                 )
-            chat_target_1 = await global_prompt_manager.format_prompt(
-                "chat_target_private1", sender_name=chat_target_name
-            )
-            chat_target_2 = await global_prompt_manager.format_prompt(
-                "chat_target_private2", sender_name=chat_target_name
-            )
-
-        template_name = "default_expressor_prompt"
+            await global_prompt_manager.format_prompt("chat_target_private1", sender_name=chat_target_name)
+            await global_prompt_manager.format_prompt("chat_target_private2", sender_name=chat_target_name)
 
         # 使用新的统一Prompt系统 - Expressor模式，创建PromptParameters
         prompt_parameters = PromptParameters(
@@ -1255,6 +1564,8 @@ class DefaultReplyer:
             # 添加已构建的表达习惯和关系信息
             expression_habits_block=expression_habits_block,
             relation_info_block=relation_info,
+            bot_name=global_config.bot.nickname,
+            bot_nickname=",".join(global_config.bot.alias_names) if global_config.bot.alias_names else "",
         )
 
         # 使用新的统一Prompt系统 - Expressor模式
@@ -1272,7 +1583,7 @@ class DefaultReplyer:
         is_emoji: bool,
         thinking_start_time: float,
         display_message: str,
-        anchor_message: Optional[MessageRecv] = None,
+        anchor_message: MessageRecv | None = None,
     ) -> MessageSending:
         """构建单个发送消息"""
 
@@ -1363,14 +1674,12 @@ class DefaultReplyer:
                 logger.debug("从LPMM知识库获取知识失败，可能是从未导入过知识，返回空知识...")
                 return ""
         except Exception as e:
-            logger.error(f"获取知识库内容时发生异常: {str(e)}")
+            logger.error(f"获取知识库内容时发生异常: {e!s}")
             return ""
 
     async def build_relation_info(self, sender: str, target: str):
         if not global_config.relationship.enable_relationship:
             return ""
-
-        relationship_fetcher = relationship_fetcher_manager.get_fetcher(self.chat_stream.stream_id)
 
         # 获取用户ID
         person_info_manager = get_person_info_manager()
@@ -1379,7 +1688,183 @@ class DefaultReplyer:
             logger.warning(f"未找到用户 {sender} 的ID，跳过信息提取")
             return f"你完全不认识{sender}，不理解ta的相关信息。"
 
-        return await relationship_fetcher.build_relation_info(person_id, points_num=5)
+        # 使用统一评分API获取关系信息
+        try:
+            from src.plugin_system.apis.scoring_api import scoring_api
+
+            # 获取用户信息以获取真实的user_id
+            user_info = await person_info_manager.get_values(person_id, ["user_id", "platform"])
+            user_id = user_info.get("user_id", "unknown")
+
+            # 从统一API获取关系数据
+            relationship_data = await scoring_api.get_user_relationship_data(user_id)
+            if relationship_data:
+                relationship_text = relationship_data.get("relationship_text", "")
+                relationship_score = relationship_data.get("relationship_score", 0.3)
+
+                # 构建丰富的关系信息描述
+                if relationship_text:
+                    # 转换关系分数为描述性文本
+                    if relationship_score >= 0.8:
+                        relationship_level = "非常亲密的朋友"
+                    elif relationship_score >= 0.6:
+                        relationship_level = "好朋友"
+                    elif relationship_score >= 0.4:
+                        relationship_level = "普通朋友"
+                    elif relationship_score >= 0.2:
+                        relationship_level = "认识的人"
+                    else:
+                        relationship_level = "陌生人"
+
+                    return f"你与{sender}的关系：{relationship_level}（关系分：{relationship_score:.2f}/1.0）。{relationship_text}"
+                else:
+                    return f"你与{sender}是初次见面，关系分：{relationship_score:.2f}/1.0。"
+            else:
+                return f"你完全不认识{sender}，这是第一次互动。"
+
+        except Exception as e:
+            logger.error(f"获取关系信息失败: {e}")
+            return f"你与{sender}是普通朋友关系。"
+
+    async def _store_chat_memory_async(self, reply_to: str, reply_message: dict[str, Any] | None = None):
+        """
+        异步存储聊天记忆（从build_memory_block迁移而来）
+
+        Args:
+            reply_to: 回复对象
+            reply_message: 回复的原始消息
+        """
+        try:
+            if not global_config.memory.enable_memory:
+                return
+
+            # 使用统一记忆系统存储记忆
+            from src.chat.memory_system import get_memory_system
+
+            stream = self.chat_stream
+            user_info_obj = getattr(stream, "user_info", None)
+            group_info_obj = getattr(stream, "group_info", None)
+
+            memory_user_id = str(stream.stream_id)
+            memory_user_display = None
+            memory_aliases = []
+            user_info_dict = {}
+
+            if user_info_obj is not None:
+                raw_user_id = getattr(user_info_obj, "user_id", None)
+                if raw_user_id:
+                    memory_user_id = str(raw_user_id)
+
+                if hasattr(user_info_obj, "to_dict"):
+                    try:
+                        user_info_dict = user_info_obj.to_dict()  # type: ignore[attr-defined]
+                    except Exception:
+                        user_info_dict = {}
+
+                candidate_keys = [
+                    "user_cardname",
+                    "user_nickname",
+                    "nickname",
+                    "remark",
+                    "display_name",
+                    "user_name",
+                ]
+
+                for key in candidate_keys:
+                    value = user_info_dict.get(key)
+                    if isinstance(value, str) and value.strip():
+                        stripped = value.strip()
+                        if memory_user_display is None:
+                            memory_user_display = stripped
+                        elif stripped not in memory_aliases:
+                            memory_aliases.append(stripped)
+
+                attr_keys = [
+                    "user_cardname",
+                    "user_nickname",
+                    "nickname",
+                    "remark",
+                    "display_name",
+                    "name",
+                ]
+
+                for attr in attr_keys:
+                    value = getattr(user_info_obj, attr, None)
+                    if isinstance(value, str) and value.strip():
+                        stripped = value.strip()
+                        if memory_user_display is None:
+                            memory_user_display = stripped
+                        elif stripped not in memory_aliases:
+                            memory_aliases.append(stripped)
+
+                alias_values = (
+                    user_info_dict.get("aliases") or user_info_dict.get("alias_names") or user_info_dict.get("alias")
+                )
+                if isinstance(alias_values, list | tuple | set):
+                    for alias in alias_values:
+                        if isinstance(alias, str) and alias.strip():
+                            stripped = alias.strip()
+                            if stripped not in memory_aliases and stripped != memory_user_display:
+                                memory_aliases.append(stripped)
+
+            memory_context = {
+                "user_id": memory_user_id,
+                "user_display_name": memory_user_display or "",
+                "user_name": memory_user_display or "",
+                "nickname": memory_user_display or "",
+                "sender_name": memory_user_display or "",
+                "platform": getattr(stream, "platform", None),
+                "chat_id": stream.stream_id,
+                "stream_id": stream.stream_id,
+            }
+
+            if memory_aliases:
+                memory_context["user_aliases"] = memory_aliases
+
+            if group_info_obj is not None:
+                group_name = getattr(group_info_obj, "group_name", None) or getattr(
+                    group_info_obj, "group_nickname", None
+                )
+                if group_name:
+                    memory_context["group_name"] = str(group_name)
+                group_id = getattr(group_info_obj, "group_id", None)
+                if group_id:
+                    memory_context["group_id"] = str(group_id)
+
+            memory_context = {key: value for key, value in memory_context.items() if value}
+
+            # 构建聊天历史用于存储
+            message_list_before_short = await get_raw_msg_before_timestamp_with_chat(
+                chat_id=stream.stream_id,
+                timestamp=time.time(),
+                limit=int(global_config.chat.max_context_size * 0.33),
+            )
+            chat_history = await build_readable_messages(
+                message_list_before_short,
+                replace_bot_name=True,
+                merge_messages=False,
+                timestamp_mode="relative",
+                read_mark=0.0,
+                show_actions=True,
+            )
+
+            # 异步存储聊天历史（完全非阻塞）
+            memory_system = get_memory_system()
+            asyncio.create_task(
+                memory_system.process_conversation_memory(
+                    context={
+                        "conversation_text": chat_history,
+                        "user_id": memory_user_id,
+                        "scope_id": stream.stream_id,
+                        **memory_context,
+                    }
+                )
+            )
+
+            logger.debug(f"已启动记忆存储任务，用户: {memory_user_display or memory_user_id}")
+
+        except Exception as e:
+            logger.error(f"存储聊天记忆失败: {e}")
 
 
 def weighted_sample_no_replacement(items, weights, k) -> list:

@@ -14,9 +14,9 @@ Chat Frequency Analyzer
 - MIN_CHATS_FOR_PEAK: 在一个窗口内需要多少次聊天才能被认为是高峰时段。
 - MIN_GAP_BETWEEN_PEAKS_HOURS: 两个独立高峰时段之间的最小间隔（小时）。
 """
+
 import time as time_module
-from datetime import datetime, timedelta, time
-from typing import List, Tuple, Optional
+from datetime import datetime, time, timedelta
 
 from .tracker import chat_frequency_tracker
 
@@ -41,7 +41,7 @@ class ChatFrequencyAnalyzer:
         self._cache_ttl_seconds = 60 * 30  # 缓存30分钟
 
     @staticmethod
-    def _find_peak_windows(timestamps: List[float]) -> List[Tuple[datetime, datetime]]:
+    def _find_peak_windows(timestamps: list[float]) -> list[tuple[datetime, datetime]]:
         """
         使用滑动窗口算法来识别时间戳列表中的高峰时段。
 
@@ -58,7 +58,7 @@ class ChatFrequencyAnalyzer:
         datetimes = [datetime.fromtimestamp(ts) for ts in timestamps]
         datetimes.sort()
 
-        peak_windows: List[Tuple[datetime, datetime]] = []
+        peak_windows: list[tuple[datetime, datetime]] = []
         window_start_idx = 0
 
         for i in range(len(datetimes)):
@@ -72,15 +72,17 @@ class ChatFrequencyAnalyzer:
                 current_window_end = datetimes[i]
 
                 # 合并重叠或相邻的高峰时段
-                if peak_windows and current_window_start - peak_windows[-1][1] < timedelta(hours=MIN_GAP_BETWEEN_PEAKS_HOURS):
+                if peak_windows and current_window_start - peak_windows[-1][1] < timedelta(
+                    hours=MIN_GAP_BETWEEN_PEAKS_HOURS
+                ):
                     # 扩展上一个窗口的结束时间
                     peak_windows[-1] = (peak_windows[-1][0], current_window_end)
                 else:
                     peak_windows.append((current_window_start, current_window_end))
-        
+
         return peak_windows
 
-    def get_peak_chat_times(self, chat_id: str) -> List[Tuple[time, time]]:
+    def get_peak_chat_times(self, chat_id: str) -> list[tuple[time, time]]:
         """
         获取指定用户的高峰聊天时间段。
 
@@ -100,7 +102,7 @@ class ChatFrequencyAnalyzer:
             return []
 
         peak_datetime_windows = self._find_peak_windows(timestamps)
-        
+
         # 将 datetime 窗口转换为 time 窗口，并进行归一化处理
         peak_time_windows = []
         for start_dt, end_dt in peak_datetime_windows:
@@ -110,10 +112,10 @@ class ChatFrequencyAnalyzer:
 
         # 更新缓存
         self._analysis_cache[chat_id] = (time_module.time(), peak_time_windows)
-        
+
         return peak_time_windows
 
-    def is_in_peak_time(self, chat_id: str, now: Optional[datetime] = None) -> bool:
+    def is_in_peak_time(self, chat_id: str, now: datetime | None = None) -> bool:
         """
         检查当前时间是否处于用户的高峰聊天时段内。
 
@@ -126,7 +128,7 @@ class ChatFrequencyAnalyzer:
         """
         if now is None:
             now = datetime.now()
-        
+
         now_time = now.time()
         peak_times = self.get_peak_chat_times(chat_id)
 
@@ -137,7 +139,7 @@ class ChatFrequencyAnalyzer:
             else:  # 跨天
                 if now_time >= start_time or now_time <= end_time:
                     return True
-        
+
         return False
 
 

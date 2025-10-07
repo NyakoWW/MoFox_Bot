@@ -1,21 +1,24 @@
 import asyncio
-import orjson
 import io
-from typing import Callable, Any, Coroutine, Optional
-import aiohttp
+from collections.abc import Callable, Coroutine
+from typing import Any
 
-from src.config.api_ada_configs import ModelInfo, APIProvider
+import aiohttp
+import orjson
+
 from src.common.logger import get_logger
-from .base_client import APIResponse, UsageRecord, BaseClient, client_registry
+from src.config.api_ada_configs import APIProvider, ModelInfo
+
 from ..exceptions import (
-    RespParseException,
     NetworkConnectionError,
-    RespNotOkException,
     ReqAbortException,
+    RespNotOkException,
+    RespParseException,
 )
 from ..payload_content.message import Message, RoleType
 from ..payload_content.resp_format import RespFormat, RespFormatType
-from ..payload_content.tool_option import ToolOption, ToolParam, ToolCall
+from ..payload_content.tool_option import ToolCall, ToolOption, ToolParam
+from .base_client import APIResponse, BaseClient, UsageRecord, client_registry
 
 logger = get_logger("AioHTTP-Gemini客户端")
 
@@ -120,9 +123,9 @@ def _convert_tool_options(tool_options: list[ToolOption]) -> list[dict]:
     转换工具选项格式 - 将工具选项转换为Gemini REST API所需的格式
     """
 
-    def _convert_tool_param(param: ToolParam) -> dict:
+    def _convert_tool_param(param: ToolParam) -> dict[str, Any]:
         """转换工具参数"""
-        result = {
+        result: dict[str, Any] = {
             "type": param.param_type.value,
             "description": param.description,
         }
@@ -130,9 +133,9 @@ def _convert_tool_options(tool_options: list[ToolOption]) -> list[dict]:
             result["enum"] = param.enum_values
         return result
 
-    def _convert_tool_option_item(tool_option: ToolOption) -> dict:
+    def _convert_tool_option_item(tool_option: ToolOption) -> dict[str, Any]:
         """转换单个工具选项"""
-        function_declaration = {
+        function_declaration: dict[str, Any] = {
             "name": tool_option.name,
             "description": tool_option.description,
         }
@@ -210,7 +213,7 @@ class AiohttpGeminiStreamParser:
             chunk_data = orjson.loads(chunk_text)
 
             # 解析候选项
-            if "candidates" in chunk_data and chunk_data["candidates"]:
+            if chunk_data.get("candidates"):
                 candidate = chunk_data["candidates"][0]
 
                 # 解析内容
@@ -266,7 +269,7 @@ class AiohttpGeminiStreamParser:
 async def _default_stream_response_handler(
     response: aiohttp.ClientResponse,
     interrupt_flag: asyncio.Event | None,
-) -> tuple[APIResponse, Optional[tuple[int, int, int]]]:
+) -> tuple[APIResponse, tuple[int, int, int] | None]:
     """默认流式响应处理器"""
     parser = AiohttpGeminiStreamParser()
 
@@ -290,13 +293,13 @@ async def _default_stream_response_handler(
 
 def _default_normal_response_parser(
     response_data: dict,
-) -> tuple[APIResponse, Optional[tuple[int, int, int]]]:
+) -> tuple[APIResponse, tuple[int, int, int] | None]:
     """默认普通响应解析器"""
     api_response = APIResponse()
 
     try:
         # 解析候选项
-        if "candidates" in response_data and response_data["candidates"]:
+        if response_data.get("candidates"):
             candidate = response_data["candidates"][0]
 
             # 解析文本内容
@@ -341,7 +344,6 @@ class AiohttpGeminiClient(BaseClient):
         super().__init__(api_provider)
         self.base_url = "https://generativelanguage.googleapis.com/v1beta"
         self.session: aiohttp.ClientSession | None = None
-        self.api_key = api_provider.api_key
 
         # 如果提供了自定义base_url，使用它
         if api_provider.base_url:
@@ -388,11 +390,11 @@ class AiohttpGeminiClient(BaseClient):
         self, method: str, endpoint: str, data: dict | None = None, stream: bool = False
     ) -> aiohttp.ClientResponse:
         """发起HTTP请求（每次都用 with aiohttp.ClientSession() as session）"""
-        url = f"{self.base_url}/{endpoint}?key={self.api_key}"
-        timeout = aiohttp.ClientTimeout(total=300)
+        api_key = self.api_provider.get_api_key()
+        url = f"{self.base_url}/{endpoint}?key={api_key}"
         try:
             async with aiohttp.ClientSession(
-                timeout=timeout,
+                timeout=aiohttp.ClientTimeout(total=300),
                 headers={"Content-Type": "application/json", "User-Agent": "MMC-AioHTTP-Gemini-Client/1.0"},
             ) as session:
                 if method.upper() == "POST":
@@ -419,13 +421,12 @@ class AiohttpGeminiClient(BaseClient):
         max_tokens: int = 1024,
         temperature: float = 0.7,
         response_format: RespFormat | None = None,
-        stream_response_handler: Optional[
-            Callable[
-                [aiohttp.ClientResponse, asyncio.Event | None],
-                Coroutine[Any, Any, tuple[APIResponse, Optional[tuple[int, int, int]]]],
-            ]
-        ] = None,
-        async_response_parser: Optional[Callable[[dict], tuple[APIResponse, Optional[tuple[int, int, int]]]]] = None,
+        stream_response_handler: Callable[
+            [aiohttp.ClientResponse, asyncio.Event | None],
+            Coroutine[Any, Any, tuple[APIResponse, tuple[int, int, int] | None]],
+        ]
+        | None = None,
+        async_response_parser: Callable[[dict], tuple[APIResponse, tuple[int, int, int] | None]] | None = None,
         interrupt_flag: asyncio.Event | None = None,
         extra_params: dict[str, Any] | None = None,
     ) -> APIResponse:
@@ -453,9 +454,7 @@ class AiohttpGeminiClient(BaseClient):
         # 构建请求体
         request_data = {
             "contents": contents,
-            "generationConfig": _build_generation_config(
-                max_tokens, temperature, tb, response_format, extra_params
-            ),
+            "generationConfig": _build_generation_config(max_tokens, temperature, tb, response_format, extra_params),
         }
 
         # 添加系统指令
@@ -500,7 +499,7 @@ class AiohttpGeminiClient(BaseClient):
             # 直接重抛项目定义的异常
             raise
         except Exception as e:
-            logger.debug(e)
+            logger.debug(str(e))
             # 其他异常转换为网络连接错误
             raise NetworkConnectionError() from e
 

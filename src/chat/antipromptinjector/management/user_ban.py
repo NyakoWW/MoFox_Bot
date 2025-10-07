@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 用户封禁管理模块
 
@@ -6,10 +5,12 @@
 """
 
 import datetime
-from typing import Optional, Tuple
 
-from src.common.logger import get_logger
+from sqlalchemy import select
+
 from src.common.database.sqlalchemy_models import BanUser, get_db_session
+from src.common.logger import get_logger
+
 from ..types import DetectionResult
 
 logger = get_logger("anti_injector.user_ban")
@@ -26,7 +27,7 @@ class UserBanManager:
         """
         self.config = config
 
-    async def check_user_ban(self, user_id: str, platform: str) -> Optional[Tuple[bool, Optional[str], str]]:
+    async def check_user_ban(self, user_id: str, platform: str) -> tuple[bool, str | None, str] | None:
         """检查用户是否被封禁
 
         Args:
@@ -37,8 +38,9 @@ class UserBanManager:
             如果用户被封禁则返回拒绝结果，否则返回None
         """
         try:
-            with get_db_session() as session:
-                ban_record = session.query(BanUser).filter_by(user_id=user_id, platform=platform).first()
+            async with get_db_session() as session:
+                result = await session.execute(select(BanUser).filter_by(user_id=user_id, platform=platform))
+                ban_record = result.scalar_one_or_none()
 
                 if ban_record:
                     # 只有违规次数达到阈值时才算被封禁
@@ -49,7 +51,7 @@ class UserBanManager:
                             remaining_time = ban_duration - (datetime.datetime.now() - ban_record.created_at)
                             return False, None, f"用户被封禁中，剩余时间: {remaining_time}"
                         else:
-                            # 封禁已过期，重置违规次数
+                            # 封禁已过期，重置违规次数与时间（模型已使用 Mapped 类型，可直接赋值）
                             ban_record.violation_num = 0
                             ban_record.created_at = datetime.datetime.now()
                             await session.commit()
@@ -70,9 +72,10 @@ class UserBanManager:
             detection_result: 检测结果
         """
         try:
-            with get_db_session() as session:
+            async with get_db_session() as session:
                 # 查找或创建违规记录
-                ban_record = session.query(BanUser).filter_by(user_id=user_id, platform=platform).first()
+                result = await session.execute(select(BanUser).filter_by(user_id=user_id, platform=platform))
+                ban_record = result.scalar_one_or_none()
 
                 if ban_record:
                     ban_record.violation_num += 1
@@ -89,7 +92,6 @@ class UserBanManager:
 
                 await session.commit()
 
-                # 检查是否需要自动封禁
                 if ban_record.violation_num >= self.config.auto_ban_violation_threshold:
                     logger.warning(f"用户 {platform}:{user_id} 违规次数达到 {ban_record.violation_num}，触发自动封禁")
                     # 只有在首次达到阈值时才更新封禁开始时间

@@ -1,16 +1,16 @@
+import inspect
 import time
-from typing import List, Dict, Tuple, Optional, Any
+from typing import Any
+
+from src.chat.utils.prompt import Prompt, global_prompt_manager
+from src.common.cache_manager import tool_cache
+from src.common.logger import get_logger
+from src.config.config import global_config, model_config
+from src.llm_models.payload_content import ToolCall
+from src.llm_models.utils_model import LLMRequest
 from src.plugin_system.apis.tool_api import get_llm_available_tool_definitions, get_tool_instance
 from src.plugin_system.base.base_tool import BaseTool
 from src.plugin_system.core.global_announcement_manager import global_announcement_manager
-from src.llm_models.utils_model import LLMRequest
-from src.llm_models.payload_content import ToolCall
-from src.config.config import global_config, model_config
-from src.chat.utils.prompt import Prompt, global_prompt_manager
-import inspect
-from src.chat.message_receive.chat_stream import get_chat_manager
-from src.common.logger import get_logger
-from src.common.cache_manager import tool_cache
 
 logger = get_logger("tool_use")
 
@@ -50,16 +50,33 @@ class ToolExecutor:
             chat_id: 聊天标识符，用于日志记录
         """
         self.chat_id = chat_id
-        self.chat_stream = get_chat_manager().get_stream(self.chat_id)
-        self.log_prefix = f"[{get_chat_manager().get_stream_name(self.chat_id) or self.chat_id}]"
+        # chat_stream 和 log_prefix 将在异步方法中初始化
+        self.chat_stream = None  # type: ignore
+        self.log_prefix = f"[{chat_id}]"
 
         self.llm_model = LLMRequest(model_set=model_config.model_task_config.tool_use, request_type="tool_executor")
 
-        logger.info(f"{self.log_prefix}工具执行器初始化完成")
+        # 二步工具调用状态管理
+        self._pending_step_two_tools: dict[str, dict[str, Any]] = {}
+        """待处理的第二步工具调用，格式为 {tool_name: step_two_definition}"""
+        self._log_prefix_initialized = False
+
+        # logger.info(f"{self.log_prefix}工具执行器初始化完成")  # 移到异步初始化中
+
+    async def _initialize_log_prefix(self):
+        """异步初始化log_prefix和chat_stream"""
+        if not self._log_prefix_initialized:
+            from src.chat.message_receive.chat_stream import get_chat_manager
+
+            self.chat_stream = await get_chat_manager().get_stream(self.chat_id)
+            stream_name = await get_chat_manager().get_stream_name(self.chat_id)
+            self.log_prefix = f"[{stream_name or self.chat_id}]"
+            self._log_prefix_initialized = True
+            logger.info(f"{self.log_prefix}工具执行器初始化完成")
 
     async def execute_from_chat_message(
         self, target_message: str, chat_history: str, sender: str, return_details: bool = False
-    ) -> Tuple[List[Dict[str, Any]], List[str], str]:
+    ) -> tuple[list[dict[str, Any]], list[str], str]:
         """从聊天消息执行工具
 
         Args:
@@ -72,6 +89,8 @@ class ToolExecutor:
             如果return_details为False: Tuple[List[Dict], List[str], str] - (工具执行结果列表, 空, 空)
             如果return_details为True: Tuple[List[Dict], List[str], str] - (结果列表, 使用的工具, 提示词)
         """
+        # 初始化log_prefix
+        await self._initialize_log_prefix()
 
         # 获取可用工具
         tools = self._get_tool_definitions()
@@ -109,12 +128,23 @@ class ToolExecutor:
         else:
             return tool_results, [], ""
 
-    def _get_tool_definitions(self) -> List[Dict[str, Any]]:
+    def _get_tool_definitions(self) -> list[dict[str, Any]]:
         all_tools = get_llm_available_tool_definitions()
         user_disabled_tools = global_announcement_manager.get_disabled_chat_tools(self.chat_id)
-        return [definition for name, definition in all_tools if name not in user_disabled_tools]
 
-    async def execute_tool_calls(self, tool_calls: Optional[List[ToolCall]]) -> Tuple[List[Dict[str, Any]], List[str]]:
+        # 获取基础工具定义（包括二步工具的第一步）
+        tool_definitions = [definition for name, definition in all_tools if name not in user_disabled_tools]
+
+        # 检查是否有待处理的二步工具第二步调用
+        pending_step_two = getattr(self, "_pending_step_two_tools", {})
+        if pending_step_two:
+            # 添加第二步工具定义
+            for step_two_def in pending_step_two.values():
+                tool_definitions.append(step_two_def)
+
+        return tool_definitions
+
+    async def execute_tool_calls(self, tool_calls: list[ToolCall] | None) -> tuple[list[dict[str, Any]], list[str]]:
         """执行工具调用
 
         Args:
@@ -123,7 +153,7 @@ class ToolExecutor:
         Returns:
             Tuple[List[Dict], List[str]]: (工具执行结果列表, 使用的工具名称列表)
         """
-        tool_results: List[Dict[str, Any]] = []
+        tool_results: list[dict[str, Any]] = []
         used_tools = []
 
         if not tool_calls:
@@ -147,8 +177,8 @@ class ToolExecutor:
 
         # 执行每个工具调用
         for tool_call in tool_calls:
+            tool_name = getattr(tool_call, "func_name", "unknown_tool")
             try:
-                tool_name = tool_call.func_name
                 logger.debug(f"{self.log_prefix}执行工具: {tool_name}")
 
                 # 执行工具
@@ -163,7 +193,7 @@ class ToolExecutor:
                         "timestamp": time.time(),
                     }
                     content = tool_info["content"]
-                    if not isinstance(content, (str, list, tuple)):
+                    if not isinstance(content, str | list | tuple):
                         tool_info["content"] = str(content)
 
                     tool_results.append(tool_info)
@@ -177,7 +207,7 @@ class ToolExecutor:
                 error_info = {
                     "type": "tool_error",
                     "id": f"tool_error_{time.time()}",
-                    "content": f"工具{tool_name}执行失败: {str(e)}",
+                    "content": f"工具{tool_name}执行失败: {e!s}",
                     "tool_name": tool_name,
                     "timestamp": time.time(),
                 }
@@ -186,8 +216,8 @@ class ToolExecutor:
         return tool_results, used_tools
 
     async def execute_tool_call(
-        self, tool_call: ToolCall, tool_instance: Optional[BaseTool] = None
-    ) -> Optional[Dict[str, Any]]:
+        self, tool_call: ToolCall, tool_instance: BaseTool | None = None
+    ) -> dict[str, Any] | None:
         """执行单个工具调用，并处理缓存"""
 
         function_args = tool_call.args or {}
@@ -241,8 +271,8 @@ class ToolExecutor:
         return result
 
     async def _original_execute_tool_call(
-        self, tool_call: ToolCall, tool_instance: Optional[BaseTool] = None
-    ) -> Optional[Dict[str, Any]]:
+        self, tool_call: ToolCall, tool_instance: BaseTool | None = None
+    ) -> dict[str, Any] | None:
         """执行单个工具调用的原始逻辑"""
         try:
             function_name = tool_call.func_name
@@ -250,7 +280,51 @@ class ToolExecutor:
             logger.info(
                 f"{self.log_prefix} 正在执行工具: [bold green]{function_name}[/bold green] | 参数: {function_args}"
             )
+
+            # 检查是否是MCP工具
+            try:
+                from src.plugin_system.utils.mcp_tool_provider import mcp_tool_provider
+
+                if function_name in mcp_tool_provider.mcp_tools:
+                    logger.info(f"{self.log_prefix}执行MCP工具: {function_name}")
+                    result = await mcp_tool_provider.call_mcp_tool(function_name, function_args)
+                    return {
+                        "tool_call_id": tool_call.call_id,
+                        "role": "tool",
+                        "name": function_name,
+                        "type": "function",
+                        "content": result.get("content", ""),
+                    }
+            except Exception as e:
+                logger.debug(f"检查MCP工具时出错: {e}")
+
             function_args["llm_called"] = True  # 标记为LLM调用
+
+            # 检查是否是二步工具的第二步调用
+            if "_" in function_name and function_name.count("_") >= 1:
+                # 可能是二步工具的第二步调用，格式为 "tool_name_sub_tool_name"
+                parts = function_name.split("_", 1)
+                if len(parts) == 2:
+                    base_tool_name, sub_tool_name = parts
+                    base_tool_instance = get_tool_instance(base_tool_name)
+
+                    if base_tool_instance and base_tool_instance.is_two_step_tool:
+                        logger.info(f"{self.log_prefix}执行二步工具第二步: {base_tool_name}.{sub_tool_name}")
+                        result = await base_tool_instance.execute_step_two(sub_tool_name, function_args)
+
+                        # 清理待处理的第二步工具
+                        self._pending_step_two_tools.pop(base_tool_name, None)
+
+                        if result:
+                            logger.debug(f"{self.log_prefix}二步工具第二步 {function_name} 执行成功")
+                            return {
+                                "tool_call_id": tool_call.call_id,
+                                "role": "tool",
+                                "name": function_name,
+                                "type": "function",
+                                "content": result.get("content", ""),
+                            }
+
             # 获取对应工具实例
             tool_instance = tool_instance or get_tool_instance(function_name)
             if not tool_instance:
@@ -260,6 +334,16 @@ class ToolExecutor:
             # 执行工具并记录日志
             logger.debug(f"{self.log_prefix}执行工具 {function_name}，参数: {function_args}")
             result = await tool_instance.execute(function_args)
+
+            # 检查是否是二步工具的第一步结果
+            if result and result.get("type") == "two_step_tool_step_one":
+                logger.info(f"{self.log_prefix}二步工具第一步完成: {function_name}")
+                # 保存第二步工具定义
+                next_tool_def = result.get("next_tool_definition")
+                if next_tool_def:
+                    self._pending_step_two_tools[function_name] = next_tool_def
+                    logger.debug(f"{self.log_prefix}已保存第二步工具定义: {next_tool_def['name']}")
+
             if result:
                 logger.debug(f"{self.log_prefix}工具 {function_name} 执行成功，结果: {result}")
                 return {
@@ -272,10 +356,10 @@ class ToolExecutor:
             logger.warning(f"{self.log_prefix}工具 {function_name} 返回空结果")
             return None
         except Exception as e:
-            logger.error(f"执行工具调用时发生错误: {str(e)}")
+            logger.error(f"执行工具调用时发生错误: {e!s}")
             raise e
 
-    async def execute_specific_tool_simple(self, tool_name: str, tool_args: Dict) -> Optional[Dict]:
+    async def execute_specific_tool_simple(self, tool_name: str, tool_args: dict) -> dict | None:
         """直接执行指定工具
 
         Args:

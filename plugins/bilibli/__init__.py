@@ -1,8 +1,10 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Bilibili 插件包
-提供B站视频观看体验功能，像真实用户一样浏览和评价视频
-"""
+from src.plugin_system.base.plugin_metadata import PluginMetadata
 
-# 插件会通过 @register_plugin 装饰器自动注册，这里不需要额外的导入
+__plugin_meta__ = PluginMetadata(
+    name="Bilibili Plugin",
+    description="A plugin for interacting with Bilibili.",
+    usage="Usage details for Bilibili plugin.",
+    version="1.0.0",
+    author="Your Name",
+    license="MIT",
+)

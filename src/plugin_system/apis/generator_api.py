@@ -4,19 +4,22 @@
 提供回复器相关功能，采用标准Python包设计模式
 使用方式：
     from src.plugin_system.apis import generator_api
-    replyer = generator_api.get_replyer(chat_stream)
+    replyer = await generator_api.get_replyer(chat_stream)
     success, reply_set, _ = await generator_api.generate_reply(chat_stream, action_data, reasoning)
 """
 
 import traceback
-from typing import Tuple, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
+
 from rich.traceback import install
-from src.common.logger import get_logger
-from src.chat.replyer.default_generator import DefaultReplyer
+
 from src.chat.message_receive.chat_stream import ChatStream
 from src.chat.utils.utils import process_llm_response
-from src.chat.replyer.replyer_manager import replyer_manager
+from src.common.logger import get_logger
 from src.plugin_system.base.component_types import ActionInfo
+
+if TYPE_CHECKING:
+    pass
 
 install(extra_lines=3)
 
@@ -29,11 +32,11 @@ logger = get_logger("generator_api")
 # =============================================================================
 
 
-def get_replyer(
-    chat_stream: Optional[ChatStream] = None,
-    chat_id: Optional[str] = None,
+async def get_replyer(
+    chat_stream: ChatStream | None = None,
+    chat_id: str | None = None,
     request_type: str = "replyer",
-) -> Optional[DefaultReplyer]:
+) -> Any | None:
     """获取回复器对象
 
     优先使用chat_stream，如果没有则使用chat_id直接查找。
@@ -54,7 +57,10 @@ def get_replyer(
         raise ValueError("chat_stream 和 chat_id 不可均为空")
     try:
         logger.debug(f"[GeneratorAPI] 正在获取回复器，chat_id: {chat_id}, chat_stream: {'有' if chat_stream else '无'}")
-        return replyer_manager.get_replyer(
+        # 动态导入避免循环依赖
+        from src.chat.replyer.replyer_manager import replyer_manager
+
+        return await replyer_manager.get_replyer(
             chat_stream=chat_stream,
             chat_id=chat_id,
             request_type=request_type,
@@ -71,13 +77,13 @@ def get_replyer(
 
 
 async def generate_reply(
-    chat_stream: Optional[ChatStream] = None,
-    chat_id: Optional[str] = None,
-    action_data: Optional[Dict[str, Any]] = None,
+    chat_stream: ChatStream | None = None,
+    chat_id: str | None = None,
+    action_data: dict[str, Any] | None = None,
     reply_to: str = "",
-    reply_message: Optional[Dict[str, Any]] = None,
+    reply_message: dict[str, Any] | None = None,
     extra_info: str = "",
-    available_actions: Optional[Dict[str, ActionInfo]] = None,
+    available_actions: dict[str, ActionInfo] | None = None,
     enable_tool: bool = False,
     enable_splitter: bool = True,
     enable_chinese_typo: bool = True,
@@ -85,7 +91,7 @@ async def generate_reply(
     request_type: str = "generator_api",
     from_plugin: bool = True,
     read_mark: float = 0.0,
-) -> Tuple[bool, List[Tuple[str, Any]], Optional[str]]:
+) -> tuple[bool, list[tuple[str, Any]], str | None]:
     """生成回复
 
     Args:
@@ -108,7 +114,7 @@ async def generate_reply(
     """
     try:
         # 获取回复器
-        replyer = get_replyer(chat_stream, chat_id, request_type=request_type)
+        replyer = await get_replyer(chat_stream, chat_id, request_type=request_type)
         if not replyer:
             logger.error("[GeneratorAPI] 无法获取回复器")
             return False, [], None
@@ -121,6 +127,13 @@ async def generate_reply(
         if not extra_info and action_data:
             extra_info = action_data.get("extra_info", "")
 
+        # 如果action_data中有thinking，添加到extra_info中
+        if action_data and (thinking := action_data.get("thinking")):
+            if extra_info:
+                extra_info += f"\n\n思考过程：{thinking}"
+            else:
+                extra_info = f"思考过程：{thinking}"
+
         # 调用回复器生成回复
         success, llm_response_dict, prompt = await replyer.generate_reply_with_context(
             reply_to=reply_to,
@@ -130,7 +143,6 @@ async def generate_reply(
             from_plugin=from_plugin,
             stream_id=chat_stream.stream_id if chat_stream else chat_id,
             reply_message=reply_message,
-            read_mark=read_mark,
         )
         if not success:
             logger.warning("[GeneratorAPI] 回复生成失败")
@@ -162,9 +174,9 @@ async def generate_reply(
 
 
 async def rewrite_reply(
-    chat_stream: Optional[ChatStream] = None,
-    reply_data: Optional[Dict[str, Any]] = None,
-    chat_id: Optional[str] = None,
+    chat_stream: ChatStream | None = None,
+    reply_data: dict[str, Any] | None = None,
+    chat_id: str | None = None,
     enable_splitter: bool = True,
     enable_chinese_typo: bool = True,
     raw_reply: str = "",
@@ -172,7 +184,7 @@ async def rewrite_reply(
     reply_to: str = "",
     return_prompt: bool = False,
     request_type: str = "generator_api",
-) -> Tuple[bool, List[Tuple[str, Any]], Optional[str]]:
+) -> tuple[bool, list[tuple[str, Any]], str | None]:
     """重写回复
 
     Args:
@@ -191,7 +203,7 @@ async def rewrite_reply(
     """
     try:
         # 获取回复器
-        replyer = get_replyer(chat_stream, chat_id, request_type=request_type)
+        replyer = await get_replyer(chat_stream, chat_id, request_type=request_type)
         if not replyer:
             logger.error("[GeneratorAPI] 无法获取回复器")
             return False, [], None
@@ -231,7 +243,7 @@ async def rewrite_reply(
         return False, [], None
 
 
-def process_human_text(content: str, enable_splitter: bool, enable_chinese_typo: bool) -> List[Tuple[str, Any]]:
+def process_human_text(content: str, enable_splitter: bool, enable_chinese_typo: bool) -> list[tuple[str, Any]]:
     """将文本处理为更拟人化的文本
 
     Args:
@@ -260,11 +272,11 @@ def process_human_text(content: str, enable_splitter: bool, enable_chinese_typo:
 
 
 async def generate_response_custom(
-    chat_stream: Optional[ChatStream] = None,
-    chat_id: Optional[str] = None,
+    chat_stream: ChatStream | None = None,
+    chat_id: str | None = None,
     request_type: str = "generator_api",
     prompt: str = "",
-) -> Optional[str]:
+) -> str | None:
     """
     使用自定义提示生成回复
 
@@ -277,7 +289,7 @@ async def generate_response_custom(
     Returns:
         Optional[str]: 生成的回复内容
     """
-    replyer = get_replyer(chat_stream, chat_id, request_type=request_type)
+    replyer = await get_replyer(chat_stream, chat_id, request_type=request_type)
     if not replyer:
         logger.error("[GeneratorAPI] 无法获取回复器")
         return None

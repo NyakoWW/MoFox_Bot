@@ -1,32 +1,33 @@
 import asyncio
 import math
-from typing import Tuple
 
-from src.chat.memory_system.Hippocampus import hippocampus_manager
-from src.chat.message_receive.message import MessageRecv, MessageRecvS4U
 from maim_message.message_base import GroupInfo
-from src.chat.message_receive.storage import MessageStorage
+
 from src.chat.message_receive.chat_stream import get_chat_manager
+
+# 旧的Hippocampus系统已被移除，现在使用增强记忆系统
+# from src.chat.memory_system.enhanced_memory_manager import enhanced_memory_manager
+from src.chat.message_receive.message import MessageRecv, MessageRecvS4U
+from src.chat.message_receive.storage import MessageStorage
 from src.chat.utils.timer_calculator import Timer
 from src.chat.utils.utils import is_mentioned_bot_in_message
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.mais4u.mais4u_chat.body_emotion_action_manager import action_manager
-from src.mais4u.mais4u_chat.s4u_mood_manager import mood_manager
-from src.mais4u.mais4u_chat.s4u_watching_manager import watching_manager
 from src.mais4u.mais4u_chat.context_web_manager import get_context_web_manager
 from src.mais4u.mais4u_chat.gift_manager import gift_manager
+from src.mais4u.mais4u_chat.s4u_mood_manager import mood_manager
+from src.mais4u.mais4u_chat.s4u_watching_manager import watching_manager
 from src.mais4u.mais4u_chat.screen_manager import screen_manager
 
 from .s4u_chat import get_s4u_chat_manager
-
 
 # from ..message_receive.message_buffer import message_buffer
 
 logger = get_logger("chat")
 
 
-async def _calculate_interest(message: MessageRecv) -> Tuple[float, bool]:
+async def _calculate_interest(message: MessageRecv) -> tuple[float, bool]:
     """计算消息的兴趣度
 
     Args:
@@ -40,11 +41,32 @@ async def _calculate_interest(message: MessageRecv) -> Tuple[float, bool]:
 
     if global_config.memory.enable_memory:
         with Timer("记忆激活"):
-            interested_rate, _ = await hippocampus_manager.get_activate_from_text(
-                message.processed_plain_text,
-                fast_retrieval=True,
-            )
-            logger.debug(f"记忆激活率: {interested_rate:.2f}")
+            # 使用新的统一记忆系统计算兴趣度
+            try:
+                from src.chat.memory_system import get_memory_system
+
+                memory_system = get_memory_system()
+                enhanced_memories = await memory_system.retrieve_relevant_memories(
+                    query_text=message.processed_plain_text,
+                    user_id=str(message.user_info.user_id),
+                    scope_id=message.chat_id,
+                    limit=5,
+                )
+
+                # 基于检索结果计算兴趣度
+                if enhanced_memories:
+                    # 有相关记忆，兴趣度基于相似度计算
+                    max_score = max(getattr(memory, "relevance_score", 0.5) for memory in enhanced_memories)
+                    interested_rate = min(max_score, 1.0)  # 限制在0-1之间
+                else:
+                    # 没有相关记忆，给予基础兴趣度
+                    interested_rate = 0.1
+
+                logger.debug(f"增强记忆系统兴趣度: {interested_rate:.2f}")
+
+            except Exception as e:
+                logger.warning(f"增强记忆系统兴趣度计算失败: {e}")
+                interested_rate = 0.1  # 默认基础兴趣度
 
     text_len = len(message.processed_plain_text)
     # 根据文本长度分布调整兴趣度，采用分段函数实现更精确的兴趣度计算
@@ -135,7 +157,7 @@ class S4UMessageProcessor:
 
         await self.storage.store_message(message, chat)
 
-        s4u_chat = get_s4u_chat_manager().get_or_create_chat(chat)
+        s4u_chat = await get_s4u_chat_manager().get_or_create_chat(chat)
 
         await s4u_chat.add_message(message)
 
@@ -169,7 +191,7 @@ class S4UMessageProcessor:
             chat = await get_chat_manager().get_or_create_stream(
                 platform="amaidesu_default", user_info=message.message_info.user_info, group_info=group_info
             )
-            s4u_chat = get_s4u_chat_manager().get_or_create_chat(chat)
+            s4u_chat = await get_s4u_chat_manager().get_or_create_chat(chat)
             message.message_info.group_info = s4u_chat.chat_stream.group_info
             message.message_info.platform = s4u_chat.chat_stream.platform
 
@@ -193,7 +215,7 @@ class S4UMessageProcessor:
     @staticmethod
     async def hadle_if_voice_done(message: MessageRecvS4U):
         if message.voice_done:
-            s4u_chat = get_s4u_chat_manager().get_or_create_chat(message.chat_stream)
+            s4u_chat = await get_s4u_chat_manager().get_or_create_chat(message.chat_stream)
             s4u_chat.voice_done = message.voice_done
             return True
         return False

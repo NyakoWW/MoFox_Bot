@@ -6,7 +6,6 @@ from ...CONSTS import PLUGIN_NAME
 logger = get_logger("napcat_adapter")
 
 from src.plugin_system.apis import config_api
-from ..message_buffer import SimpleMessageBuffer
 from ..utils import (
     get_group_info,
     get_member_info,
@@ -48,20 +47,18 @@ class MessageHandler:
         self.server_connection: Server.ServerConnection = None
         self.bot_id_list: Dict[int, bool] = {}
         self.plugin_config = None
-        # 初始化简化消息缓冲器，传入回调函数
-        self.message_buffer = SimpleMessageBuffer(merge_callback=self._send_buffered_message)
+        # 消息缓冲功能已移除
 
     def set_plugin_config(self, plugin_config: dict):
         """设置插件配置"""
         self.plugin_config = plugin_config
-        # 将配置传递给消息缓冲器
-        if self.message_buffer:
-            self.message_buffer.set_plugin_config(plugin_config)
+        # 消息缓冲功能已移除
 
     async def shutdown(self):
         """关闭消息处理器，清理资源"""
-        if self.message_buffer:
-            await self.message_buffer.shutdown()
+        # 消息缓冲功能已移除
+
+    # 消息缓冲功能已移除
 
     async def set_server_connection(self, server_connection: Server.ServerConnection) -> None:
         """设置Napcat连接"""
@@ -100,7 +97,7 @@ class MessageHandler:
             # 检查群聊黑白名单
             group_list_type = config_api.get_plugin_config(self.plugin_config, "features.group_list_type", "blacklist")
             group_list = config_api.get_plugin_config(self.plugin_config, "features.group_list", [])
-            
+
             if group_list_type == "whitelist":
                 if group_id not in group_list:
                     logger.warning("群聊不在白名单中，消息被丢弃")
@@ -111,9 +108,11 @@ class MessageHandler:
                     return False
         else:
             # 检查私聊黑白名单
-            private_list_type = config_api.get_plugin_config(self.plugin_config, "features.private_list_type", "blacklist")
+            private_list_type = config_api.get_plugin_config(
+                self.plugin_config, "features.private_list_type", "blacklist"
+            )
             private_list = config_api.get_plugin_config(self.plugin_config, "features.private_list", [])
-            
+
             if private_list_type == "whitelist":
                 if user_id not in private_list:
                     logger.warning("私聊不在白名单中，消息被丢弃")
@@ -156,21 +155,23 @@ class MessageHandler:
         Parameters:
             raw_message: dict: 原始消息
         """
-        
+
         # 添加原始消息调试日志，特别关注message字段
-        logger.debug(f"收到原始消息: message_type={raw_message.get('message_type')}, message_id={raw_message.get('message_id')}")
+        logger.debug(
+            f"收到原始消息: message_type={raw_message.get('message_type')}, message_id={raw_message.get('message_id')}"
+        )
         logger.debug(f"原始消息内容: {raw_message.get('message', [])}")
-        
+
         # 检查是否包含@或video消息段
-        message_segments = raw_message.get('message', [])
+        message_segments = raw_message.get("message", [])
         if message_segments:
             for i, seg in enumerate(message_segments):
-                seg_type = seg.get('type')
-                if seg_type in ['at', 'video']:
+                seg_type = seg.get("type")
+                if seg_type in ["at", "video"]:
                     logger.info(f"检测到 {seg_type.upper()} 消息段 [{i}]: {seg}")
-                elif seg_type not in ['text', 'face', 'image']:
+                elif seg_type not in ["text", "face", "image"]:
                     logger.warning(f"检测到特殊消息段 [{i}]: type={seg_type}, data={seg.get('data', {})}")
-        
+
         message_type: str = raw_message.get("message_type")
         message_id: int = raw_message.get("message_id")
         # message_time: int = raw_message.get("time")
@@ -301,38 +302,7 @@ class MessageHandler:
             logger.warning("处理后消息内容为空")
             return None
 
-        # 检查是否需要使用消息缓冲
-        enable_message_buffer = config_api.get_plugin_config(self.plugin_config, "features.enable_message_buffer", True)
-        if enable_message_buffer:
-            # 检查消息类型是否启用缓冲
-            message_type = raw_message.get("message_type")
-            should_use_buffer = False
-
-            if message_type == "group" and config_api.get_plugin_config(self.plugin_config, "features.message_buffer_enable_group", True):
-                should_use_buffer = True
-            elif message_type == "private" and config_api.get_plugin_config(self.plugin_config, "features.message_buffer_enable_private", True):
-                should_use_buffer = True
-
-            if should_use_buffer:
-                logger.debug(f"尝试缓冲消息，消息类型: {message_type}, 用户: {user_info.user_id}")
-
-                # 尝试添加到缓冲器
-                buffered = await self.message_buffer.add_text_message(
-                    event_data={
-                        "message_type": message_type,
-                        "user_id": user_info.user_id,
-                        "group_id": group_info.group_id if group_info else None,
-                    },
-                    message=raw_message.get("message", []),
-                    original_event={"message_info": message_info, "raw_message": raw_message},
-                )
-
-                if buffered:
-                    logger.debug(f"✅ 文本消息已成功缓冲: {user_info.user_id}")
-                    return None  # 缓冲成功，不立即发送
-                # 如果缓冲失败（消息包含非文本元素），走正常处理流程
-                logger.debug(f"❌ 消息缓冲失败，包含非文本元素，走正常处理流程: {user_info.user_id}")
-                # 缓冲失败时继续执行后面的正常处理流程，不要直接返回
+        # 消息缓冲功能已移除，直接处理消息
 
         logger.debug(f"准备发送消息到MaiBot，消息段数量: {len(seg_message)}")
         for i, seg in enumerate(seg_message):
@@ -351,7 +321,6 @@ class MessageHandler:
 
         logger.debug("发送到Maibot处理信息")
         await message_send_instance.message_send(message_base)
-        return None
 
     async def handle_real_message(self, raw_message: dict, in_reply: bool = False) -> List[Seg] | None:
         # sourcery skip: low-code-quality
@@ -369,10 +338,10 @@ class MessageHandler:
         for sub_message in real_message:
             sub_message: dict
             sub_message_type = sub_message.get("type")
-            
+
             # 添加详细的消息类型调试信息
             logger.debug(f"处理消息段: type={sub_message_type}, data={sub_message.get('data', {})}")
-            
+
             # 特别关注 at 和 video 消息的识别
             if sub_message_type == "at":
                 logger.debug(f"检测到@消息: {sub_message}")
@@ -380,7 +349,7 @@ class MessageHandler:
                 logger.debug(f"检测到VIDEO消息: {sub_message}")
             elif sub_message_type not in ["text", "face", "image", "record"]:
                 logger.warning(f"检测到特殊消息类型: {sub_message_type}, 完整消息: {sub_message}")
-            
+
             match sub_message_type:
                 case RealMessageType.text:
                     ret_seg = await self.handle_text_message(sub_message)
@@ -519,8 +488,7 @@ class MessageHandler:
         logger.debug(f"handle_real_message完成，处理了{len(real_message)}个消息段，生成了{len(seg_message)}个seg")
         return seg_message
 
-    @staticmethod
-    async def handle_text_message(raw_message: dict) -> Seg:
+    async def handle_text_message(self, raw_message: dict) -> Seg:
         """
         处理纯文本信息
         Parameters:
@@ -532,8 +500,7 @@ class MessageHandler:
         plain_text: str = message_data.get("text")
         return Seg(type="text", data=plain_text)
 
-    @staticmethod
-    async def handle_face_message(raw_message: dict) -> Seg | None:
+    async def handle_face_message(self, raw_message: dict) -> Seg | None:
         """
         处理表情消息
         Parameters:
@@ -550,8 +517,7 @@ class MessageHandler:
             logger.warning(f"不支持的表情：{face_raw_id}")
             return None
 
-    @staticmethod
-    async def handle_image_message(raw_message: dict) -> Seg | None:
+    async def handle_image_message(self, raw_message: dict) -> Seg | None:
         """
         处理图片消息与表情包消息
         Parameters:
@@ -607,7 +573,6 @@ class MessageHandler:
                     return Seg(type="at", data=f"{member_info.get('nickname')}:{member_info.get('user_id')}")
                 else:
                     return None
-        return None
 
     async def handle_record_message(self, raw_message: dict) -> Seg | None:
         """
@@ -636,8 +601,7 @@ class MessageHandler:
             return None
         return Seg(type="voice", data=audio_base64)
 
-    @staticmethod
-    async def handle_video_message(raw_message: dict) -> Seg | None:
+    async def handle_video_message(self, raw_message: dict) -> Seg | None:
         """
         处理视频消息
         Parameters:
@@ -744,7 +708,6 @@ class MessageHandler:
             reply_message = [Seg(type="text", data="(获取发言内容失败)")]
         sender_info: dict = message_detail.get("sender")
         sender_nickname: str = sender_info.get("nickname")
-        sender_id: str = sender_info.get("user_id")
         seg_message: List[Seg] = []
         if not sender_nickname:
             logger.warning("无法获取被引用的人的昵称，返回默认值")
@@ -768,7 +731,7 @@ class MessageHandler:
             return None
 
         processed_message: Seg
-        if 5 > image_count > 0:
+        if image_count < 5 and image_count > 0:
             # 处理图片数量小于5的情况，此时解析图片为base64
             logger.debug("图片数量小于5，开始解析图片为base64")
             processed_message = await self._recursive_parse_image_seg(handled_message, True)
@@ -785,18 +748,15 @@ class MessageHandler:
         forward_hint = Seg(type="text", data="这是一条转发消息：\n")
         return Seg(type="seglist", data=[forward_hint, processed_message])
 
-    @staticmethod
-    async def handle_dice_message(raw_message: dict) -> Seg:
+    async def handle_dice_message(self, raw_message: dict) -> Seg:
         message_data: dict = raw_message.get("data", {})
         res = message_data.get("result", "")
         return Seg(type="text", data=f"[扔了一个骰子，点数是{res}]")
 
-    @staticmethod
-    async def handle_shake_message(raw_message: dict) -> Seg:
+    async def handle_shake_message(self, raw_message: dict) -> Seg:
         return Seg(type="text", data="[向你发送了窗口抖动，现在你的屏幕猛烈地震了一下！]")
 
-    @staticmethod
-    async def handle_json_message(raw_message: dict) -> Seg | None:
+    async def handle_json_message(self, raw_message: dict) -> Seg:
         """
         处理JSON消息
         Parameters:
@@ -868,42 +828,62 @@ class MessageHandler:
                         data=f"这是一条小程序分享消息，可以根据来源，考虑使用对应解析工具\n{formatted_content}",
                     )
 
-            # 检查是否是音乐分享
-            elif nested_data.get("view") == "music" and "music" in nested_data.get("meta", {}):
-                logger.debug("检测到音乐分享消息，开始提取信息")
-                music_info = nested_data["meta"]["music"]
-                title = music_info.get("title", "未知歌曲")
-                desc = music_info.get("desc", "未知艺术家")
-                jump_url = music_info.get("jumpUrl", "")
-                preview_url = music_info.get("preview", "")
-                source = music_info.get("tag", "未知来源")
+            # 检查是否是音乐分享 (QQ音乐类型)
+            if nested_data.get("view") == "music" and "com.tencent.music" in str(nested_data.get("app", "")):
+                meta = nested_data.get("meta", {})
+                music = meta.get("music", {})
+                if music:
+                    tag = music.get("tag", "未知来源")
+                    logger.debug(f"检测到【{tag}】音乐分享消息 (music view)，开始提取信息")
 
-                # 优化文本结构，使其更像卡片
-                text_parts = [
-                    "--- 音乐分享 ---",
-                    f"歌曲：{title}",
-                    f"歌手：{desc}",
-                    f"来源：{source}"
-                ]
-                if jump_url:
-                    text_parts.append(f"链接：{jump_url}")
-                text_parts.append("----------------")
-                
-                text_content = "\n".join(text_parts)
+                    title = music.get("title", "未知歌曲")
+                    desc = music.get("desc", "未知艺术家")
+                    jump_url = music.get("jumpUrl", "")
+                    preview_url = music.get("preview", "")
 
-                # 如果有预览图，创建一个seglist包含文本和图片
-                if preview_url:
-                    try:
-                        image_base64 = await get_image_base64(preview_url)
-                        if image_base64:
-                            return Seg(type="seglist", data=[
-                                Seg(type="text", data=text_content + "\n"),
-                                Seg(type="image", data=image_base64)
-                            ])
-                    except Exception as e:
-                        logger.error(f"下载音乐预览图失败: {e}")
-                
-                return Seg(type="text", data=text_content)
+                    artist = "未知艺术家"
+                    song_title = title
+
+                    if "网易云音乐" in tag:
+                        artist = desc
+                    elif "QQ音乐" in tag:
+                        if " - " in title:
+                            parts = title.split(" - ", 1)
+                            song_title = parts[0]
+                            artist = parts[1]
+                        else:
+                            artist = desc
+
+                    formatted_content = (
+                        f"这是一张来自【{tag}】的音乐分享卡片：\n"
+                        f"歌曲: {song_title}\n"
+                        f"艺术家: {artist}\n"
+                        f"跳转链接: {jump_url}\n"
+                        f"封面图: {preview_url}"
+                    )
+                    return Seg(type="text", data=formatted_content)
+
+            # 检查是否是新闻/图文分享 (网易云音乐可能伪装成这种)
+            elif nested_data.get("view") == "news" and "com.tencent.tuwen" in str(nested_data.get("app", "")):
+                meta = nested_data.get("meta", {})
+                news = meta.get("news", {})
+                if news and "网易云音乐" in news.get("tag", ""):
+                    tag = news.get("tag")
+                    logger.debug(f"检测到【{tag}】音乐分享消息 (news view)，开始提取信息")
+
+                    title = news.get("title", "未知歌曲")
+                    desc = news.get("desc", "未知艺术家")
+                    jump_url = news.get("jumpUrl", "")
+                    preview_url = news.get("preview", "")
+
+                    formatted_content = (
+                        f"这是一张来自【{tag}】的音乐分享卡片：\n"
+                        f"标题: {title}\n"
+                        f"描述: {desc}\n"
+                        f"跳转链接: {jump_url}\n"
+                        f"封面图: {preview_url}"
+                    )
+                    return Seg(type="text", data=formatted_content)
 
             # 如果没有提取到关键信息，返回None
             return None
@@ -915,8 +895,7 @@ class MessageHandler:
             logger.error(f"处理JSON消息时出错: {e}")
             return None
 
-    @staticmethod
-    async def handle_rps_message(raw_message: dict) -> Seg:
+    async def handle_rps_message(self, raw_message: dict) -> Seg:
         message_data: dict = raw_message.get("data", {})
         res = message_data.get("result", "")
         if res == "1":
@@ -1099,55 +1078,7 @@ class MessageHandler:
             return None
         return response_data.get("messages")
 
-    @staticmethod
-    async def _send_buffered_message(session_id: str, merged_text: str, original_event: Dict[str, Any]):
-        """发送缓冲的合并消息"""
-        try:
-            # 从原始事件数据中提取信息
-            message_info = original_event.get("message_info")
-            raw_message = original_event.get("raw_message")
-
-            if not message_info or not raw_message:
-                logger.error("缓冲消息缺少必要信息")
-                return
-
-            # 创建合并后的消息段 - 将合并的文本转换为Seg格式
-            from maim_message import Seg
-
-            merged_seg = Seg(type="text", data=merged_text)
-            submit_seg = Seg(type="seglist", data=[merged_seg])
-
-            # 创建新的消息ID
-            import time
-
-            new_message_id = f"buffered-{message_info.message_id}-{int(time.time() * 1000)}"
-
-            # 更新消息信息
-            from maim_message import BaseMessageInfo, MessageBase
-
-            buffered_message_info = BaseMessageInfo(
-                platform=message_info.platform,
-                message_id=new_message_id,
-                time=time.time(),
-                user_info=message_info.user_info,
-                group_info=message_info.group_info,
-                template_info=message_info.template_info,
-                format_info=message_info.format_info,
-                additional_config=message_info.additional_config,
-            )
-
-            # 创建MessageBase
-            message_base = MessageBase(
-                message_info=buffered_message_info,
-                message_segment=submit_seg,
-                raw_message=raw_message.get("raw_message", ""),
-            )
-
-            logger.debug(f"发送缓冲合并消息到Maibot处理: {session_id}")
-            await message_send_instance.message_send(message_base)
-
-        except Exception as e:
-            logger.error(f"发送缓冲消息失败: {e}", exc_info=True)
+    # 消息缓冲功能已移除
 
 
 message_handler = MessageHandler()

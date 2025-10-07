@@ -1,6 +1,5 @@
 from enum import Enum
 
-
 # 设计这系列类的目的是为未来可能的扩展做准备
 
 
@@ -58,7 +57,7 @@ class MessageBuilder:
         self,
         image_format: str,
         image_base64: str,
-            support_formats=None,  # 默认支持格式
+        support_formats=None,  # 默认支持格式
     ) -> "MessageBuilder":
         """
         添加图片内容

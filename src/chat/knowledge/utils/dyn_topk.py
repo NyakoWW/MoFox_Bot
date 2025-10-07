@@ -1,9 +1,9 @@
-from typing import List, Any, Tuple
+from typing import Any
 
 
 def dyn_select_top_k(
-    score: List[Tuple[Any, float]], jmp_factor: float, var_factor: float
-) -> List[Tuple[Any, float, float]]:
+    score: list[tuple[Any, float]], jmp_factor: float, var_factor: float
+) -> list[tuple[Any, float, float]]:
     """动态TopK选择"""
     # 检查输入列表是否为空
     if not score:
@@ -18,12 +18,10 @@ def dyn_select_top_k(
     normalized_score = []
     for score_item in sorted_score:
         normalized_score.append(
-            tuple(
-                [
-                    score_item[0],
-                    score_item[1],
-                    (score_item[1] - min_score) / (max_score - min_score),
-                ]
+            (
+                score_item[0],
+                score_item[1],
+                (score_item[1] - min_score) / (max_score - min_score),
             )
         )
 

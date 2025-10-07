@@ -1,18 +1,15 @@
 import time
 import traceback
-import orjson
-import random
+from typing import Any
 
-from typing import List, Dict, Any
+import orjson
 from json_repair import repair_json
 
+from src.chat.utils.prompt import Prompt, global_prompt_manager
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
-from src.chat.utils.prompt import Prompt, global_prompt_manager
-from src.chat.message_receive.chat_stream import get_chat_manager
 from src.person_info.person_info import get_person_info_manager
-
 
 logger = get_logger("relationship_fetcher")
 
@@ -42,7 +39,7 @@ def init_real_time_info_prompts():
     Prompt(relationship_prompt, "real_time_info_identify_prompt")
 
     fetch_info_prompt = """
-    
+
 {name_block}
 以下是你在之前与{person_name}的交流中，产生的对{person_name}的了解：
 {person_impression_block}
@@ -65,10 +62,10 @@ class RelationshipFetcher:
         self.chat_id = chat_id
 
         # 信息获取缓存：记录正在获取的信息请求
-        self.info_fetching_cache: List[Dict[str, Any]] = []
+        self.info_fetching_cache: list[dict[str, Any]] = []
 
         # 信息结果缓存：存储已获取的信息结果，带TTL
-        self.info_fetched_cache: Dict[str, Dict[str, Any]] = {}
+        self.info_fetched_cache: dict[str, dict[str, Any]] = {}
         # 结构：{person_id: {info_type: {"info": str, "ttl": int, "start_time": float, "person_name": str, "unknown": bool}}}
 
         # LLM模型配置
@@ -81,8 +78,17 @@ class RelationshipFetcher:
             model_set=model_config.model_task_config.utils_small, request_type="relation.fetch"
         )
 
-        name = get_chat_manager().get_stream_name(self.chat_id)
-        self.log_prefix = f"[{name}] 实时信息"
+        self.log_prefix = f"[{self.chat_id}] 实时信息"  # 初始化时使用chat_id，稍后异步更新
+        self._log_prefix_initialized = False
+
+    async def _initialize_log_prefix(self):
+        """异步初始化log_prefix"""
+        if not self._log_prefix_initialized:
+            from src.chat.message_receive.chat_stream import get_chat_manager
+
+            name = await get_chat_manager().get_stream_name(self.chat_id)
+            self.log_prefix = f"[{name}] 实时信息"
+            self._log_prefix_initialized = True
 
     def _cleanup_expired_cache(self):
         """清理过期的信息缓存"""
@@ -94,90 +100,147 @@ class RelationshipFetcher:
             if not self.info_fetched_cache[person_id]:
                 del self.info_fetched_cache[person_id]
 
-    async def build_relation_info(self, person_id, points_num=3):
+    async def build_relation_info(self, person_id, points_num=5):
+        """构建详细的人物关系信息，包含从数据库中查询的丰富关系描述"""
+        # 初始化log_prefix
+        await self._initialize_log_prefix()
+
         # 清理过期的信息缓存
         self._cleanup_expired_cache()
 
         person_info_manager = get_person_info_manager()
-        person_info = await person_info_manager.get_values(
-            person_id, ["person_name", "short_impression", "nickname", "platform", "points"]
-        )
-        person_name = person_info.get("person_name")
-        short_impression = person_info.get("short_impression")
-        nickname_str = person_info.get("nickname")
-        platform = person_info.get("platform")
+        person_name = await person_info_manager.get_value(person_id, "person_name")
+        short_impression = await person_info_manager.get_value(person_id, "short_impression")
+        full_impression = await person_info_manager.get_value(person_id, "impression")
+        attitude = await person_info_manager.get_value(person_id, "attitude") or 50
 
-        if person_name == nickname_str and not short_impression:
-            return ""
+        nickname_str = await person_info_manager.get_value(person_id, "nickname")
+        platform = await person_info_manager.get_value(person_id, "platform")
+        know_times = await person_info_manager.get_value(person_id, "know_times") or 0
+        know_since = await person_info_manager.get_value(person_id, "know_since")
+        last_know = await person_info_manager.get_value(person_id, "last_know")
 
-        current_points = person_info.get("points")
-        if isinstance(current_points, str):
-            current_points = orjson.loads(current_points)
+        # 如果用户没有基本信息，返回默认描述
+        if person_name == nickname_str and not short_impression and not full_impression:
+            return f"你完全不认识{person_name}，这是你们第一次交流。"
+
+        # 获取用户特征点
+        current_points = await person_info_manager.get_value(person_id, "points") or []
+        forgotten_points = await person_info_manager.get_value(person_id, "forgotten_points") or []
+
+        # 按时间排序并选择最有代表性的特征点
+        all_points = current_points + forgotten_points
+        if all_points:
+            # 按权重和时效性综合排序
+            all_points.sort(
+                key=lambda x: (float(x[1]) if len(x) > 1 else 0, float(x[2]) if len(x) > 2 else 0), reverse=True
+            )
+            selected_points = all_points[:points_num]
+            points_text = "\n".join([f"- {point[0]}（{point[2]}）" for point in selected_points if len(point) > 2])
         else:
-            current_points = current_points or []
+            points_text = ""
 
-        # 按时间排序forgotten_points
-        current_points.sort(key=lambda x: x[2])
-        # 按权重加权随机抽取最多3个不重复的points，point[1]的值在1-10之间，权重越高被抽到概率越大
-        if len(current_points) > points_num:
-            # point[1] 取值范围1-10，直接作为权重
-            weights = [max(1, min(10, int(point[1]))) for point in current_points]
-            # 使用加权采样不放回，保证不重复
-            indices = list(range(len(current_points)))
-            points = []
-            for _ in range(points_num):
-                if not indices:
-                    break
-                sub_weights = [weights[i] for i in indices]
-                chosen_idx = random.choices(indices, weights=sub_weights, k=1)[0]
-                points.append(current_points[chosen_idx])
-                indices.remove(chosen_idx)
+        # 构建详细的关系描述
+        relation_parts = []
+
+        # 1. 基本信息
+        if nickname_str and person_name != nickname_str:
+            relation_parts.append(f"用户{person_name}在{platform}平台的昵称是{nickname_str}")
+
+        # 2. 认识时间和频率
+        if know_since:
+            from datetime import datetime
+
+            know_time = datetime.fromtimestamp(know_since).strftime("%Y年%m月%d日")
+            relation_parts.append(f"你从{know_time}开始认识{person_name}")
+
+        if know_times > 0:
+            relation_parts.append(f"你们已经交流过{int(know_times)}次")
+
+        if last_know:
+            from datetime import datetime
+
+            last_time = datetime.fromtimestamp(last_know).strftime("%m月%d日")
+            relation_parts.append(f"最近一次交流是在{last_time}")
+
+        # 3. 态度和印象
+        attitude_desc = self._get_attitude_description(attitude)
+        relation_parts.append(f"你对{person_name}的态度是{attitude_desc}")
+
+        if short_impression:
+            relation_parts.append(f"你对ta的总体印象：{short_impression}")
+
+        if full_impression:
+            relation_parts.append(f"更详细的了解：{full_impression}")
+
+        # 4. 特征点和记忆
+        if points_text:
+            relation_parts.append(f"你记得关于{person_name}的一些事情：\n{points_text}")
+
+        # 5. 从UserRelationships表获取额外关系信息
+        try:
+            from src.common.database.sqlalchemy_database_api import db_query
+            from src.common.database.sqlalchemy_models import UserRelationships
+
+            # 查询用户关系数据
+            relationships = await db_query(
+                UserRelationships,
+                filters=[UserRelationships.user_id == str(person_info_manager.get_value(person_id, "user_id"))],
+                limit=1,
+            )
+
+            if relationships:
+                rel_data = relationships[0]
+                if rel_data.relationship_text:
+                    relation_parts.append(f"关系记录：{rel_data.relationship_text}")
+                if rel_data.relationship_score:
+                    score_desc = self._get_relationship_score_description(rel_data.relationship_score)
+                    relation_parts.append(f"关系亲密程度：{score_desc}")
+
+        except Exception as e:
+            logger.debug(f"查询UserRelationships表失败: {e}")
+
+        # 构建最终的关系信息字符串
+        if relation_parts:
+            relation_info = f"关于{person_name}，你知道以下信息：\n" + "\n".join(
+                [f"• {part}" for part in relation_parts]
+            )
         else:
-            points = current_points
-
-        # 构建points文本
-        points_text = "\n".join([f"{point[2]}：{point[0]}" for point in points])
-
-        nickname_str = ""
-        if person_name != nickname_str:
-            nickname_str = f"(ta在{platform}上的昵称是{nickname_str})"
-
-        relation_info = ""
-
-        if short_impression and relation_info:
-            if points_text:
-                relation_info = f"你对{person_name}的印象是{nickname_str}：{short_impression}。具体来说：{relation_info}。你还记得ta最近做的事：{points_text}"
-            else:
-                relation_info = (
-                    f"你对{person_name}的印象是{nickname_str}：{short_impression}。具体来说：{relation_info}"
-                )
-        elif short_impression:
-            if points_text:
-                relation_info = (
-                    f"你对{person_name}的印象是{nickname_str}：{short_impression}。你还记得ta最近做的事：{points_text}"
-                )
-            else:
-                relation_info = f"你对{person_name}的印象是{nickname_str}：{short_impression}"
-        elif relation_info:
-            if points_text:
-                relation_info = (
-                    f"你对{person_name}的了解{nickname_str}：{relation_info}。你还记得ta最近做的事：{points_text}"
-                )
-            else:
-                relation_info = f"你对{person_name}的了解{nickname_str}：{relation_info}"
-        elif points_text:
-            relation_info = f"你记得{person_name}{nickname_str}最近做的事：{points_text}"
-        else:
-            relation_info = ""
+            relation_info = f"你对{person_name}了解不多，这是比较初步的交流。"
 
         return relation_info
+
+    def _get_attitude_description(self, attitude: int) -> str:
+        """根据态度分数返回描述性文字"""
+        if attitude >= 80:
+            return "非常喜欢和欣赏"
+        elif attitude >= 60:
+            return "比较有好感"
+        elif attitude >= 40:
+            return "中立态度"
+        elif attitude >= 20:
+            return "有些反感"
+        else:
+            return "非常厌恶"
+
+    def _get_relationship_score_description(self, score: float) -> str:
+        """根据关系分数返回描述性文字"""
+        if score >= 0.8:
+            return "非常亲密的好友"
+        elif score >= 0.6:
+            return "关系不错的朋友"
+        elif score >= 0.4:
+            return "普通熟人"
+        elif score >= 0.2:
+            return "认识但不熟悉"
+        else:
+            return "陌生人"
 
     async def _build_fetch_query(self, person_id, target_message, chat_history):
         nickname_str = ",".join(global_config.bot.alias_names)
         name_block = f"你的名字是{global_config.bot.nickname},你的昵称有{nickname_str}，有人也会用这些昵称称呼你。"
         person_info_manager = get_person_info_manager()
-        person_info = await person_info_manager.get_values(person_id, ["person_name"])
-        person_name: str = person_info.get("person_name")  # type: ignore
+        person_name: str = await person_info_manager.get_value(person_id, "person_name")  # type: ignore
 
         info_cache_block = self._build_info_cache_block()
 
@@ -205,7 +268,7 @@ class RelationshipFetcher:
                     # 记录信息获取请求
                     self.info_fetching_cache.append(
                         {
-                            "person_id": get_person_info_manager().get_person_id_by_person_name(person_name),
+                            "person_id": await get_person_info_manager().get_person_id_by_person_name(person_name),
                             "person_name": person_name,
                             "info_type": info_type,
                             "start_time": time.time(),
@@ -259,8 +322,7 @@ class RelationshipFetcher:
         person_info_manager = get_person_info_manager()
 
         # 首先检查 info_list 缓存
-        person_info = await person_info_manager.get_values(person_id, ["info_list"])
-        info_list = person_info.get("info_list") or []
+        info_list = await person_info_manager.get_value(person_id, "info_list") or []
         cached_info = None
 
         # 查找对应的 info_type
@@ -287,9 +349,8 @@ class RelationshipFetcher:
 
         # 如果缓存中没有，尝试从用户档案中提取
         try:
-            person_info = await person_info_manager.get_values(person_id, ["impression", "points"])
-            person_impression = person_info.get("impression")
-            points = person_info.get("points")
+            person_impression = await person_info_manager.get_value(person_id, "impression")
+            points = await person_info_manager.get_value(person_id, "points")
 
             # 构建印象信息块
             if person_impression:
@@ -381,8 +442,7 @@ class RelationshipFetcher:
             person_info_manager = get_person_info_manager()
 
             # 获取现有的 info_list
-            person_info = await person_info_manager.get_values(person_id, ["info_list"])
-            info_list = person_info.get("info_list") or []
+            info_list = await person_info_manager.get_value(person_id, "info_list") or []
 
             # 查找是否已存在相同 info_type 的记录
             found_index = -1
@@ -421,7 +481,7 @@ class RelationshipFetcherManager:
     """
 
     def __init__(self):
-        self._fetchers: Dict[str, RelationshipFetcher] = {}
+        self._fetchers: dict[str, RelationshipFetcher] = {}
 
     def get_fetcher(self, chat_id: str) -> RelationshipFetcher:
         """获取或创建指定 chat_id 的 RelationshipFetcher
@@ -449,7 +509,7 @@ class RelationshipFetcherManager:
         """清空所有 RelationshipFetcher"""
         self._fetchers.clear()
 
-    def get_active_chat_ids(self) -> List[str]:
+    def get_active_chat_ids(self) -> list[str]:
         """获取所有活跃的 chat_id 列表"""
         return list(self._fetchers.keys())
 

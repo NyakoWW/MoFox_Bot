@@ -1,14 +1,15 @@
 import re
 import traceback
-from typing import Union
 
 import orjson
-from sqlalchemy import select, desc, update
+from sqlalchemy import desc, select, update
 
-from src.common.database.sqlalchemy_models import Messages, Images, get_db_session
+from src.common.database.sqlalchemy_database_api import get_db_session
+from src.common.database.sqlalchemy_models import Images, Messages
 from src.common.logger import get_logger
+
 from .chat_stream import ChatStream
-from .message import MessageSending, MessageRecv
+from .message import MessageRecv, MessageSending
 
 logger = get_logger("message_storage")
 
@@ -32,7 +33,7 @@ class MessageStorage:
             return []
 
     @staticmethod
-    async def store_message(message: Union[MessageSending, MessageRecv], chat_stream: ChatStream) -> None:
+    async def store_message(message: MessageSending | MessageRecv, chat_stream: ChatStream) -> None:
         """存储消息到数据库"""
         try:
             # 过滤敏感信息的正则模式
@@ -51,7 +52,12 @@ class MessageStorage:
                 if display_message:
                     filtered_display_message = re.sub(pattern, "", display_message, flags=re.DOTALL)
                 else:
-                    filtered_display_message = ""
+                    # 如果没有设置display_message，使用processed_plain_text作为显示消息
+                    filtered_display_message = (
+                        re.sub(pattern, "", message.processed_plain_text, flags=re.DOTALL)
+                        if message.processed_plain_text
+                        else ""
+                    )
                 interest_value = 0
                 is_mentioned = False
                 reply_to = message.reply_to
@@ -116,10 +122,17 @@ class MessageStorage:
                 user_nickname=user_info_dict.get("user_nickname"),
                 user_cardname=user_info_dict.get("user_cardname"),
                 processed_plain_text=filtered_processed_plain_text,
+                display_message=filtered_display_message,
+                memorized_times=message.memorized_times,
+                interest_value=interest_value,
                 priority_mode=priority_mode,
                 priority_info=priority_info_json,
                 is_emoji=is_emoji,
                 is_picid=is_picid,
+                is_notify=is_notify,
+                is_command=is_command,
+                key_words=key_words,
+                key_words_lite=key_words_lite,
             )
             async with get_db_session() as session:
                 session.add(new_message)
@@ -146,7 +159,8 @@ class MessageStorage:
                 qq_message_id = message.message_segment.data.get("id")
             elif message.message_segment.type == "reply":
                 qq_message_id = message.message_segment.data.get("id")
-                logger.debug(f"从reply消息段获取到消息ID: {qq_message_id}")
+                if qq_message_id:
+                    logger.debug(f"从reply消息段获取到消息ID: {qq_message_id}")
             elif message.message_segment.type == "adapter_response":
                 logger.debug("适配器响应消息，不需要更新ID")
                 return
@@ -162,6 +176,9 @@ class MessageStorage:
                 logger.debug(f"消息段数据: {message.message_segment.data}")
                 return
 
+            # 使用上下文管理器确保session正确管理
+            from src.common.database.sqlalchemy_models import get_db_session
+
             async with get_db_session() as session:
                 matched_message = (
                     await session.execute(
@@ -173,8 +190,6 @@ class MessageStorage:
                     await session.execute(
                         update(Messages).where(Messages.id == matched_message.id).values(message_id=qq_message_id)
                     )
-                    await session.commit()
-                    #  会在上下文管理器中自动调用
                     logger.debug(f"更新消息ID成功: {matched_message.message_id} -> {qq_message_id}")
                 else:
                     logger.warning(f"未找到匹配的消息记录: {mmc_message_id}")
@@ -186,20 +201,18 @@ class MessageStorage:
                 f"segment_type={getattr(message.message_segment, 'type', 'N/A')}"
             )
 
+    @staticmethod
     async def replace_image_descriptions(text: str) -> str:
         """将[图片：描述]替换为[picid:image_id]"""
         # 先检查文本中是否有图片标记
         pattern = r"\[图片：([^\]]+)\]"
-        matches = list(re.finditer(pattern, text))
+        matches = re.findall(pattern, text)
 
         if not matches:
             logger.debug("文本中没有图片标记，直接返回原文本")
             return text
 
-        new_text = ""
-        last_end = 0
-        for match in matches:
-            new_text += text[last_end : match.start()]
+        async def replace_match(match):
             description = match.group(1).strip()
             try:
                 from src.common.database.sqlalchemy_models import get_db_session
@@ -210,12 +223,138 @@ class MessageStorage:
                             select(Images).where(Images.description == description).order_by(desc(Images.timestamp))
                         )
                     ).scalar()
-                    if image_record:
-                        new_text += f"[picid:{image_record.image_id}]"
-                    else:
-                        new_text += match.group(0)
+                    return f"[picid:{image_record.image_id}]" if image_record else match.group(0)
             except Exception:
-                new_text += match.group(0)
-            last_end = match.end()
-        new_text += text[last_end:]
-        return new_text
+                return match.group(0)
+
+    @staticmethod
+    async def update_message_interest_value(
+        message_id: str,
+        interest_value: float,
+        should_reply: bool | None = None,
+    ) -> None:
+        """
+        更新数据库中消息的interest_value字段
+
+        Args:
+            message_id: 消息ID
+            interest_value: 兴趣度值
+        """
+        try:
+            async with get_db_session() as session:
+                # 更新消息的interest_value字段
+                values = {"interest_value": interest_value}
+                if should_reply is not None:
+                    values["should_reply"] = should_reply
+
+                stmt = update(Messages).where(Messages.message_id == message_id).values(**values)
+                result = await session.execute(stmt)
+                await session.commit()
+
+                if result.rowcount > 0:
+                    logger.debug(f"成功更新消息 {message_id} 的interest_value为 {interest_value}")
+                else:
+                    logger.warning(f"未找到消息 {message_id}，无法更新interest_value")
+
+        except Exception as e:
+            logger.error(f"更新消息 {message_id} 的interest_value失败: {e}")
+            raise
+
+    @staticmethod
+    async def bulk_update_interest_values(
+        interest_map: dict[str, float],
+        reply_map: dict[str, bool] | None = None,
+    ) -> None:
+        """批量更新消息的兴趣度与回复标记"""
+        if not interest_map:
+            return
+
+        try:
+            async with get_db_session() as session:
+                for message_id, interest_value in interest_map.items():
+                    values = {"interest_value": interest_value}
+                    if reply_map and message_id in reply_map:
+                        values["should_reply"] = reply_map[message_id]
+
+                    stmt = update(Messages).where(Messages.message_id == message_id).values(**values)
+                    await session.execute(stmt)
+
+                await session.commit()
+                logger.debug(f"批量更新兴趣度 {len(interest_map)} 条记录")
+        except Exception as e:
+            logger.error(f"批量更新消息兴趣度失败: {e}")
+            raise
+
+    @staticmethod
+    async def fix_zero_interest_values(chat_id: str, since_time: float) -> int:
+        """
+        修复指定聊天中interest_value为0或null的历史消息记录
+
+        Args:
+            chat_id: 聊天ID
+            since_time: 从指定时间开始修复（时间戳）
+
+        Returns:
+            修复的记录数量
+        """
+        try:
+            async with get_db_session() as session:
+                from sqlalchemy import select, update
+
+                from src.common.database.sqlalchemy_models import Messages
+
+                # 查找需要修复的记录：interest_value为0、null或很小的值
+                query = (
+                    select(Messages)
+                    .where(
+                        (Messages.chat_id == chat_id)
+                        & (Messages.time >= since_time)
+                        & (
+                            (Messages.interest_value == 0)
+                            | (Messages.interest_value.is_(None))
+                            | (Messages.interest_value < 0.1)
+                        )
+                    )
+                    .limit(50)
+                )  # 限制每次修复的数量，避免性能问题
+
+                result = await session.execute(query)
+                messages_to_fix = result.scalars().all()
+                fixed_count = 0
+
+                for msg in messages_to_fix:
+                    # 为这些消息设置一个合理的默认兴趣度
+                    # 可以基于消息长度、内容或其他因素计算
+                    default_interest = 0.3  # 默认中等兴趣度
+
+                    # 如果消息内容较长，可能是重要消息，兴趣度稍高
+                    if hasattr(msg, "processed_plain_text") and msg.processed_plain_text:
+                        text_length = len(msg.processed_plain_text)
+                        if text_length > 50:  # 长消息
+                            default_interest = 0.4
+                        elif text_length > 20:  # 中等长度消息
+                            default_interest = 0.35
+
+                    # 如果是被@的消息，兴趣度更高
+                    if getattr(msg, "is_mentioned", False):
+                        default_interest = min(default_interest + 0.2, 0.8)
+
+                    # 执行更新
+                    update_stmt = (
+                        update(Messages)
+                        .where(Messages.message_id == msg.message_id)
+                        .values(interest_value=default_interest)
+                    )
+
+                    result = await session.execute(update_stmt)
+                    if result.rowcount > 0:
+                        fixed_count += 1
+                        logger.debug(f"修复消息 {msg.message_id} 的interest_value为 {default_interest}")
+
+                await session.commit()
+                logger.info(f"共修复了 {fixed_count} 条历史消息的interest_value值")
+                return fixed_count
+
+        except Exception as e:
+            logger.error(f"修复历史消息interest_value失败: {e}")
+            return 0

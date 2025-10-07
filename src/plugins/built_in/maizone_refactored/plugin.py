@@ -1,28 +1,26 @@
-# -*- coding: utf-8 -*-
 """
 MaiZone（麦麦空间）- 重构版
 """
 
 import asyncio
 from pathlib import Path
-from typing import List, Tuple, Type
 
 from src.common.logger import get_logger
 from src.plugin_system import BasePlugin, ComponentInfo, register_plugin
+from src.plugin_system.base.component_types import PermissionNodeField
 from src.plugin_system.base.config_types import ConfigField
-from src.plugin_system.apis.permission_api import permission_api
 
 from .actions.read_feed_action import ReadFeedAction
 from .actions.send_feed_action import SendFeedAction
 from .commands.send_feed_command import SendFeedCommand
 from .services.content_service import ContentService
-from .services.image_service import ImageService
-from .services.qzone_service import QZoneService
-from .services.scheduler_service import SchedulerService
-from .services.monitor_service import MonitorService
 from .services.cookie_service import CookieService
-from .services.reply_tracker_service import ReplyTrackerService
+from .services.image_service import ImageService
 from .services.manager import register_service
+from .services.monitor_service import MonitorService
+from .services.qzone_service import QZoneService
+from .services.reply_tracker_service import ReplyTrackerService
+from .services.scheduler_service import SchedulerService
 
 logger = get_logger("MaiZone.Plugin")
 
@@ -35,8 +33,8 @@ class MaiZoneRefactoredPlugin(BasePlugin):
     plugin_description: str = "重构版的MaiZone插件"
     config_file_name: str = "config.toml"
     enable_plugin: bool = True
-    dependencies: List[str] = []
-    python_dependencies: List[str] = []
+    dependencies: list[str] = []
+    python_dependencies: list[str] = []
 
     config_schema: dict = {
         "plugin": {"enable": ConfigField(type=bool, default=True, description="是否启用插件")},
@@ -85,28 +83,28 @@ class MaiZoneRefactoredPlugin(BasePlugin):
         },
     }
 
+    permission_nodes: list[PermissionNodeField] = [
+        PermissionNodeField(node_name="send_feed", description="是否可以使用机器人发送QQ空间说说"),
+        PermissionNodeField(node_name="read_feed", description="是否可以使用机器人读取QQ空间说说"),
+    ]
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
     async def on_plugin_loaded(self):
-        await permission_api.register_permission_node(
-            "plugin.maizone.send_feed", "是否可以使用机器人发送QQ空间说说", "maiZone", False
-        )
-        await permission_api.register_permission_node(
-            "plugin.maizone.read_feed", "是否可以使用机器人读取QQ空间说说", "maiZone", True
-        )
-        # 创建所有服务实例
+        """插件加载完成后的回调，初始化服务并启动后台任务"""
+        # --- 创建并注册所有服务实例 ---
         content_service = ContentService(self.get_config)
         image_service = ImageService(self.get_config)
         cookie_service = CookieService(self.get_config)
         reply_tracker_service = ReplyTrackerService()
 
-        # 使用已创建的 reply_tracker_service 实例
         qzone_service = QZoneService(
             self.get_config,
             content_service,
             image_service,
             cookie_service,
-            reply_tracker_service,  # 传入已创建的实例
+            reply_tracker_service,
         )
         scheduler_service = SchedulerService(self.get_config, qzone_service)
         monitor_service = MonitorService(self.get_config, qzone_service)
@@ -115,20 +113,14 @@ class MaiZoneRefactoredPlugin(BasePlugin):
         register_service("reply_tracker", reply_tracker_service)
         register_service("get_config", self.get_config)
 
-        # 保存服务引用以便后续启动
-        self.scheduler_service = scheduler_service
-        self.monitor_service = monitor_service
+        logger.info("MaiZone重构版插件服务已注册。")
 
-        logger.info("MaiZone重构版插件已加载，服务已注册。")
+        # --- 启动后台任务 ---
+        asyncio.create_task(scheduler_service.start())
+        asyncio.create_task(monitor_service.start())
+        logger.info("MaiZone后台监控和定时任务已启动。")
 
-    async def on_plugin_loaded(self):
-        """插件加载完成后的回调，启动异步服务"""
-        if hasattr(self, "scheduler_service") and hasattr(self, "monitor_service"):
-            asyncio.create_task(self.scheduler_service.start())
-            asyncio.create_task(self.monitor_service.start())
-            logger.info("MaiZone后台任务已启动。")
-
-    def get_plugin_components(self) -> List[Tuple[ComponentInfo, Type]]:
+    def get_plugin_components(self) -> list[tuple[ComponentInfo, type]]:
         return [
             (SendFeedAction.get_action_info(), SendFeedAction),
             (ReadFeedAction.get_action_info(), ReadFeedAction),

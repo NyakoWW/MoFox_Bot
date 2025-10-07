@@ -2,15 +2,15 @@
 错别字生成器 - 基于拼音和字频的中文错别字生成工具
 """
 
-import orjson
 import math
 import os
 import random
 import time
-import jieba
-
 from collections import defaultdict
 from pathlib import Path
+
+import orjson
+import rjieba
 from pypinyin import Style, pinyin
 
 from src.common.logger import get_logger
@@ -51,15 +51,17 @@ class ChineseTypoGenerator:
 
         # 如果缓存文件存在，直接加载
         if cache_file.exists():
-            with open(cache_file, "r", encoding="utf-8") as f:
+            with open(cache_file, encoding="utf-8") as f:
                 return orjson.loads(f.read())
 
         # 使用内置的词频文件
         char_freq = defaultdict(int)
-        dict_path = os.path.join(os.path.dirname(jieba.__file__), "dict.txt")
+        # 从当前文件向上返回三级目录到项目根目录，然后拼接路径
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        dict_path = os.path.join(base_dir, "depends-data", "dict.txt")
 
-        # 读取jieba的词典文件
-        with open(dict_path, "r", encoding="utf-8") as f:
+        # 读取rjieba的词典文件
+        with open(dict_path, encoding="utf-8") as f:
             for line in f:
                 word, freq = line.strip().split()[:2]
                 # 对词中的每个字进行频率累加
@@ -224,9 +226,9 @@ class ChineseTypoGenerator:
     @staticmethod
     def _segment_sentence(sentence):
         """
-        使用jieba分词，返回词语列表
+        使用rjieba分词，返回词语列表
         """
-        return list(jieba.cut(sentence))
+        return list(rjieba.cut(sentence))
 
     def _get_word_homophones(self, word):
         """
@@ -251,10 +253,10 @@ class ChineseTypoGenerator:
 
         all_combinations = itertools.product(*candidates)
 
-        # 获取jieba词典和词频信息
-        dict_path = os.path.join(os.path.dirname(jieba.__file__), "dict.txt")
+        # 获取rjieba词典和词频信息
+        dict_path = os.path.join(os.path.dirname(rjieba.__file__), "dict.txt")
         valid_words = {}  # 改用字典存储词语及其频率
-        with open(dict_path, "r", encoding="utf-8") as f:
+        with open(dict_path, encoding="utf-8") as f:
             for line in f:
                 parts = line.strip().split()
                 if len(parts) >= 2:

@@ -4,19 +4,19 @@
 提供方便的权限检查装饰器，用于插件命令和其他需要权限验证的地方。
 """
 
+from collections.abc import Callable
 from functools import wraps
-from typing import Callable, Optional
 from inspect import iscoroutinefunction
 
+from src.chat.message_receive.chat_stream import ChatStream
+from src.plugin_system.apis.logging_api import get_logger
 from src.plugin_system.apis.permission_api import permission_api
 from src.plugin_system.apis.send_api import text_to_stream
-from src.plugin_system.apis.logging_api import get_logger
-from src.chat.message_receive.chat_stream import ChatStream
 
 logger = get_logger(__name__)
 
 
-def require_permission(permission_node: str, deny_message: Optional[str] = None):
+def require_permission(permission_node: str, deny_message: str | None = None):
     """
     权限检查装饰器
 
@@ -79,16 +79,18 @@ def require_permission(permission_node: str, deny_message: Optional[str] = None)
 
         if not iscoroutinefunction(func):
             logger.warning(f"函数 {func.__name__} 使用 require_permission 但非异步，已强制阻止执行")
+
             async def blocked(*_a, **_k):
                 logger.error("同步函数不再支持权限装饰器，请改为 async def")
                 return None
+
             return blocked
         return async_wrapper
 
     return decorator
 
 
-def require_master(deny_message: Optional[str] = None):
+def require_master(deny_message: str | None = None):
     """
     Master权限检查装饰器
 
@@ -146,9 +148,11 @@ def require_master(deny_message: Optional[str] = None):
 
         if not iscoroutinefunction(func):
             logger.warning(f"函数 {func.__name__} 使用 require_master 但非异步，已强制阻止执行")
+
             async def blocked(*_a, **_k):
                 logger.error("同步函数不再支持 require_master，请改为 async def")
                 return None
+
             return blocked
         return async_wrapper
 
@@ -164,7 +168,9 @@ class PermissionChecker:
 
     @staticmethod
     def check_permission(chat_stream: ChatStream, permission_node: str) -> bool:
-        raise RuntimeError("PermissionChecker.check_permission 已移除同步支持，请直接 await permission_api.check_permission")
+        raise RuntimeError(
+            "PermissionChecker.check_permission 已移除同步支持，请直接 await permission_api.check_permission"
+        )
 
     @staticmethod
     def is_master(chat_stream: ChatStream) -> bool:
@@ -180,9 +186,7 @@ class PermissionChecker:
         return permission_api.is_master(chat_stream.platform, chat_stream.user_info.user_id)
 
     @staticmethod
-    async def ensure_permission(
-        chat_stream: ChatStream, permission_node: str, deny_message: Optional[str] = None
-    ) -> bool:
+    async def ensure_permission(chat_stream: ChatStream, permission_node: str, deny_message: str | None = None) -> bool:
         """
         确保用户拥有指定权限，如果没有权限会发送消息并返回False
 
@@ -203,7 +207,7 @@ class PermissionChecker:
         return has_permission
 
     @staticmethod
-    async def ensure_master(chat_stream: ChatStream, deny_message: Optional[str] = None) -> bool:
+    async def ensure_master(chat_stream: ChatStream, deny_message: str | None = None) -> bool:
         """
         确保用户为Master用户，如果不是会发送消息并返回False
 

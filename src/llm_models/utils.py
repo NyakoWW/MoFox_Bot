@@ -1,14 +1,15 @@
 import base64
 import io
-
-from PIL import Image
 from datetime import datetime
 
-from src.common.logger import get_logger
+from PIL import Image
+
 from src.common.database.sqlalchemy_models import LLMUsage, get_db_session
+from src.common.logger import get_logger
 from src.config.api_ada_configs import ModelInfo
-from .payload_content.message import Message, MessageBuilder
+
 from .model_client.base_client import UsageRecord
+from .payload_content.message import Message, MessageBuilder
 
 logger = get_logger("消息压缩工具")
 
@@ -38,7 +39,7 @@ def compress_messages(messages: list[Message], img_target_size: int = 1 * 1024 *
 
             return image_data
         except Exception as e:
-            logger.error(f"图片转换格式失败: {str(e)}")
+            logger.error(f"图片转换格式失败: {e!s}")
             return image_data
 
     def rescale_image(image_data: bytes, scale: float) -> tuple[bytes, tuple[int, int] | None, tuple[int, int] | None]:
@@ -87,7 +88,7 @@ def compress_messages(messages: list[Message], img_target_size: int = 1 * 1024 *
             return output_buffer.getvalue(), original_size, new_size
 
         except Exception as e:
-            logger.error(f"图片缩放失败: {str(e)}")
+            logger.error(f"图片缩放失败: {e!s}")
             import traceback
 
             logger.error(traceback.format_exc())
@@ -145,9 +146,9 @@ class LLMUsageRecorder:
     LLM使用情况记录器（SQLAlchemy版本）
     """
 
-    @staticmethod
     async def record_usage_to_database(
-            model_info: ModelInfo,
+        self,
+        model_info: ModelInfo,
         model_usage: UsageRecord,
         user_id: str,
         request_type: str,
@@ -156,7 +157,7 @@ class LLMUsageRecorder:
     ):
         input_cost = (model_usage.prompt_tokens / 1000000) * model_info.price_in
         output_cost = (model_usage.completion_tokens / 1000000) * model_info.price_out
-        total_cost = round(input_cost + output_cost, 6)
+        round(input_cost + output_cost, 6)
 
         session = None
         try:
@@ -172,7 +173,7 @@ class LLMUsageRecorder:
                     prompt_tokens=model_usage.prompt_tokens or 0,
                     completion_tokens=model_usage.completion_tokens or 0,
                     total_tokens=model_usage.total_tokens or 0,
-                    cost=total_cost or 0.0,
+                    cost=1.0,
                     time_cost=round(time_cost or 0.0, 3),
                     status="success",
                     timestamp=datetime.now(),  # SQLAlchemy 会处理 DateTime 字段
@@ -188,7 +189,7 @@ class LLMUsageRecorder:
                 f"总计: {model_usage.total_tokens}"
             )
         except Exception as e:
-            logger.error(f"记录token使用情况失败: {str(e)}")
+            logger.error(f"记录token使用情况失败: {e!s}")
 
 
 llm_usage_recorder = LLMUsageRecorder()

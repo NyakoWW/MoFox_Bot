@@ -7,9 +7,10 @@
     value = await person_api.get_person_value(person_id, "nickname")
 """
 
-from typing import Any, Optional
+from typing import Any
+
 from src.common.logger import get_logger
-from src.person_info.person_info import get_person_info_manager, PersonInfoManager
+from src.person_info.person_info import PersonInfoManager, get_person_info_manager
 
 logger = get_logger("person_api")
 
@@ -63,7 +64,7 @@ async def get_person_value(person_id: str, field_name: str, default: Any = None)
         return default
 
 
-async def get_person_values(person_id: str, field_names: list, default_dict: Optional[dict] = None) -> dict:
+async def get_person_values(person_id: str, field_names: list, default_dict: dict | None = None) -> dict:
     """批量获取用户信息字段值
 
     Args:
@@ -134,7 +135,7 @@ async def is_person_known(platform: str, user_id: int) -> bool:
         return False
 
 
-def get_person_id_by_name(person_name: str) -> str:
+async def get_person_id_by_name(person_name: str) -> str:
     """根据用户名获取person_id
 
     Args:
@@ -148,7 +149,7 @@ def get_person_id_by_name(person_name: str) -> str:
     """
     try:
         person_info_manager = get_person_info_manager()
-        return person_info_manager.get_person_id_by_person_name(person_name)
+        return await person_info_manager.get_person_id_by_person_name(person_name)
     except Exception as e:
         logger.error(f"[PersonAPI] 根据用户名获取person_id失败: person_name={person_name}, error={e}")
         return ""

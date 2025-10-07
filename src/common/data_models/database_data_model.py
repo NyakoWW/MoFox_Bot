@@ -1,6 +1,6 @@
 import json
-from typing import Optional, Any, Dict
 from dataclasses import dataclass, field
+from typing import Any
 
 from . import BaseDataModel
 
@@ -10,7 +10,7 @@ class DatabaseUserInfo(BaseDataModel):
     platform: str = field(default_factory=str)
     user_id: str = field(default_factory=str)
     user_nickname: str = field(default_factory=str)
-    user_cardname: Optional[str] = None
+    user_cardname: str | None = None
 
     # def __post_init__(self):
     #     assert isinstance(self.platform, str), "platform must be a string"
@@ -25,7 +25,7 @@ class DatabaseUserInfo(BaseDataModel):
 class DatabaseGroupInfo(BaseDataModel):
     group_id: str = field(default_factory=str)
     group_name: str = field(default_factory=str)
-    group_platform: Optional[str] = None
+    group_platform: str | None = None
 
     # def __post_init__(self):
     #     assert isinstance(self.group_id, str), "group_id must be a string"
@@ -42,7 +42,7 @@ class DatabaseChatInfo(BaseDataModel):
     create_time: float = field(default_factory=float)
     last_active_time: float = field(default_factory=float)
     user_info: DatabaseUserInfo = field(default_factory=DatabaseUserInfo)
-    group_info: Optional[DatabaseGroupInfo] = None
+    group_info: DatabaseGroupInfo | None = None
 
     # def __post_init__(self):
     #     assert isinstance(self.stream_id, str), "stream_id must be a string"
@@ -62,38 +62,43 @@ class DatabaseMessages(BaseDataModel):
         message_id: str = "",
         time: float = 0.0,
         chat_id: str = "",
-        reply_to: Optional[str] = None,
-        interest_value: Optional[float] = None,
-        key_words: Optional[str] = None,
-        key_words_lite: Optional[str] = None,
-        is_mentioned: Optional[bool] = None,
-        is_at: Optional[bool] = None,
-        reply_probability_boost: Optional[float] = None,
-        processed_plain_text: Optional[str] = None,
-        display_message: Optional[str] = None,
-        priority_mode: Optional[str] = None,
-        priority_info: Optional[str] = None,
-        additional_config: Optional[str] = None,
+        reply_to: str | None = None,
+        interest_value: float | None = None,
+        key_words: str | None = None,
+        key_words_lite: str | None = None,
+        is_mentioned: bool | None = None,
+        is_at: bool | None = None,
+        reply_probability_boost: float | None = None,
+        processed_plain_text: str | None = None,
+        display_message: str | None = None,
+        priority_mode: str | None = None,
+        priority_info: str | None = None,
+        additional_config: str | None = None,
         is_emoji: bool = False,
         is_picid: bool = False,
         is_command: bool = False,
         is_notify: bool = False,
-        selected_expressions: Optional[str] = None,
+        selected_expressions: str | None = None,
+        is_read: bool = False,
         user_id: str = "",
         user_nickname: str = "",
-        user_cardname: Optional[str] = None,
+        user_cardname: str | None = None,
         user_platform: str = "",
-        chat_info_group_id: Optional[str] = None,
-        chat_info_group_name: Optional[str] = None,
-        chat_info_group_platform: Optional[str] = None,
+        chat_info_group_id: str | None = None,
+        chat_info_group_name: str | None = None,
+        chat_info_group_platform: str | None = None,
         chat_info_user_id: str = "",
         chat_info_user_nickname: str = "",
-        chat_info_user_cardname: Optional[str] = None,
+        chat_info_user_cardname: str | None = None,
         chat_info_user_platform: str = "",
         chat_info_stream_id: str = "",
         chat_info_platform: str = "",
         chat_info_create_time: float = 0.0,
         chat_info_last_active_time: float = 0.0,
+        # 新增字段
+        actions: list | None = None,
+        should_reply: bool = False,
+        should_act: bool = False,
         **kwargs: Any,
     ):
         self.message_id = message_id
@@ -101,6 +106,11 @@ class DatabaseMessages(BaseDataModel):
         self.chat_id = chat_id
         self.reply_to = reply_to
         self.interest_value = interest_value
+
+        # 新增字段
+        self.actions = actions
+        self.should_reply = should_reply
+        self.should_act = should_act
 
         self.key_words = key_words
         self.key_words_lite = key_words_lite
@@ -122,8 +132,9 @@ class DatabaseMessages(BaseDataModel):
         self.is_notify = is_notify
 
         self.selected_expressions = selected_expressions
+        self.is_read = is_read
 
-        self.group_info: Optional[DatabaseGroupInfo] = None
+        self.group_info: DatabaseGroupInfo | None = None
         self.user_info = DatabaseUserInfo(
             user_id=user_id,
             user_nickname=user_nickname,
@@ -163,7 +174,7 @@ class DatabaseMessages(BaseDataModel):
     #     assert isinstance(self.interest_value, float) or self.interest_value is None, (
     #         "interest_value must be a float or None"
     #     )
-    def flatten(self) -> Dict[str, Any]:
+    def flatten(self) -> dict[str, Any]:
         """
         将消息数据模型转换为字典格式，便于存储或传输
         """
@@ -188,6 +199,10 @@ class DatabaseMessages(BaseDataModel):
             "is_command": self.is_command,
             "is_notify": self.is_notify,
             "selected_expressions": self.selected_expressions,
+            "is_read": self.is_read,
+            # 新增字段
+            "actions": self.actions,
+            "should_reply": self.should_reply,
             "user_id": self.user_info.user_id,
             "user_nickname": self.user_info.user_nickname,
             "user_cardname": self.user_info.user_cardname,
@@ -204,6 +219,63 @@ class DatabaseMessages(BaseDataModel):
             "chat_info_user_nickname": self.chat_info.user_info.user_nickname,
             "chat_info_user_cardname": self.chat_info.user_info.user_cardname,
         }
+
+    def update_message_info(
+        self, interest_value: float | None = None, actions: list | None = None, should_reply: bool | None = None
+    ):
+        """
+        更新消息信息
+
+        Args:
+            interest_value: 兴趣度值
+            actions: 执行的动作列表
+            should_reply: 是否应该回复
+        """
+        if interest_value is not None:
+            self.interest_value = interest_value
+        if actions is not None:
+            self.actions = actions
+        if should_reply is not None:
+            self.should_reply = should_reply
+
+    def add_action(self, action: str):
+        """
+        添加执行的动作到消息中
+
+        Args:
+            action: 要添加的动作名称
+        """
+        if self.actions is None:
+            self.actions = []
+        if action not in self.actions:  # 避免重复添加
+            self.actions.append(action)
+
+    def get_actions(self) -> list:
+        """
+        获取执行的动作列表
+
+        Returns:
+            动作列表，如果没有动作则返回空列表
+        """
+        return self.actions or []
+
+    def get_message_summary(self) -> dict[str, Any]:
+        """
+        获取消息摘要信息
+
+        Returns:
+            包含关键字段的消息摘要
+        """
+        return {
+            "message_id": self.message_id,
+            "time": self.time,
+            "interest_value": self.interest_value,
+            "actions": self.actions,
+            "should_reply": self.should_reply,
+            "user_nickname": self.user_info.user_nickname,
+            "display_message": self.display_message,
+        }
+
 
 @dataclass(init=False)
 class DatabaseActionRecords(BaseDataModel):

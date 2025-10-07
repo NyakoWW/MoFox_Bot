@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 LLM反注入系统主模块
 
@@ -12,15 +11,16 @@ LLM反注入系统主模块
 """
 
 import time
-from typing import Optional, Tuple, Dict, Any
+from typing import Any
 
 from src.common.logger import get_logger
 from src.config.config import global_config
-from .types import ProcessResult
-from .core import PromptInjectionDetector, MessageShield
-from .processors.message_processor import MessageProcessor
-from .management import AntiInjectionStatistics, UserBanManager
+
+from .core import MessageShield, PromptInjectionDetector
 from .decision import CounterAttackGenerator, ProcessingDecisionMaker
+from .management import AntiInjectionStatistics, UserBanManager
+from .processors.message_processor import MessageProcessor
+from .types import ProcessResult
 
 logger = get_logger("anti_injector")
 
@@ -43,7 +43,7 @@ class AntiPromptInjector:
 
     async def process_message(
         self, message_data: dict, chat_stream=None
-    ) -> Tuple[ProcessResult, Optional[str], Optional[str]]:
+    ) -> tuple[ProcessResult, str | None, str | None]:
         """处理字典格式的消息并返回结果
 
         Args:
@@ -102,7 +102,7 @@ class AntiPromptInjector:
             await self.statistics.update_stats(error_count=1)
 
             # 异常情况下直接阻止消息
-            return ProcessResult.BLOCKED_INJECTION, None, f"反注入系统异常，消息已阻止: {str(e)}"
+            return ProcessResult.BLOCKED_INJECTION, None, f"反注入系统异常，消息已阻止: {e!s}"
 
         finally:
             # 更新处理时间统计
@@ -111,7 +111,7 @@ class AntiPromptInjector:
 
     async def _process_message_internal(
         self, text_to_detect: str, user_id: str, platform: str, processed_plain_text: str, start_time: float
-    ) -> Tuple[ProcessResult, Optional[str], Optional[str]]:
+    ) -> tuple[ProcessResult, str | None, str | None]:
         """内部消息处理逻辑（共用的检测核心）"""
 
         # 如果是纯引用消息，直接允许通过
@@ -218,7 +218,7 @@ class AntiPromptInjector:
         return ProcessResult.ALLOWED, None, "消息检查通过"
 
     async def handle_message_storage(
-        self, result: ProcessResult, modified_content: Optional[str], reason: str, message_data: dict
+        self, result: ProcessResult, modified_content: str | None, reason: str, message_data: dict
     ) -> None:
         """处理违禁消息的数据库存储，根据处理模式决定如何处理"""
         if result == ProcessResult.BLOCKED_INJECTION or result == ProcessResult.COUNTER_ATTACK:
@@ -253,18 +253,20 @@ class AntiPromptInjector:
     async def _delete_message_from_storage(message_data: dict) -> None:
         """从数据库中删除违禁消息记录"""
         try:
-            from src.common.database.sqlalchemy_models import Messages, get_db_session
             from sqlalchemy import delete
+
+            from src.common.database.sqlalchemy_models import Messages, get_db_session
 
             message_id = message_data.get("message_id")
             if not message_id:
                 logger.warning("无法删除消息：缺少message_id")
                 return
 
-            with get_db_session() as session:
+            async with get_db_session() as session:
                 # 删除对应的消息记录
                 stmt = delete(Messages).where(Messages.message_id == message_id)
-                result = session.execute(stmt)
+                # 注意: 异步会话需要 await 执行，否则 result 是 coroutine，无法获取 rowcount
+                result = await session.execute(stmt)
                 await session.commit()
 
                 if result.rowcount > 0:
@@ -279,22 +281,23 @@ class AntiPromptInjector:
     async def _update_message_in_storage(message_data: dict, new_content: str) -> None:
         """更新数据库中的消息内容为加盾版本"""
         try:
-            from src.common.database.sqlalchemy_models import Messages, get_db_session
             from sqlalchemy import update
+
+            from src.common.database.sqlalchemy_models import Messages, get_db_session
 
             message_id = message_data.get("message_id")
             if not message_id:
                 logger.warning("无法更新消息：缺少message_id")
                 return
 
-            with get_db_session() as session:
+            async with get_db_session() as session:
                 # 更新消息内容
                 stmt = (
                     update(Messages)
                     .where(Messages.message_id == message_id)
                     .values(processed_plain_text=new_content, display_message=new_content)
                 )
-                result = session.execute(stmt)
+                result = await session.execute(stmt)
                 await session.commit()
 
                 if result.rowcount > 0:
@@ -305,7 +308,7 @@ class AntiPromptInjector:
         except Exception as e:
             logger.error(f"更新消息内容失败: {e}")
 
-    async def get_stats(self) -> Dict[str, Any]:
+    async def get_stats(self) -> dict[str, Any]:
         """获取统计信息"""
         return await self.statistics.get_stats()
 
@@ -315,7 +318,7 @@ class AntiPromptInjector:
 
 
 # 全局反注入器实例
-_global_injector: Optional[AntiPromptInjector] = None
+_global_injector: AntiPromptInjector | None = None
 
 
 def get_anti_injector() -> AntiPromptInjector:

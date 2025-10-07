@@ -10,10 +10,9 @@
 
 import random
 
-from typing import Optional, Tuple, List
-from src.common.logger import get_logger
 from src.chat.emoji_system.emoji_manager import get_emoji_manager
 from src.chat.utils.utils_image import image_path_to_base64
+from src.common.logger import get_logger
 
 logger = get_logger("emoji_api")
 
@@ -23,7 +22,7 @@ logger = get_logger("emoji_api")
 # =============================================================================
 
 
-async def get_by_description(description: str) -> Optional[Tuple[str, str, str]]:
+async def get_by_description(description: str) -> tuple[str, str, str] | None:
     """根据描述选择表情包
 
     Args:
@@ -65,7 +64,7 @@ async def get_by_description(description: str) -> Optional[Tuple[str, str, str]]
         return None
 
 
-async def get_random(count: Optional[int] = 1) -> List[Tuple[str, str, str]]:
+async def get_random(count: int | None = 1) -> list[tuple[str, str, str]]:
     """随机获取指定数量的表情包
 
     Args:
@@ -122,7 +121,7 @@ async def get_random(count: Optional[int] = 1) -> List[Tuple[str, str, str]]:
             matched_emotion = random.choice(selected_emoji.emotion) if selected_emoji.emotion else "随机表情"
 
             # 记录使用次数
-            emoji_manager.record_usage(selected_emoji.hash)
+            await emoji_manager.record_usage(selected_emoji.hash)
             results.append((emoji_base64, selected_emoji.description, matched_emotion))
 
         if not results and count > 0:
@@ -137,7 +136,7 @@ async def get_random(count: Optional[int] = 1) -> List[Tuple[str, str, str]]:
         return []
 
 
-async def get_by_emotion(emotion: str) -> Optional[Tuple[str, str, str]]:
+async def get_by_emotion(emotion: str) -> tuple[str, str, str] | None:
     """根据情感标签获取表情包
 
     Args:
@@ -180,7 +179,7 @@ async def get_by_emotion(emotion: str) -> Optional[Tuple[str, str, str]]:
             return None
 
         # 记录使用次数
-        emoji_manager.record_usage(selected_emoji.hash)
+        await emoji_manager.record_usage(selected_emoji.hash)
 
         logger.info(f"[EmojiAPI] 成功获取情感表情包: {selected_emoji.description}")
         return emoji_base64, selected_emoji.description, emotion
@@ -227,7 +226,7 @@ def get_info():
         return {"current_count": 0, "max_count": 0, "available_emojis": 0}
 
 
-def get_emotions() -> List[str]:
+def get_emotions() -> list[str]:
     """获取所有可用的情感标签
 
     Returns:
@@ -241,13 +240,13 @@ def get_emotions() -> List[str]:
             if not emoji_obj.is_deleted and emoji_obj.emotion:
                 emotions.update(emoji_obj.emotion)
 
-        return sorted(list(emotions))
+        return sorted(emotions)
     except Exception as e:
         logger.error(f"[EmojiAPI] 获取情感标签失败: {e}")
         return []
 
 
-def get_descriptions() -> List[str]:
+def get_descriptions() -> list[str]:
     """获取所有表情包描述
 
     Returns:

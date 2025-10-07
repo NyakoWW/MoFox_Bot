@@ -1,15 +1,18 @@
 """
 Bing search engine implementation
 """
+
 import asyncio
 import functools
 import random
 import traceback
-from typing import Dict, List, Any
+from typing import Any
+
 import requests
 from bs4 import BeautifulSoup
 
 from src.common.logger import get_logger
+
 from .base import BaseSearchEngine
 
 logger = get_logger("bing_engine")
@@ -58,21 +61,21 @@ class BingSearchEngine(BaseSearchEngine):
     """
     Bing搜索引擎实现
     """
-    
+
     def __init__(self):
         self.session = requests.Session()
         self.session.headers = HEADERS
-    
+
     def is_available(self) -> bool:
         """检查Bing搜索引擎是否可用"""
         return True  # Bing是免费搜索引擎，总是可用
-    
-    async def search(self, args: Dict[str, Any]) -> List[Dict[str, Any]]:
+
+    async def search(self, args: dict[str, Any]) -> list[dict[str, Any]]:
         """执行Bing搜索"""
         query = args["query"]
         num_results = args.get("num_results", 3)
         time_range = args.get("time_range", "any")
-        
+
         try:
             loop = asyncio.get_running_loop()
             func = functools.partial(self._search_sync, query, num_results, time_range)
@@ -81,17 +84,17 @@ class BingSearchEngine(BaseSearchEngine):
         except Exception as e:
             logger.error(f"Bing 搜索失败: {e}")
             return []
-    
-    def _search_sync(self, keyword: str, num_results: int, time_range: str) -> List[Dict[str, Any]]:
+
+    def _search_sync(self, keyword: str, num_results: int, time_range: str) -> list[dict[str, Any]]:
         """同步执行Bing搜索"""
         if not keyword:
             return []
 
         list_result = []
-        
+
         # 构建搜索URL
         search_url = bing_search_url + keyword
-        
+
         # 如果指定了时间范围，添加时间过滤参数
         if time_range == "week":
             search_url += "&qft=+filterui:date-range-7"
@@ -112,7 +115,7 @@ class BingSearchEngine(BaseSearchEngine):
         return list_result[:num_results] if len(list_result) > num_results else list_result
 
     @staticmethod
-    def _parse_html(url: str) -> List[Dict[str, Any]]:
+    def _parse_html(url: str) -> list[dict[str, Any]]:
         """解析处理结果"""
         try:
             logger.debug(f"访问Bing搜索URL: {url}")
@@ -140,11 +143,11 @@ class BingSearchEngine(BaseSearchEngine):
             try:
                 res = session.get(url=url, timeout=(3.05, 6), verify=True, allow_redirects=True)
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                logger.warning(f"第一次请求超时，正在重试: {str(e)}")
+                logger.warning(f"第一次请求超时，正在重试: {e!s}")
                 try:
                     res = session.get(url=url, timeout=(5, 10), verify=False)
                 except Exception as e2:
-                    logger.error(f"第二次请求也失败: {str(e2)}")
+                    logger.error(f"第二次请求也失败: {e2!s}")
                     return []
 
             res.encoding = "utf-8"
@@ -174,7 +177,7 @@ class BingSearchEngine(BaseSearchEngine):
                 try:
                     root = BeautifulSoup(res.text, "html.parser")
                 except Exception as e:
-                    logger.error(f"HTML解析失败: {str(e)}")
+                    logger.error(f"HTML解析失败: {e!s}")
                     return []
 
             list_data = []
@@ -182,34 +185,29 @@ class BingSearchEngine(BaseSearchEngine):
             # 尝试提取搜索结果
             # 方法1: 查找标准的搜索结果容器
             results = root.select("ol#b_results li.b_algo")
-            
+
             if results:
                 for _rank, result in enumerate(results, 1):
                     # 提取标题和链接
                     title_link = result.select_one("h2 a")
                     if not title_link:
                         continue
-                    
+
                     title = title_link.get_text().strip()
                     url = title_link.get("href", "")
-                    
+
                     # 提取摘要
                     abstract = ""
                     abstract_elem = result.select_one("div.b_caption p")
                     if abstract_elem:
                         abstract = abstract_elem.get_text().strip()
-                    
+
                     # 限制摘要长度
                     if ABSTRACT_MAX_LENGTH and len(abstract) > ABSTRACT_MAX_LENGTH:
                         abstract = abstract[:ABSTRACT_MAX_LENGTH] + "..."
-                    
-                    list_data.append({
-                        "title": title,
-                        "url": url,
-                        "snippet": abstract,
-                        "provider": "Bing"
-                    })
-                    
+
+                    list_data.append({"title": title, "url": url, "snippet": abstract, "provider": "Bing"})
+
                     if len(list_data) >= 10:  # 限制结果数量
                         break
 
@@ -217,22 +215,34 @@ class BingSearchEngine(BaseSearchEngine):
             if not list_data:
                 # 查找所有可能的搜索结果链接
                 all_links = root.find_all("a")
-                
+
                 for link in all_links:
                     href = link.get("href", "")
                     text = link.get_text().strip()
-                    
+
                     # 过滤有效的搜索结果链接
-                    if (href and text and len(text) > 10 
+                    if (
+                        href
+                        and text
+                        and len(text) > 10
                         and not href.startswith("javascript:")
                         and not href.startswith("#")
                         and "http" in href
-                        and not any(x in href for x in [
-                            "bing.com/search", "bing.com/images", "bing.com/videos",
-                            "bing.com/maps", "bing.com/news", "login", "account",
-                            "microsoft", "javascript"
-                        ])):
-                        
+                        and not any(
+                            x in href
+                            for x in [
+                                "bing.com/search",
+                                "bing.com/images",
+                                "bing.com/videos",
+                                "bing.com/maps",
+                                "bing.com/news",
+                                "login",
+                                "account",
+                                "microsoft",
+                                "javascript",
+                            ]
+                        )
+                    ):
                         # 尝试获取摘要
                         abstract = ""
                         parent = link.parent
@@ -240,18 +250,13 @@ class BingSearchEngine(BaseSearchEngine):
                             full_text = parent.get_text().strip()
                             if len(full_text) > len(text):
                                 abstract = full_text.replace(text, "", 1).strip()
-                        
+
                         # 限制摘要长度
                         if ABSTRACT_MAX_LENGTH and len(abstract) > ABSTRACT_MAX_LENGTH:
                             abstract = abstract[:ABSTRACT_MAX_LENGTH] + "..."
-                        
-                        list_data.append({
-                            "title": text,
-                            "url": href,
-                            "snippet": abstract,
-                            "provider": "Bing"
-                        })
-                        
+
+                        list_data.append({"title": text, "url": href, "snippet": abstract, "provider": "Bing"})
+
                         if len(list_data) >= 10:
                             break
 
@@ -259,6 +264,6 @@ class BingSearchEngine(BaseSearchEngine):
             return list_data
 
         except Exception as e:
-            logger.error(f"解析Bing页面时出错: {str(e)}")
+            logger.error(f"解析Bing页面时出错: {e!s}")
             logger.debug(traceback.format_exc())
             return []

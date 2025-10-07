@@ -1,8 +1,8 @@
 import asyncio
-
-from time import perf_counter
+from collections.abc import Callable
 from functools import wraps
-from typing import Optional, Dict, Callable
+from time import perf_counter
+
 from rich.traceback import install
 
 install(extra_lines=3)
@@ -51,7 +51,7 @@ print(a)         # 直接输出当前 perf_counter 值
 - storage：计时器结果存储字典，默认为 None
 - auto_unit：自动选择单位（毫秒或秒），默认为 True（自动根据时间切换毫秒或秒）
 - do_type_check：是否进行类型检查，默认为 False（不进行类型检查）
-    
+
 属性：human_readable
 
 自定义错误：TimerTypeError
@@ -75,12 +75,12 @@ class Timer:
       3. 直接实例化：如果不调用 __enter__，打印对象时将显示当前 perf_counter 的值
     """
 
-    __slots__ = ("name", "storage", "elapsed", "auto_unit", "start")
+    __slots__ = ("auto_unit", "elapsed", "name", "start", "storage")
 
     def __init__(
         self,
-        name: Optional[str] = None,
-        storage: Optional[Dict[str, float]] = None,
+        name: str | None = None,
+        storage: dict[str, float] | None = None,
         auto_unit: bool = True,
         do_type_check: bool = False,
     ):
@@ -103,7 +103,7 @@ class Timer:
         if storage is not None and not isinstance(storage, dict):
             raise TimerTypeError("storage", "Optional[dict]", type(storage))
 
-    def __call__(self, func: Optional[Callable] = None) -> Callable:
+    def __call__(self, func: Callable | None = None) -> Callable:
         """装饰器模式"""
         if func is None:
             return lambda f: Timer(name=self.name or f.__name__, storage=self.storage, auto_unit=self.auto_unit)(f)

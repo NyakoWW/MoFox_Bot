@@ -1,22 +1,20 @@
-from typing import Dict, Optional
-
-from src.common.logger import get_logger
 from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
 from src.chat.replyer.default_generator import DefaultReplyer
+from src.common.logger import get_logger
 
 logger = get_logger("ReplyerManager")
 
 
 class ReplyerManager:
     def __init__(self):
-        self._repliers: Dict[str, DefaultReplyer] = {}
+        self._repliers: dict[str, DefaultReplyer] = {}
 
-    def get_replyer(
+    async def get_replyer(
         self,
-        chat_stream: Optional[ChatStream] = None,
-        chat_id: Optional[str] = None,
+        chat_stream: ChatStream | None = None,
+        chat_id: str | None = None,
         request_type: str = "replyer",
-    ) -> Optional[DefaultReplyer]:
+    ) -> DefaultReplyer | None:
         """
         获取或创建回复器实例。
 
@@ -39,7 +37,7 @@ class ReplyerManager:
         target_stream = chat_stream
         if not target_stream:
             if chat_manager := get_chat_manager():
-                target_stream = chat_manager.get_stream(stream_id)
+                target_stream = await chat_manager.get_stream(stream_id)
 
         if not target_stream:
             logger.warning(f"[ReplyerManager] 未找到 stream_id='{stream_id}' 的聊天流，无法创建回复器。")

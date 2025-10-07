@@ -1,14 +1,15 @@
-import orjson
-import os
 import glob
-from typing import Any, Dict, List
+import os
+from typing import Any
 
+import orjson
 
-from .knowledge_lib import INVALID_ENTITY, ROOT_PATH, DATA_PATH
+from .knowledge_lib import DATA_PATH, INVALID_ENTITY, ROOT_PATH
+
 # from src.manager.local_store_manager import local_storage
 
 
-def _filter_invalid_entities(entities: List[str]) -> List[str]:
+def _filter_invalid_entities(entities: list[str]) -> list[str]:
     """过滤无效的实体"""
     valid_entities = set()
     for entity in entities:
@@ -20,7 +21,7 @@ def _filter_invalid_entities(entities: List[str]) -> List[str]:
     return list(valid_entities)
 
 
-def _filter_invalid_triples(triples: List[List[str]]) -> List[List[str]]:
+def _filter_invalid_triples(triples: list[list[str]]) -> list[list[str]]:
     """过滤无效的三元组"""
     unique_triples = set()
     valid_triples = []
@@ -62,7 +63,7 @@ class OpenIE:
 
     def __init__(
         self,
-        docs: List[Dict[str, Any]],
+        docs: list[dict[str, Any]],
         avg_ent_chars,
         avg_ent_words,
     ):
@@ -112,7 +113,7 @@ class OpenIE:
         json_files = sorted(glob.glob(os.path.join(openie_dir, "*.json")))
         data_list = []
         for file in json_files:
-            with open(file, "r", encoding="utf-8") as f:
+            with open(file, encoding="utf-8") as f:
                 data = orjson.loads(f.read())
                 data_list.append(data)
         if not data_list:
@@ -123,29 +124,25 @@ class OpenIE:
 
     def extract_entity_dict(self):
         """提取实体列表"""
-        ner_output_dict = dict(
-            {
-                doc_item["idx"]: doc_item["extracted_entities"]
-                for doc_item in self.docs
-                if len(doc_item["extracted_entities"]) > 0
-            }
-        )
+        ner_output_dict = {
+            doc_item["idx"]: doc_item["extracted_entities"]
+            for doc_item in self.docs
+            if len(doc_item["extracted_entities"]) > 0
+        }
         return ner_output_dict
 
     def extract_triple_dict(self):
         """提取三元组列表"""
-        triple_output_dict = dict(
-            {
-                doc_item["idx"]: doc_item["extracted_triples"]
-                for doc_item in self.docs
-                if len(doc_item["extracted_triples"]) > 0
-            }
-        )
+        triple_output_dict = {
+            doc_item["idx"]: doc_item["extracted_triples"]
+            for doc_item in self.docs
+            if len(doc_item["extracted_triples"]) > 0
+        }
         return triple_output_dict
 
     def extract_raw_paragraph_dict(self):
         """提取原始段落"""
-        raw_paragraph_dict = dict({doc_item["idx"]: doc_item["passage"] for doc_item in self.docs})
+        raw_paragraph_dict = {doc_item["idx"]: doc_item["passage"] for doc_item in self.docs}
         return raw_paragraph_dict
 
 

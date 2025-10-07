@@ -28,29 +28,28 @@
 
 """
 
-import traceback
-import time
 import asyncio
-from typing import Optional, Union, Dict, Any
-from src.common.logger import get_logger
+import time
+import traceback
+from typing import Any
+
+from maim_message import Seg, UserInfo
 
 # 导入依赖
-from src.chat.message_receive.chat_stream import get_chat_manager
-from maim_message import UserInfo
-from src.chat.message_receive.chat_stream import ChatStream
+from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
+from src.chat.message_receive.message import MessageRecv, MessageSending
 from src.chat.message_receive.uni_message_sender import HeartFCSender
-from src.chat.message_receive.message import MessageSending, MessageRecv
-from maim_message import Seg
+from src.common.logger import get_logger
 from src.config.config import global_config
 
 # 日志记录器
 logger = get_logger("send_api")
 
 # 适配器命令响应等待池
-_adapter_response_pool: Dict[str, asyncio.Future] = {}
+_adapter_response_pool: dict[str, asyncio.Future] = {}
 
 
-def message_dict_to_message_recv(message_dict: Dict[str, Any]) -> Optional[MessageRecv]:
+def message_dict_to_message_recv(message_dict: dict[str, Any]) -> MessageRecv | None:
     """查找要回复的消息
 
     Args:
@@ -80,7 +79,9 @@ def message_dict_to_message_recv(message_dict: Dict[str, Any]) -> Optional[Messa
 
     message_info = {
         "platform": message_dict.get("chat_info_platform", ""),
-        "message_id": message_dict.get("message_id"),
+        "message_id": message_dict.get("message_id")
+        or message_dict.get("chat_info_message_id")
+        or message_dict.get("id"),
         "time": message_dict.get("time"),
         "group_info": group_info,
         "user_info": user_info,
@@ -89,13 +90,13 @@ def message_dict_to_message_recv(message_dict: Dict[str, Any]) -> Optional[Messa
         "template_info": template_info,
     }
 
-    message_dict = {
+    new_message_dict = {
         "message_info": message_info,
         "raw_message": message_dict.get("processed_plain_text"),
         "processed_plain_text": message_dict.get("processed_plain_text"),
     }
 
-    message_recv = MessageRecv(message_dict)
+    message_recv = MessageRecv(new_message_dict)
 
     logger.info(f"[SendAPI] 找到匹配的回复消息，发送者: {message_dict.get('user_nickname', '')}")
     return message_recv
@@ -132,13 +133,13 @@ async def wait_adapter_response(request_id: str, timeout: float = 30.0) -> dict:
 
 async def _send_to_target(
     message_type: str,
-    content: Union[str, dict],
+    content: str | dict,
     stream_id: str,
     display_message: str = "",
     typing: bool = False,
     reply_to: str = "",
     set_reply: bool = False,
-    reply_to_message: Optional[Dict[str, Any]] = None,
+    reply_to_message: dict[str, Any] | None = None,
     storage_message: bool = True,
     show_log: bool = True,
 ) -> bool:
@@ -165,7 +166,7 @@ async def _send_to_target(
             logger.debug(f"[SendAPI] 发送{message_type}消息到 {stream_id}")
 
         # 查找目标聊天流
-        target_stream = get_chat_manager().get_stream(stream_id)
+        target_stream = await get_chat_manager().get_stream(stream_id)
         if not target_stream:
             logger.error(f"[SendAPI] 未找到聊天流: {stream_id}")
             return False
@@ -245,8 +246,8 @@ async def text_to_stream(
     stream_id: str,
     typing: bool = False,
     reply_to: str = "",
-    reply_to_message: Optional[Dict[str, Any]] = None,
-    set_reply: bool = False,
+    reply_to_message: dict[str, Any] | None = None,
+    set_reply: bool = True,
     storage_message: bool = True,
 ) -> bool:
     """向指定流发送文本消息
@@ -275,7 +276,7 @@ async def text_to_stream(
 
 
 async def emoji_to_stream(
-    emoji_base64: str, stream_id: str, storage_message: bool = True, set_reply: bool = False
+    emoji_base64: str, stream_id: str, storage_message: bool = True, set_reply: bool = True
 ) -> bool:
     """向指定流发送表情包
 
@@ -293,7 +294,7 @@ async def emoji_to_stream(
 
 
 async def image_to_stream(
-    image_base64: str, stream_id: str, storage_message: bool = True, set_reply: bool = False
+    image_base64: str, stream_id: str, storage_message: bool = True, set_reply: bool = True
 ) -> bool:
     """向指定流发送图片
 
@@ -311,11 +312,11 @@ async def image_to_stream(
 
 
 async def command_to_stream(
-    command: Union[str, dict],
+    command: str | dict,
     stream_id: str,
     storage_message: bool = True,
     display_message: str = "",
-    set_reply: bool = False,
+    set_reply: bool = True,
 ) -> bool:
     """向指定流发送命令
 
@@ -339,8 +340,8 @@ async def custom_to_stream(
     display_message: str = "",
     typing: bool = False,
     reply_to: str = "",
-    reply_to_message: Optional[Dict[str, Any]] = None,
-    set_reply: bool = False,
+    reply_to_message: dict[str, Any] | None = None,
+    set_reply: bool = True,
     storage_message: bool = True,
     show_log: bool = True,
 ) -> bool:
@@ -375,8 +376,8 @@ async def custom_to_stream(
 async def adapter_command_to_stream(
     action: str,
     params: dict,
-    platform: Optional[str] = "qq",
-    stream_id: Optional[str] = None,
+    platform: str | None = "qq",
+    stream_id: str | None = None,
     timeout: float = 30.0,
     storage_message: bool = False,
 ) -> dict:
@@ -415,7 +416,7 @@ async def adapter_command_to_stream(
             logger.debug(f"[SendAPI] 自动生成临时stream_id: {stream_id}")
 
         # 查找目标聊天流
-        target_stream = get_chat_manager().get_stream(stream_id)
+        target_stream = await get_chat_manager().get_stream(stream_id)
         if not target_stream:
             # 如果是自动生成的stream_id且找不到聊天流，创建一个临时的虚拟流
             if stream_id.startswith("adapter_temp_"):
@@ -495,4 +496,4 @@ async def adapter_command_to_stream(
     except Exception as e:
         logger.error(f"[SendAPI] 发送适配器命令时出错: {e}")
         traceback.print_exc()
-        return {"status": "error", "message": f"发送适配器命令时出错: {str(e)}"}
+        return {"status": "error", "message": f"发送适配器命令时出错: {e!s}"}
