@@ -84,13 +84,10 @@ class Individuality:
         # 组合完整的人设描述
         full_personality = f"{personality_result}，{identity_result}"
 
-        # 获取全局兴趣评分系统实例
-        from src.plugins.built_in.affinity_flow_chatter.interest_scoring import (
-            chatter_interest_scoring_system as interest_scoring_system,
-        )
+        # 使用统一的评分API初始化智能兴趣系统
+        from src.plugin_system.apis.scoring_api import scoring_api
 
-        # 初始化智能兴趣系统
-        await interest_scoring_system.initialize_smart_interests(
+        await scoring_api.initialize_smart_interests(
             personality_description=full_personality, personality_id=self.bot_person_id
         )
 

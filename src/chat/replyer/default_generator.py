@@ -1676,49 +1676,42 @@ class DefaultReplyer:
             logger.warning(f"未找到用户 {sender} 的ID，跳过信息提取")
             return f"你完全不认识{sender}，不理解ta的相关信息。"
 
-        # 使用AFC关系追踪器获取关系信息
+        # 使用统一评分API获取关系信息
         try:
-            # 创建关系追踪器实例
-            from src.plugins.built_in.affinity_flow_chatter.interest_scoring import chatter_interest_scoring_system
-            from src.plugins.built_in.affinity_flow_chatter.relationship_tracker import ChatterRelationshipTracker
+            from src.plugin_system.apis.scoring_api import scoring_api
 
-            relationship_tracker = ChatterRelationshipTracker(chatter_interest_scoring_system)
-            if relationship_tracker:
-                # 获取用户信息以获取真实的user_id
-                user_info = await person_info_manager.get_values(person_id, ["user_id", "platform"])
-                user_id = user_info.get("user_id", "unknown")
+            # 获取用户信息以获取真实的user_id
+            user_info = await person_info_manager.get_values(person_id, ["user_id", "platform"])
+            user_id = user_info.get("user_id", "unknown")
 
-                # 从数据库获取关系数据
-                relationship_data = await relationship_tracker._get_user_relationship_from_db(user_id)
-                if relationship_data:
-                    relationship_text = relationship_data.get("relationship_text", "")
-                    relationship_score = relationship_data.get("relationship_score", 0.3)
+            # 从统一API获取关系数据
+            relationship_data = await scoring_api.get_user_relationship_data(user_id)
+            if relationship_data:
+                relationship_text = relationship_data.get("relationship_text", "")
+                relationship_score = relationship_data.get("relationship_score", 0.3)
 
-                    # 构建丰富的关系信息描述
-                    if relationship_text:
-                        # 转换关系分数为描述性文本
-                        if relationship_score >= 0.8:
-                            relationship_level = "非常亲密的朋友"
-                        elif relationship_score >= 0.6:
-                            relationship_level = "好朋友"
-                        elif relationship_score >= 0.4:
-                            relationship_level = "普通朋友"
-                        elif relationship_score >= 0.2:
-                            relationship_level = "认识的人"
-                        else:
-                            relationship_level = "陌生人"
-
-                        return f"你与{sender}的关系：{relationship_level}（关系分：{relationship_score:.2f}/1.0）。{relationship_text}"
+                # 构建丰富的关系信息描述
+                if relationship_text:
+                    # 转换关系分数为描述性文本
+                    if relationship_score >= 0.8:
+                        relationship_level = "非常亲密的朋友"
+                    elif relationship_score >= 0.6:
+                        relationship_level = "好朋友"
+                    elif relationship_score >= 0.4:
+                        relationship_level = "普通朋友"
+                    elif relationship_score >= 0.2:
+                        relationship_level = "认识的人"
                     else:
-                        return f"你与{sender}是初次见面，关系分：{relationship_score:.2f}/1.0。"
+                        relationship_level = "陌生人"
+
+                    return f"你与{sender}的关系：{relationship_level}（关系分：{relationship_score:.2f}/1.0）。{relationship_text}"
                 else:
-                    return f"你完全不认识{sender}，这是第一次互动。"
+                    return f"你与{sender}是初次见面，关系分：{relationship_score:.2f}/1.0。"
             else:
-                logger.warning("AFC关系追踪器未初始化，使用默认关系信息")
-                return f"你与{sender}是普通朋友关系。"
+                return f"你完全不认识{sender}，这是第一次互动。"
 
         except Exception as e:
-            logger.error(f"获取AFC关系信息失败: {e}")
+            logger.error(f"获取关系信息失败: {e}")
             return f"你与{sender}是普通朋友关系。"
 
     async def _store_chat_memory_async(self, reply_to: str, reply_message: dict[str, Any] | None = None):

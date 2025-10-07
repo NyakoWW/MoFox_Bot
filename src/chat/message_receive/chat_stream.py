@@ -405,18 +405,18 @@ class ChatStream:
 
     async def _get_user_relationship_score(self) -> float:
         """获取用户关系分"""
-        # 使用插件内部的兴趣度评分系统
+        # 使用统一的评分API
         try:
-            from src.plugins.built_in.affinity_flow_chatter.interest_scoring import chatter_interest_scoring_system
+            from src.plugin_system.apis.scoring_api import scoring_api
 
             if self.user_info and hasattr(self.user_info, "user_id"):
                 user_id = str(self.user_info.user_id)
-                relationship_score = await chatter_interest_scoring_system._calculate_relationship_score(user_id)
+                relationship_score = await scoring_api.get_user_relationship_score(user_id)
                 logger.debug(f"ChatStream {self.stream_id}: 用户关系分 = {relationship_score:.3f}")
-                return max(0.0, min(1.0, relationship_score))
+                return relationship_score
 
         except Exception as e:
-            logger.warning(f"ChatStream {self.stream_id}: 插件内部关系分计算失败: {e}")
+            logger.warning(f"ChatStream {self.stream_id}: 关系分计算失败: {e}")
 
         # 默认基础分
         return 0.3
