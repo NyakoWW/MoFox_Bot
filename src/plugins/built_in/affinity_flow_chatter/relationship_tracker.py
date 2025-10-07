@@ -27,7 +27,9 @@ class ChatterRelationshipTracker:
         self.update_interval_minutes = 30
         self.last_update_time = time.time()
         self.relationship_history: list[dict] = []
-        self.interest_scoring_system = interest_scoring_system
+
+        # 兼容性：保留参数但不直接使用，转而使用统一API
+        self.interest_scoring_system = None  # 废弃，不再使用
 
         # 用户关系缓存 (user_id -> {"relationship_text": str, "relationship_score": float, "last_tracked": float})
         self.user_relationship_cache: dict[str, dict] = {}
@@ -63,8 +65,9 @@ class ChatterRelationshipTracker:
                 )
 
     def set_interest_scoring_system(self, interest_scoring_system):
-        """设置兴趣度评分系统引用"""
-        self.interest_scoring_system = interest_scoring_system
+        """设置兴趣度评分系统引用（已废弃，使用统一API）"""
+        # 不再需要设置，直接使用统一API
+        logger.info("set_interest_scoring_system 已废弃，现在使用统一评分API")
 
     def add_interaction(self, user_id: str, user_name: str, user_message: str, bot_reply: str, reply_timestamp: float):
         """添加用户交互记录"""
@@ -75,10 +78,10 @@ class ChatterRelationshipTracker:
             )
             del self.tracking_users[oldest_user]
 
-        # 获取当前关系分
+        # 获取当前关系分 - 使用缓存数据
         current_relationship_score = global_config.affinity_flow.base_relationship_score  # 默认值
-        if self.interest_scoring_system:
-            current_relationship_score = self.interest_scoring_system.get_user_relationship(user_id)
+        if user_id in self.user_relationship_cache:
+            current_relationship_score = self.user_relationship_cache[user_id].get("relationship_score", current_relationship_score)
 
         self.tracking_users[user_id] = {
             "user_id": user_id,
@@ -178,10 +181,11 @@ class ChatterRelationshipTracker:
                         ),
                     )
 
-                    if self.interest_scoring_system:
-                        self.interest_scoring_system.update_user_relationship(
-                            interaction["user_id"], new_score - interaction["current_relationship_score"]
-                        )
+                    # 使用统一API更新关系分
+                    from src.plugin_system.apis.scoring_api import scoring_api
+                    await scoring_api.update_user_relationship(
+                        interaction["user_id"], new_score
+                    )
 
                     return {
                         "user_id": interaction["user_id"],
@@ -252,12 +256,14 @@ class ChatterRelationshipTracker:
             self.update_interval_minutes = update_interval_minutes
             logger.info(f"更新关系更新间隔: {update_interval_minutes} 分钟")
 
-    def force_update_relationship(self, user_id: str, new_score: float, reasoning: str = ""):
+    async def force_update_relationship(self, user_id: str, new_score: float, reasoning: str = ""):
         """强制更新用户关系分"""
         if user_id in self.tracking_users:
             current_score = self.tracking_users[user_id]["current_relationship_score"]
-            if self.interest_scoring_system:
-                self.interest_scoring_system.update_user_relationship(user_id, new_score - current_score)
+
+            # 使用统一API更新关系分
+            from src.plugin_system.apis.scoring_api import scoring_api
+            await scoring_api.update_user_relationship(user_id, new_score)
 
             update_info = {
                 "user_id": user_id,
@@ -605,9 +611,8 @@ class ChatterRelationshipTracker:
                         "last_tracked": time.time(),
                     }
 
-                    # 如果有兴趣度评分系统，也更新内存中的关系分
-                    if self.interest_scoring_system:
-                        self.interest_scoring_system.update_user_relationship(user_id, new_score - current_score)
+                    # 使用统一API更新关系分（内存缓存已通过数据库更新自动处理）
+                    # 数据库更新后，缓存会在下次访问时自动同步
 
                     # 记录分析历史
                     analysis_record = {

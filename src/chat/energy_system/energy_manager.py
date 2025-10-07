@@ -199,16 +199,16 @@ class RelationshipEnergyCalculator(EnergyCalculator):
         if not user_id:
             return 0.3
 
-        # 使用插件内部的兴趣度评分系统获取关系分
+        # 使用统一的评分API获取关系分
         try:
-            from src.plugins.built_in.affinity_flow_chatter.interest_scoring import chatter_interest_scoring_system
+            from src.plugin_system.apis.scoring_api import scoring_api
 
-            relationship_score = await chatter_interest_scoring_system._calculate_relationship_score(user_id)
-            logger.debug(f"使用插件内部系统计算关系分: {relationship_score:.3f}")
-            return max(0.0, min(1.0, relationship_score))
+            relationship_score = await scoring_api.get_user_relationship_score(user_id)
+            logger.debug(f"使用统一评分API计算关系分: {relationship_score:.3f}")
+            return relationship_score
 
         except Exception as e:
-            logger.warning(f"插件内部关系分计算失败，使用默认值: {e}")
+            logger.warning(f"关系分计算失败，使用默认值: {e}")
             return 0.3  # 默认基础分
 
     def get_weight(self) -> float:
